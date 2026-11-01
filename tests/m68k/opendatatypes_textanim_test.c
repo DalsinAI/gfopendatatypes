@@ -588,6 +588,45 @@ static void run_anim(char *args)
     printf("allocs %ld\n", outstanding - base);
 }
 
+/* ANIMBACK path: to the last frame, then back a frame at a time to the
+ * first; each frame (and anm_goto's answer) as a new decoder going
+ * straight to it gives, and no more than nframes + nframes^2 / 4 frames
+ * decoded on the way back */
+static void run_animback(char *args)
+{
+    long base = outstanding;
+    struct anm_env ae = { 0, a_env_alloc, a_env_free };
+    struct anm_info info;
+    struct anm_dec a, b;
+    odt_u32 len, f, bad = 0, n;
+    odt_u8 *data = read_file(strtok(args, " "), &len);
+    if (anm_scan(&ae, data, len, &info)) { printf("scan err\n"); free(data); return; }
+    n = info.nframes;
+    if (anm_dec_init(&ae, &a, &info, data, len)) { printf("dec init fail\n"); return; }
+    anm_goto(&a, n - 1);
+    a.decoded = 0;
+    for (f = n - 1; f-- > 0;) {
+        int ra = anm_goto(&a, f), rb;
+        if (anm_dec_init(&ae, &b, &info, data, len)) { printf("dec init fail\n"); return; }
+        rb = anm_goto(&b, f);
+        if (ra != rb || a.cur != b.cur || memcmp(anm_planes(&a), anm_planes(&b), a.size)) {
+            printf("animback frame %lu: r %d cur %ld, straight r %d cur %ld\n", (unsigned long)f, ra, (long)a.cur,
+                   rb, (long)b.cur);
+            bad++;
+        }
+        anm_dec_free(&ae, &b);
+    }
+    if (a.decoded > n + n * n / 4) {
+        printf("animback %lu frames decoded going back over %lu\n", (unsigned long)a.decoded, (unsigned long)n);
+        bad++;
+    }
+    anm_dec_free(&ae, &a);
+    anm_free_info(&ae, &info);
+    free(data);
+    if (outstanding != base) printf("animback allocs %ld\n", outstanding - base);
+    else if (!bad) printf("animback %lu ok\n", (unsigned long)n);
+}
+
 /* text pure: TLAY wrap hex | TSEL x0 y0 x1 y1 | TCOPY all | TWORD x y | TRENDER l t w h row px */
 static void run_text(const char *cmd, char *args)
 {
@@ -992,6 +1031,7 @@ int main(int argc, char **argv)
         else args = line + strlen(line);
         printf("> %s\n", cmd);
         if (!strcmp(cmd, "ANIM")) run_anim(args);
+        else if (!strcmp(cmd, "ANIMBACK")) run_animback(args);
         else if (cmd[0] == 'T' && strcmp(cmd, "TCLASS")) run_text(cmd, args);
         else if (!strcmp(cmd, "TCLASS")) run_tclass(args);
         else if (!strcmp(cmd, "ACLASS")) run_aclass(args);

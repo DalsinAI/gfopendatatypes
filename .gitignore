@@ -7,3 +7,6 @@
 /Datatypes/out/
 /Datatypes/work/
 /Datatypes/tarballs/
+
+# Python bytecode (the tests run python3)
+__pycache__/

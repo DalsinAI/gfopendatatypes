@@ -132,6 +132,20 @@ int anm_body(const struct anm_bmhd *h, odt_u32 bpr, odt_u32 depth, const odt_u8 
 int anm_delta(odt_u32 op, odt_u32 flags, odt_u32 bpr, odt_u32 rows, odt_u32 depth,
               const odt_u8 *dlta, odt_u32 len, odt_u8 *planes);
 
+/* A checkpoint: the decoder's two buffers as they were at a frame */
+struct anm_cp {
+    odt_u8 *buf;                        /* buf[0] then buf[1]; 0 until the decoder first passes the frame */
+    int err;                            /* the first error from frame 0 to here */
+};
+
+/* Checkpoints keep a backward seek from decoding again from frame 0: one
+ * each `every` frames (frame every, 2 * every, ...), made the first time
+ * the decoder passes, up to ANM_CP_BYTES of them, no more than ANM_CP_MAX
+ * and no closer than ANM_CP_MIN_EVERY frames apart. */
+#define ANM_CP_BYTES     (1UL << 20)
+#define ANM_CP_MAX       32
+#define ANM_CP_MIN_EVERY 4
+
 /* The decoder: two frame buffers, as the double-buffered ANIMs need */
 struct anm_dec {
     const struct anm_info *info;
@@ -141,14 +155,20 @@ struct anm_dec {
     odt_u32 size;                       /* of each: depth * rows * bpr */
     odt_s32 cur;                        /* the frame in buf[cur & 1]; -1 none */
     odt_u32 decoded;                    /* frames decoded, for the tests */
+    const struct anm_env *env;
+    struct anm_cp *cp;                  /* ncp of them, or 0 */
+    odt_u32 ncp, every;
+    int err;                            /* the first error from frame 0 to cur */
 };
 
 int anm_dec_init(const struct anm_env *env, struct anm_dec *d, const struct anm_info *info,
                  const odt_u8 *data, odt_u32 len);
 void anm_dec_free(const struct anm_env *env, struct anm_dec *d);
 
-/* Decodes up to frame n (from the start when n is behind), leaving it
- * current. Returns ANM_OK or the first error (the frames up to it stay). */
+/* Decodes up to frame n (when n is behind, from the last checkpoint at or
+ * before it, else from the start), leaving it current. Returns ANM_OK or
+ * the first error (the frames up to it stay): from the start when n was
+ * behind, else after the frame that was current. */
 int anm_goto(struct anm_dec *d, odt_u32 n);
 
 /* The current frame's planes */
