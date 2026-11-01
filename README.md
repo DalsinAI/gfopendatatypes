@@ -73,11 +73,11 @@ amigachrome-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 
 - `sh Datatypes/tests/test-tga.sh` and `sh Datatypes/tests/test-cdxl.sh`:
   the decoders on the host under AddressSanitizer and UBSan (CI runs both).
-- `sh Datatypes/tests/test-planar.sh`: `common/include/odt_planar.h`
-  against the bit-at-a-time loop it replaced, under the same sanitizers
-  (and as 68040 code with `QEMU_M68K=qemu-m68k`).
 - `sh tests/achelpers/test_achelpers.sh`: the AC090 helpers and dtlib.c's
   memory functions under qemu-m68k.
+- `sh Datatypes/tests/test-planar.sh`: `common/include/odt_planar.h`
+  against the bit-at-a-time loop it replaced, under AddressSanitizer and
+  UBSan (and as 68040 code with `QEMU_M68K=qemu-m68k`).
 - `Datatypes/tests/dtpic.c`, `dtsound.c`, `dtanim.c`: the Amiga-side checks.
 
 ## Licence

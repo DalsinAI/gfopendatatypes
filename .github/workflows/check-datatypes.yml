@@ -2,8 +2,6 @@
 # The datatypes' decoder cores on the host (x86), under AddressSanitizer and
 # UBSan: opentga.datatype's (Datatypes/tests/test-tga.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),
-# the bitplanes-to-pixels helper ilbm, picture and cdxl share
-# (Datatypes/tests/test-planar.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
 # (Datatypes/tests/test-stream.sh), and openpng.datatype's PNG writer
 # (Datatypes/tests/test-pngenc.sh); and the datatypes' RomTag versions
@@ -12,6 +10,9 @@
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
 # (tests/m68k/test_opendatatypes_class.sh) needs an amigachrome-guest
 # checkout (GUEST=) and runs in amigachrome-guest's own CI.
+# The bitplanes-to-pixels helper ilbm, picture and cdxl share
+# (common/include/odt_planar.h) against the loop it replaced, on the host
+# (Datatypes/tests/test-planar.sh).
 # The Amiga builds need the os32-gcc16 stove and are made on the build PC.
 name: Datatypes
 on:
@@ -34,14 +35,14 @@ jobs:
         run: sh Datatypes/tests/test-tga.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
-      - name: bitplanes to pixels (common/include/odt_planar.h)
-        run: sh Datatypes/tests/test-planar.sh
       - name: stream.datatype with gzip and Brotli
         run: sh Datatypes/tests/test-stream.sh
       - name: openpng.datatype's PNG writer
         run: sh Datatypes/tests/test-pngenc.sh
       - name: the datatypes' RomTags carry their version
         run: python3 Datatypes/tests/test-romtag.py
+      - name: bitplanes to pixels (common/include/odt_planar.h)
+        run: sh Datatypes/tests/test-planar.sh
   m68k:
     runs-on: ubuntu-latest
     steps:
