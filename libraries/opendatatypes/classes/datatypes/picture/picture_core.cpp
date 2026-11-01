@@ -216,6 +216,24 @@ u32 cube_levels(u32 depth)
 inline u32 level_of(u32 v, u32 L) { return (v * (L - 1) + 127) / 255; }
 inline u32 level_value(u32 l, u32 L) { return l * 255 / (L - 1); }
 
+/* The source columns of a row scaled from sw to dw pixels, one after another:
+ * xx * sw / dw for xx = 0, 1, ..., without a division for each pixel. */
+struct col_step {
+    u32 q, r, d, acc, v;
+    col_step(u32 sw, u32 dw) : q(sw / dw), r(sw % dw), d(dw), acc(0), v(0) {}
+    u32 next()
+    {
+        u32 o = v;
+        v += q;
+        acc += r;
+        if (acc >= d) {
+            acc -= d;
+            v++;
+        }
+        return o;
+    }
+};
+
 bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *gi)
 {
     void *screen = p->screen ? p->screen : gi ? gi->gi_Screen : nullptr;
@@ -251,9 +269,13 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     u8 *cube = nullptr;
     u32 L = 0;
     if (truecolour) {
-        for (u32 y = 0; y < dh; y++)
-            for (u32 xx = 0; xx < dw; xx++)
-                argb_of(p, (y * sh / dh) * sw + xx * sw / dw, buf + (y * dw + xx) * 4);
+        u8 *d = buf;
+        for (u32 y = 0; y < dh; y++) {
+            u32 row = (y * sh / dh) * sw;
+            col_step c(sw, dw);
+            for (u32 xx = 0; xx < dw; xx++, d += 4)
+                argb_of(p, row + c.next(), d);
+        }
     } else if (p->store == PIC_STORE_LUT8) {
         u32 nc = p->numcolors ? p->numcolors : 256;
         if (remap) {
@@ -295,9 +317,13 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
                 p->colortable[c] = p->colortable2[c] = static_cast<u8>(c);
             depth = p->bmhd.bmh_Depth >= 1 && p->bmhd.bmh_Depth <= 8 ? p->bmhd.bmh_Depth : 8;
         }
-        for (u32 y = 0; y < dh; y++)
+        u8 *d = buf;
+        for (u32 y = 0; y < dh; y++) {
+            const u8 *row = p->pixels + (y * sh / dh) * sw;
+            col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++)
-                buf[y * dw + xx] = p->colortable[p->pixels[(y * sh / dh) * sw + xx * sw / dw]];
+                *d++ = p->colortable[row[c.next()]];
+        }
     } else {
         /* true colour onto pens: through a cube of pens. ABI test: OS 3.2
          * may dither (PDTA_DitherQuality); ours takes the nearest. */
@@ -314,11 +340,18 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
                     cube[(r * L + g) * L + b] = static_cast<u8>(obtain(env, p, cm, level_value(r, L) * 0x01010101UL,
                                                                        level_value(g, L) * 0x01010101UL,
                                                                        level_value(b, L) * 0x01010101UL));
-        for (u32 y = 0; y < dh; y++)
+        u8 lv[256];                     /* each 8-bit level's place in the cube */
+        for (u32 v = 0; v < 256; v++)
+            lv[v] = static_cast<u8>(level_of(v, L));
+        u8 *d = buf;
+        for (u32 y = 0; y < dh; y++) {
+            const u8 *row = p->pixels + (y * sh / dh) * sw * 4;
+            col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++) {
-                const u8 *s = p->pixels + ((y * sh / dh) * sw + xx * sw / dw) * 4;
-                buf[y * dw + xx] = cube[(level_of(s[1], L) * L + level_of(s[2], L)) * L + level_of(s[3], L)];
+                const u8 *s = row + c.next() * 4;
+                *d++ = cube[(lv[s[1]] * L + lv[s[2]]) * L + lv[s[3]]];
             }
+        }
         env->free(env, cube);
     }
     if (truecolour && !remap)
@@ -356,10 +389,13 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
             set_err(env, DTC_ERROR_NO_FREE_STORE);
             return false;
         }
-        for (u32 y = 0; y < dh; y++)
-                for (u32 xx = 0; xx < dw; xx++)
-                    if (opaque(p, (y * sh / dh) * sw + xx * sw / dw))
-                        p->mask[y * rb + (xx >> 3)] |= static_cast<u8>(0x80 >> (xx & 7));
+        for (u32 y = 0; y < dh; y++) {
+            u32 row = (y * sh / dh) * sw;
+            col_step c(sw, dw);
+            for (u32 xx = 0; xx < dw; xx++)
+                if (opaque(p, row + c.next()))
+                    p->mask[y * rb + (xx >> 3)] |= static_cast<u8>(0x80 >> (xx & 7));
+        }
     }
     p->flags |= PIC_F_LAIDOUT;
     p->laid_screen = screen;
