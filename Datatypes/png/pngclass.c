@@ -27,7 +27,7 @@
  * while the system's png.datatype stays installed and untouched. Removing
  * the descriptor gives PNGs back to it.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
 #include <dos/dos.h>

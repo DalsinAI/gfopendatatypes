@@ -13,7 +13,7 @@
 # 256 KB (VUPLOAD), once, and each frame's sound is asked for as it loads
 # (VSOUND, scaled when the service counts at another rate); without the
 # service or VUPLOAD the clip plays silent.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC     the host compiler (default cc)
 #   SAN    sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

@@ -91,5 +91,5 @@ Our code is MIT (see LICENSE). libwebp and libvpx keep their BSD licences
 with the WebM patent grant, libxmp its MIT licence: their notices are in
 `upstream/`. Who wrote what is in CONTRIBUTORS.md.
 
-Designed, tested and delivered by The AmigaChrome Team.
-Copyright (c) 2026 AmigaChrome Team
+Designed, tested and delivered by The AmiCradle Team.
+Copyright (c) 2026 AmiCradle Team

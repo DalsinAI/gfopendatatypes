@@ -1,7 +1,7 @@
 /*
  * exec/types.h for building the datatypes' decoders on x86 or ARM64 cores
  * (tests/tgatest.c): the Amiga's sizes, from <stdint.h>.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef EXEC_TYPES_H
 #define EXEC_TYPES_H

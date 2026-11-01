@@ -9,7 +9,7 @@
  * The C library pieces a decoder needs (malloc and friends) are task-safe
  * here: several programs may decode pictures at the same time.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
 #include <exec/resident.h>

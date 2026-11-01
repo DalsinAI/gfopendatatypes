@@ -7,7 +7,7 @@
  * Plain C with no OS calls and no static data: the calls to z.library go
  * through common/zlibrary.h with the base the caller hands in.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef GZCORE_H

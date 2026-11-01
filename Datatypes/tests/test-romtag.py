@@ -9,7 +9,7 @@ LibVersion is DT_VERSION, its LibRevision the ID string's revision and its
 LibName the ID string's first word. Given built classes (the Amiga build's
 out/Classes/DataTypes/*.datatype), it also reads each one's RomTag and checks
 rt_Version against its ID string.
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 
 usage: python3 tests/test-romtag.py [CLASS FILE...]
 """

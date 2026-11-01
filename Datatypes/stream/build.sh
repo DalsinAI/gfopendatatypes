@@ -4,7 +4,7 @@
 # code only: gzip.datatype inflates through z.library (GFOpenZlib) at run
 # time, brotli.datatype is our decoder from RFC 7932. Built with the
 # os32-gcc16 compiler, as the other datatypes (../build.sh runs this too).
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 # SPDX-License-Identifier: MIT
 #
 #   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)

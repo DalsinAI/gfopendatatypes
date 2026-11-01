@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
 # GFOpenDatatypes classes: builds one family of datatype class libraries
 # with the os32-gcc16 stove. text/build-amiga.sh and
 # animation/build-amiga.sh call it:

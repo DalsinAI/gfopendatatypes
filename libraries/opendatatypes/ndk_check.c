@@ -2,7 +2,7 @@
  * the NDK 3.2 headers at compile time (and dtclass_env.h's, below). Built (never run) by build-amiga.sh
  * on the stove; a mismatch stops the build. Names an older NDK may not carry
  * (V44/V45 additions) are checked when the headers have them.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  */
 #include <stddef.h>
 #include <exec/types.h>

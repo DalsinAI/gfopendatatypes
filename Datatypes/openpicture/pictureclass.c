@@ -12,7 +12,7 @@
  * AV1, HEIC needs HEVC and RAW needs demosaicing, too slow for a 68k at
  * these sizes.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>

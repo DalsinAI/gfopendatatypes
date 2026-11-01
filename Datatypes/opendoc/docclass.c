@@ -11,7 +11,7 @@
  * With neither a card nor a Cradle the document does not open yet (a text
  * view laid out on the 68k comes later).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>

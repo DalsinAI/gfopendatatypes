@@ -17,7 +17,7 @@
  * Without a card or a Cradle the video does not open: these codecs are far
  * too slow for a 68k.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>

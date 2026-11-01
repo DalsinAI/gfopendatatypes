@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
 # GFOpen8svx with the os32-gcc16 stove: 8svx.datatype (47.100), gfopen8svx.datatype (the same code
 # under its own name, side by side) and tests/8SVXDTClassABITest. See
 # ../picture/build-class.sh.

@@ -4,7 +4,7 @@
  * doesn't know one answers OM_GET with FALSE, so a program asks and falls
  * back. TAG_USER with the AmiCradle Team's manufacturer number ($DA15) in the middle.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef DATATYPES_OPENIMAGE_H
 #define DATATYPES_OPENIMAGE_H

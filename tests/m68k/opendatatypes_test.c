@@ -2,7 +2,7 @@
  * ordered and asked to recognise data; the V45 method tables, tools and
  * strings. What OS 3.2 answers is DatatypesABITest's to check; this holds
  * the core to what it means to do.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  */
 #define _GNU_SOURCE
 #include <stddef.h>

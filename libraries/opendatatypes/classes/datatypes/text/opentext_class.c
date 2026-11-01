@@ -1,6 +1,6 @@
 /* GFOpenDatatypes: an open text.datatype for AmigaOS 3.2, API and ABI
  * compatible.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from the text_dtc autodoc, datatypes/textclass.h
  * (NDK 3.2) and OS 3.2's answers measured by tests/TextClassABITest,

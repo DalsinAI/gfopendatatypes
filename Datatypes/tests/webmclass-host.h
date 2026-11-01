@@ -4,7 +4,7 @@
  * through tests/test-webm-read.sh, which points each Amiga header at this
  * one). Types are the Amiga's, with ULONG an unsigned long so a pointer
  * fits in one as on the Amiga; the functions are the test's fakes.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef WEBMCLASS_HOST_H
 #define WEBMCLASS_HOST_H

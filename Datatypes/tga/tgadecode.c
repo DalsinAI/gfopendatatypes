@@ -10,7 +10,7 @@
  * A TGA 2.0 file ends with a 26-byte footer ("TRUEVISION-XFILE.") that
  * points to an extension area; its byte 494 says what the alpha is.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "tgadecode.h"
 

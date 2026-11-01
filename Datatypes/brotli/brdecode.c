@@ -20,7 +20,7 @@
  * gfopenpng's inflate does). Symbols are read with the first bit of the code
  * in the lowest bit, as in deflate (RFC 7932, 3.1).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include "brdecode.h"

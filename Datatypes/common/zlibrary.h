@@ -12,7 +12,7 @@
  * table (openzlib's z.lvo). On x86 or ARM64 cores the tests give their own
  * (tests/zlhost.c, over GFOpenZlib's core).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef ZLIBRARY_H

@@ -2,7 +2,7 @@
  * webp.datatype check: open pictures through datatypes.library, read them
  * back as ARGB (PDTM_READPIXELARRAY) and print a checksum, to compare with
  * a PC (tests/webpref.py). Pictures without alpha count as opaque.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <stdlib.h>

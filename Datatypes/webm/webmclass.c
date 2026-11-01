@@ -10,7 +10,7 @@
  * and is kept open there, and each frame's 8-bit mono is asked for as the
  * frame loads; without the service the video plays silent.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team. libvpx is the WebM Project's,
+ * MIT, Copyright (c) 2026 AmiCradle Team. libvpx is the WebM Project's,
  * under its BSD licence (upstream/libvpx/LICENSE).
  */
 #include <exec/memory.h>

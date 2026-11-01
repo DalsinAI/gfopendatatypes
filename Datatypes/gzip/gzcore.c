@@ -8,7 +8,7 @@
  * first. After a gzip member, another may follow (RFC 1952, 2.2); anything
  * else after it is left unread, as gzip -d leaves trailing bytes.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include "gzcore.h"

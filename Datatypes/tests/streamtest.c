@@ -16,7 +16,7 @@
  * byte at a time, and prints a count: under AddressSanitizer, a read or
  * write outside the buffers stops it.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>

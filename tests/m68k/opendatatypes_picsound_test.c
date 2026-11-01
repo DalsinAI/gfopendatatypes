@@ -5,7 +5,7 @@
  * a mock iffparse over files python3 wrote, mock graphics (planar bitmaps,
  * a screen whose pens are shared as ObtainBestPen shares them) and a mock
  * audio player that logs the plan it is given.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * It runs a script opendatatypes_picsound_ref.py writes, one command a
  * line, and prints a log; test_opendatatypes_picsound.sh compares it with

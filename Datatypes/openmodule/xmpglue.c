@@ -17,7 +17,7 @@
  * bases below; each player process opens them for itself
  * (moduleclass.c), so only that process's FPU state is touched.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdarg.h>
 #include <stdio.h>

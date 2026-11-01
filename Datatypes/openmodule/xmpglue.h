@@ -6,7 +6,7 @@
  * writes only its written buffers). libxmp allocates nothing while it
  * mixes, only when it loads and starts.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef OM_XMPGLUE_H
 #define OM_XMPGLUE_H

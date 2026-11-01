@@ -1,5 +1,5 @@
 /* GFOpenDatatypes animation.datatype core.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  * Clean-room; see animation_core.h for what this is written from.
  */
 #include "animation_core.h"

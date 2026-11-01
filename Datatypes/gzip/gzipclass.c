@@ -8,7 +8,7 @@
  * DEVS:DataTypes/GZip (build.sh) matches gzip's 1f 8b 08, so any program
  * opens a .gz file through datatypes; HTTP bodies name the class.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/memory.h>

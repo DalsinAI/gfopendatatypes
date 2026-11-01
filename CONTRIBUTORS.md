@@ -16,7 +16,7 @@ We are The AmiCradle Team, who build AmiCradle alongside SacredTrees:
 
 Our Amiga build of the libraries (the build scripts, patches, configuration
 headers, `achelpers/` and tests) and our datatypes are Copyright (c) 2026
-AmigaChrome Team, released under the MIT licence (`LICENSE`).
+AmiCradle Team, released under the MIT licence (`LICENSE`).
 
 ## Third-party work in this repository
 

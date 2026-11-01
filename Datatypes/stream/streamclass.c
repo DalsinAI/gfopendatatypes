@@ -7,7 +7,7 @@
  * brotli.datatype), sent to the object so that it reaches the subclass.
  * The queue and the loops are sdtcore.c, which the host tests run.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/memory.h>

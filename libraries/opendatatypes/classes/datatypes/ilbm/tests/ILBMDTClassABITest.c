@@ -1,5 +1,5 @@
 /* ILBMDTClassABITest: OS 3.2's ilbm.datatype and GFOpenILBM side by side.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Writes ILBM and PBM files made here (no media of anyone's) to DIR= (T:)
  * and loads each through OS 3.2's ilbm.datatype and through

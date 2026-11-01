@@ -10,7 +10,7 @@ clamped; GM_LAYOUT's domain and visible numbers; DoAsyncLayout's
 DTA_Busy and DTA_Sync; drag scrolling and the drag-select band), not from
 the C code.
    python3 opendatatypes_class_ref.py script.txt expected.txt [seed [datatypes.cd]]
-Copyright (c) 2026 AmigaChrome Team. MIT.
+Copyright (c) 2026 AmiCradle Team. MIT.
 """
 import random
 import sys

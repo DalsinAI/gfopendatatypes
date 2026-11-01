@@ -9,7 +9,7 @@
  * Each zl_stream carries its host stream in its state pointer: the fields
  * the datatypes use are copied in before each call and out after it.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdlib.h>

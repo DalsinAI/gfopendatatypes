@@ -13,7 +13,7 @@ and mask planes, the 8SVX decoder (Fibonacci delta, stereo) and
 sound.datatype's audio.device plan.
 
   python3 -I opendatatypes_picsound_ref.py OUTDIR SEED
-Copyright (c) 2026 AmigaChrome Team. MIT.
+Copyright (c) 2026 AmiCradle Team. MIT.
 """
 import os
 import random

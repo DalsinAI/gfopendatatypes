@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
 # GFOpenDatatypes with the os32-gcc16 stove: checks datatypes.lvo against the
 # NDK 3.2 datatypes_lib.fd and every constant and layout dt_core.h and
 # dtclass_env.h carry against the NDK 3.2 headers (ndk_check.c, compiled

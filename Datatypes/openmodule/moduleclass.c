@@ -24,7 +24,7 @@
  * gfopenservice.device; else this CPU.
  * OIA_DecodedBy and OIA_Stats (include/datatypes/gfopenimage.h) say which.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team. libxmp keeps its MIT licence.
+ * MIT, Copyright (c) 2026 AmiCradle Team. libxmp keeps its MIT licence.
  */
 #include <stdio.h>
 #include <stdlib.h>

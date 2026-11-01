@@ -3,7 +3,7 @@
 # (pngclass.c). Our own code only: no upstream tarballs. PNG out
 # (pngencode.c) deflates through z.library (GFOpenZlib) at run time. Built with the
 # os32-gcc16 compiler, as the other datatypes (../build.sh runs this too).
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
 #   PREFIX       where Classes/ and Devs/ go (default ../out)
