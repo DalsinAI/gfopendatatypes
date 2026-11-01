@@ -1637,6 +1637,26 @@ def main():
         path = os.path.join(outdir, "r%02d.anim" % j)
         open(path, "wb").write(data)
         cmd("ANIM %s 0 1" % path, expect_anim(path, data, [0, 1], None))
+    # long ANIMs sought back and forth: a backward seek starts from the
+    # decoder's last checkpoint at or before the frame (ANM_CP_*) and must
+    # give what decoding again from frame 0 gives, its first error too
+    # (op 4: every delta fails). ANIMBACK steps back from the last frame to
+    # the first, against a new decoder for each frame, and fails when that
+    # takes more than nframes + nframes^2 / 4 frames decoded (going back to
+    # frame 0 each time takes about nframes^2 / 2).
+    longs = [dict(op=5, w=16, h=3, depth=2, frames=61, interleave=2, xor=True),
+             dict(op=7, long=True, w=33, h=5, depth=3, frames=45, interleave=0),
+             dict(op=8, w=24, h=4, depth=4, frames=38, interleave=1, body_at=(17,)),
+             dict(op=4, w=16, h=3, depth=1, frames=30)]
+    for j, sp in enumerate(longs):
+        data, truth = make_anim(rnd, sp)
+        path = os.path.join(outdir, "l%02d.anim" % j)
+        open(path, "wb").write(data)
+        nfr = sp["frames"]
+        order = [nfr - 1] + [rnd.randrange(nfr) for _ in range(25)] + list(range(nfr - 1, -1, -3)) + [0, nfr - 1, 1]
+        cmd("ANIM %s %s" % (path, " ".join(map(str, order))),
+            expect_anim(path, data, order, truth if sp["op"] != 4 else None))
+        cmd("ANIMBACK %s" % path, ["animback %d ok" % nfr])
 
     # ---- text layout ----
     texts = [b"", b"\n", b"abc", b"abc\n", b"one two three four five six seven eight nine ten",
