@@ -435,6 +435,14 @@ def main():
         cmd("tool %s %s %d" % (prog, proj, size))
         r = tool(prog, proj, size)
         m.p("tool %d [%s]" % (len(r), r) if r is not None else "tool 0 []")
+    # A project with a control character in its name (^ is a line feed,
+    # ` a carriage return) is refused: the Shell would end the command at
+    # a line feed and run what follows as a second command
+    for prog, proj in (("Edit", "a^Delete~x"), ("Edit", "^"), ("RX~Ed", "my`pic.iff"), ("Edit", "a^"),
+                       ("Edit", "ok~name.iff")):
+        cmd("tool %s %s 200" % (prog, proj))
+        r = None if any(c in "^`" for c in proj) else tool(prog, proj, 200)
+        m.p("tool %d [%s]" % (len(r), r) if r is not None else "tool 0 []")
     groups = {"pict": "picture", "soun": "sound", "inst": "sound", "text": "text", "anim": "animation",
               "movi": "animation", "docu": "amigaguide", "syst": None, "musi": None, "zzzz": None}
     for g, b in groups.items():

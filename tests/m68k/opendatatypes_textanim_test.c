@@ -301,10 +301,11 @@ static odt_u32 a_clock(const struct odt_cenv *env) { (void)env; return 3546895UL
 static void *a_player_start(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 fps)
 { (void)env; (void)cl; (void)obj; printf("player %lu\n", (unsigned long)fps); return (void *)0x9000; }
 static void a_player_stop(const struct odt_cenv *env, void *p) { (void)env; (void)p; printf("playerstop\n"); }
+static void a_wait_blit(const struct odt_cenv *env) { (void)env; printf("waitblit\n"); }
 
 static const struct adt_ext anim_ext = {
     a_alloc_bitmap, a_free_bitmap, a_obtain_pen, a_release_pen, a_screen_depth, a_blit, t_fill, a_bevel, a_glyph,
-    t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop
+    t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit
 };
 
 static struct odt_cenv env_text, env_anim;
@@ -588,6 +589,45 @@ static void run_anim(char *args)
     printf("allocs %ld\n", outstanding - base);
 }
 
+/* ANIMBACK path: to the last frame, then back a frame at a time to the
+ * first; each frame (and anm_goto's answer) as a new decoder going
+ * straight to it gives, and no more than nframes + nframes^2 / 4 frames
+ * decoded on the way back */
+static void run_animback(char *args)
+{
+    long base = outstanding;
+    struct anm_env ae = { 0, a_env_alloc, a_env_free };
+    struct anm_info info;
+    struct anm_dec a, b;
+    odt_u32 len, f, bad = 0, n;
+    odt_u8 *data = read_file(strtok(args, " "), &len);
+    if (anm_scan(&ae, data, len, &info)) { printf("scan err\n"); free(data); return; }
+    n = info.nframes;
+    if (anm_dec_init(&ae, &a, &info, data, len)) { printf("dec init fail\n"); return; }
+    anm_goto(&a, n - 1);
+    a.decoded = 0;
+    for (f = n - 1; f-- > 0;) {
+        int ra = anm_goto(&a, f), rb;
+        if (anm_dec_init(&ae, &b, &info, data, len)) { printf("dec init fail\n"); return; }
+        rb = anm_goto(&b, f);
+        if (ra != rb || a.cur != b.cur || memcmp(anm_planes(&a), anm_planes(&b), a.size)) {
+            printf("animback frame %lu: r %d cur %ld, straight r %d cur %ld\n", (unsigned long)f, ra, (long)a.cur,
+                   rb, (long)b.cur);
+            bad++;
+        }
+        anm_dec_free(&ae, &b);
+    }
+    if (a.decoded > n + n * n / 4) {
+        printf("animback %lu frames decoded going back over %lu\n", (unsigned long)a.decoded, (unsigned long)n);
+        bad++;
+    }
+    anm_dec_free(&ae, &a);
+    anm_free_info(&ae, &info);
+    free(data);
+    if (outstanding != base) printf("animback allocs %ld\n", outstanding - base);
+    else if (!bad) printf("animback %lu ok\n", (unsigned long)n);
+}
+
 /* text pure: TLAY wrap hex | TSEL x0 y0 x1 y1 | TCOPY all | TWORD x y | TRENDER l t w h row px */
 static void run_text(const char *cmd, char *args)
 {
@@ -638,9 +678,84 @@ static void run_text(const char *cmd, char *args)
     }
 }
 
+/* adt_remap as it was, a pixel and a bit at a time: AREMAPCMP checks the
+ * one that replaced it makes every byte of the destination the same */
+static void old_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst)
+{
+    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth;
+    if (w > (odt_u32)src->BytesPerRow * 8) w = (odt_u32)src->BytesPerRow * 8;
+    if (w > (odt_u32)dst->BytesPerRow * 8) w = (odt_u32)dst->BytesPerRow * 8;
+    if (h > src->Rows) h = src->Rows;
+    if (h > dst->Rows) h = dst->Rows;
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+            odt_u32 byte = x >> 3, bit = 0x80 >> (x & 7), pix = 0, out;
+            for (p = 0; p < sd; p++)
+                if (src->Planes[p] && (src->Planes[p][y * src->BytesPerRow + byte] & bit)) pix |= 1u << p;
+            out = table ? table[pix] : pix;
+            for (p = 0; p < dd; p++) {
+                odt_u8 *b;
+                if (!dst->Planes[p]) continue;
+                b = &dst->Planes[p][y * dst->BytesPerRow + byte];
+                if (out & (1u << p)) *b |= (odt_u8)bit;
+                else *b &= (odt_u8)~bit;
+            }
+        }
+    }
+}
+
+static unsigned long cmp_seed;
+static odt_u32 cmp_rnd(void)
+{
+    cmp_seed = cmp_seed * 1103515245UL + 12345UL;
+    return (odt_u32)(cmp_seed >> 16) & 0x7fff;
+}
+
 /* animation pure */
 static void run_apure(const char *cmd, char *args)
 {
+    if (!strcmp(cmd, "AREMAPCMP")) {
+        /* seed cases: bitmaps of random sizes, depths, modulos and missing
+         * planes, destinations full of other bits, a table or none */
+        unsigned long seed, cases, k, differ = 0;
+        sscanf(args, "%lu %lu", &seed, &cases);
+        cmp_seed = seed;
+        for (k = 0; k < cases; k++) {
+            odt_u32 w = 1 + cmp_rnd() % (k & 1 ? 700 : 70), h = 1 + cmp_rnd() % 6, sd = cmp_rnd() % 10, dd = 1 + cmp_rnd() % 9;
+            odt_u32 sbpr = (((w + 15) >> 4) << 1) + 2 * (cmp_rnd() % 3), dbpr = (((w + 15) >> 4) << 1) + 2 * (cmp_rnd() % 2);
+            odt_u32 cw = w + (cmp_rnd() % 4 ? 0 : cmp_rnd() % 40), ch = h + cmp_rnd() % 2, p, i;
+            odt_u8 table[256], *sp[8], *a[8], *b[8];
+            struct adt_BitMap s, d1, d2;
+            int use_table = cmp_rnd() % 5 != 0, same = 1;
+            for (i = 0; i < 256; i++) table[i] = (odt_u8)cmp_rnd();
+            memset(&s, 0, sizeof s);
+            memset(&d1, 0, sizeof d1);
+            s.BytesPerRow = (odt_u16)sbpr; s.Rows = (odt_u16)h; s.Depth = (odt_u8)sd;
+            d1.BytesPerRow = (odt_u16)dbpr; d1.Rows = (odt_u16)h; d1.Depth = (odt_u8)dd;
+            d2 = d1;
+            for (p = 0; p < 8; p++) {
+                sp[p] = malloc(sbpr * h);
+                a[p] = malloc(dbpr * h);
+                b[p] = malloc(dbpr * h);
+                for (i = 0; i < sbpr * h; i++) sp[p][i] = (odt_u8)cmp_rnd();
+                for (i = 0; i < dbpr * h; i++) a[p][i] = b[p][i] = (odt_u8)cmp_rnd();
+                s.Planes[p] = cmp_rnd() % 6 ? sp[p] : 0;
+                d1.Planes[p] = d2.Planes[p] = 0;
+                if (cmp_rnd() % 6) { d1.Planes[p] = a[p]; d2.Planes[p] = b[p]; }
+            }
+            old_remap(&s, cw, ch, use_table ? table : 0, &d1);
+            adt_remap(&s, cw, ch, use_table ? table : 0, &d2);
+            for (p = 0; p < 8; p++) {
+                if (memcmp(a[p], b[p], dbpr * h)) same = 0;
+                free(sp[p]); free(a[p]); free(b[p]);
+            }
+            if (!same && differ++ < 5)
+                printf("aremapcmp case %lu differs: %lux%lu depth %lu to %lu\n", k, (unsigned long)cw, (unsigned long)ch,
+                       (unsigned long)sd, (unsigned long)dd);
+        }
+        printf("aremapcmp %lu cases, %lu differ from the old remap\n", cases, differ);
+        return;
+    }
     if (!strcmp(cmd, "APLAY")) {
         /* frames inc repeat start ticks dur... */
         struct adt_play p;
@@ -992,6 +1107,7 @@ int main(int argc, char **argv)
         else args = line + strlen(line);
         printf("> %s\n", cmd);
         if (!strcmp(cmd, "ANIM")) run_anim(args);
+        else if (!strcmp(cmd, "ANIMBACK")) run_animback(args);
         else if (cmd[0] == 'T' && strcmp(cmd, "TCLASS")) run_text(cmd, args);
         else if (!strcmp(cmd, "TCLASS")) run_tclass(args);
         else if (!strcmp(cmd, "ACLASS")) run_aclass(args);

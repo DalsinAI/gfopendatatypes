@@ -33,6 +33,7 @@ typedef struct {
     uint32_t durationMs;       /* from the frames' times */
     uint32_t frameCount;
     WebMFrame *frames;         /* frameCount entries, in file order */
+    uint32_t audioTracks;      /* how many audio tracks the file has */
 } WebMInfo;
 
 /* Fills info from a source of fileSize bytes. Returns 0 on success, or a
