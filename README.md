@@ -63,7 +63,7 @@ descriptors in `Datatypes/out/Devs/DataTypes` (set `PREFIX` to change that).
 SHA-256; `tools/fetch-tarball.sh` fetches them. `achelpers/` is AC090's
 native helpers for `Datatypes/common/dtlib.c` (`AC_HELPERS`, see
 `Datatypes/build.sh`), built from amigachrome-guest at the commit in
-`AMIGACHROME_GUEST_PINNED_COMMIT`.
+`AMICRADLE_GUEST_PINNED_COMMIT`.
 
 The ROM's datatypes (gfopenpicture, gfopenpng, gfopentga, gfopensound, gfopendoc in
 ROM:Classes/DataTypes) and datatypes.library are built from a checkout of this repository by
@@ -84,6 +84,38 @@ amigachrome-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
   against the bit-at-a-time loop it replaced, under AddressSanitizer and
   UBSan (and as 68040 code with `QEMU_M68K=qemu-m68k`).
 - `Datatypes/tests/dtpic.c`, `dtsound.c`, `dtanim.c`: the Amiga-side checks.
+- `python3 -I tests/pack/test_pack.py`: the pack, built from stand-ins and its
+  Installer scripts run on a stand-in AmigaOS 3.2 disk (CI runs it).
+
+## The pack: GFOpenDatatypes, with an Installer
+
+```
+python3 tools/build_pack.py --version 0.1 --lha
+```
+
+builds everything here (the datatypes, datatypes.library with its system
+classes, and z.library, the Team's GFOpenZlib, from an amigachrome-guest
+checkout: `AMICRADLE_GUEST`, else beside this one) and lays it out as
+`build/pack/GFOpenDatatypes`, a drawer to run the Installer from, and
+`GFOpenDatatypes-0.1.lha` (jlha or lha on PATH). `--no-build` takes what the
+builds already made.
+
+- `Install-GFOpenDatatypes`, a Commodore Installer script, needs AmigaOS 3.2
+  and a 68040 or 68060 and nothing else. Every datatype is a choice, and
+  datatypes.library with its eight system classes is one more, ticked; a
+  Novice user gets them all. z.library (GFOpenZlib) goes in with gzip and
+  gfopenpng, which open it. AddDataTypes REFRESH runs at the end.
+- Nothing is deleted: what a file replaces is kept in
+  `SYS:Storage/GFOpenDatatypes/Superseded`, and each file the pack put in has
+  a mark in `SYS:Storage/GFOpenDatatypes/Installed`.
+- `Uninstall-GFOpenDatatypes`, left in `SYS:Storage/GFOpenDatatypes`, takes out
+  only what the pack put in and puts back what it replaced.
+
+Both scripts are written by `tools/build_pack.py` from what the builds
+made: a descriptor goes with the class its DTHD names, so a new datatype
+needs no change there (`LABELS` gives it a friendlier name in the
+Installer). `build/pack/GFOpenDatatypes.json` lists every file, where it
+goes and its SHA-256; GFOpenUp's GFOpenImage part takes its files from it.
 
 ## Licence
 
