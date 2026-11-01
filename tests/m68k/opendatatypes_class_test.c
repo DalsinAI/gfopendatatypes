@@ -642,13 +642,15 @@ int main(int argc, char **argv)
                        h == 0 ? "0" : h == 7 ? "7" : (void *)h == iff_obj ? "iff" : "?", (unsigned long)stt);
             }
         } else if (!strcmp(w[0], "tool")) {
-            /* tool PROGRAM PROJECT SIZE: ~ is a space, ' a quote, - no project */
+            /* tool PROGRAM PROJECT SIZE: ~ is a space, ' a quote, ^ a line
+             * feed, ` a carriage return, - no project */
             char buf[256], prog[128], proj[128];
             unsigned i;
             odt_u32 r;
             for (i = 0; w[1][i] && i < 127; i++) prog[i] = w[1][i] == '~' ? ' ' : w[1][i] == '\'' ? '"' : w[1][i];
             prog[i] = 0;
-            for (i = 0; w[2][i] && i < 127; i++) proj[i] = w[2][i] == '~' ? ' ' : w[2][i] == '\'' ? '"' : w[2][i];
+            for (i = 0; w[2][i] && i < 127; i++)
+                proj[i] = w[2][i] == '~' ? ' ' : w[2][i] == '\'' ? '"' : w[2][i] == '^' ? '\n' : w[2][i] == '`' ? '\r' : w[2][i];
             proj[i] = 0;
             memset(buf, 'x', sizeof buf);
             r = odt_tool_command(buf, (odt_u32)atol(w[3]), prog, strcmp(w[2], "-") ? proj : NULL);

@@ -138,7 +138,7 @@ or open ("ABI test": `DatatypesABITest OBJ` has the PROBE line).
 | -120 to -132 | ObtainDTDrawInfoA, DrawDTObjectA, ReleaseDTDrawInfo (V44 places) | ABI test: the OBJ slots line |
 | -144 to -156 | LockDataType, FindToolNodeA, LaunchToolA (V45 places) | ABI test: the OBJ slots line |
 | -252 | our AddDataTypes call | ours (OS 3.2: ABI test) |
-| LaunchToolA | TF_SHELL: `program "project"` (AmigaDOS quoting) asynchronously on NIL:; TF_RX: `RX program "project"`; TF_WORKBENCH: OpenWorkbenchObjectA with the project's lock and name; attrs ignored | ABI test |
+| LaunchToolA | TF_SHELL: `program "project"` (AmigaDOS quoting) asynchronously on NIL:; TF_RX: `RX program "project"` (for both, a project whose name has a control character, a line feed say, is refused: 0); TF_WORKBENCH: OpenWorkbenchObjectA with the project's lock and name; attrs ignored | ABI test |
 | FindToolNodeA on dtn_ToolList | finds nothing: OS 3.2 leaves the list empty (D1, measured) | measured |
 | GetDTString with sys/datatypes.catalog | the catalog's string, the built-in when it has none; "" (id 0) never translated | documented |
 
