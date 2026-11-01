@@ -1,11 +1,11 @@
 """Classic Workbench icons (.info), four colours, for the pack's drawer.
 
-The writer is openamigaprint's (tools/make_package.py, MIT, AmigaChrome
+The writer is openamigaprint's (tools/make_package.py, MIT, AmiCradle
 Team), copied with its picture format: one character a pixel in the
 Workbench 2 pens, '.' grey (the background), '#' black, 'w' white, 'b' blue.
 Classic icons look the same on every Workbench from 2.04 on.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 from __future__ import annotations
 

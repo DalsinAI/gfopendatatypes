@@ -1,12 +1,12 @@
 /*
- * openpng.datatype's encoder (pngencode.h).
+ * gfopenpng.datatype's encoder (pngencode.h).
  *
  * Each row is converted to RGB or RGBA (alpha undone first when the colour
  * is premultiplied), filtered (PNG 9.2: None, Sub, Up, Average, Paeth) and
  * handed to z.library's deflate; whatever deflate gives out goes into IDAT
  * chunks of up to 32 KB as it comes, so the picture is never held twice.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include "pngencode.h"

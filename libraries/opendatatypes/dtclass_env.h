@@ -1,8 +1,8 @@
-/* OpenDatatypes: datatypesclass, the numbers, messages and layouts every
+/* GFOpenDatatypes: datatypesclass, the numbers, messages and layouts every
  * datatype class shares, and struct odt_cenv, what a class core asks of
  * the system. Plain C with no Amiga headers, so the C shells, the qemu
  * tests and lean C++ class cores all include it.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: the numbers and layouts are those the NDK 3.2 headers
  * publish (datatypes/datatypesclass.h, datatypes/datatypes.h,

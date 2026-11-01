@@ -1,8 +1,8 @@
-/* OpenDatatypes class libraries: what the picture and sound families
+/* GFOpenDatatypes class libraries: what the picture and sound families
  * (picture, ilbm, sound, 8svx) ask of the system beyond struct odt_cenv:
  * struct dtc_ext, what env->class_ext points at. Plain C, no Amiga
  * headers: the cores built with it run under qemu-m68k.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the NDK 3.2 headers' published layouts (graphics/gfx.h,
  * intuition/screens.h) and the autodocs, never from Kickstart, Hyperion or

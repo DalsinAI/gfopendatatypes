@@ -1,5 +1,5 @@
-/* OpenPicture: picture.datatype's class, lean C++ with no Amiga headers.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+/* GFOpenPicture: picture.datatype's class, lean C++ with no Amiga headers.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the picture_dtc autodoc, datatypes/pictureclass.h's
  * published layouts (NDK 3.2), the IFF ILBM specification (EA, public)
@@ -20,6 +20,7 @@
  * ABI test's PROBE line records OS 3.2's answer.
  */
 #include "picture_core.h"
+#include "../../../../../common/include/odt_planar.h"
 
 namespace {
 
@@ -46,7 +47,14 @@ void copy(void *to, const void *from, u32 n)
 {
     u8 *d = static_cast<u8 *>(to);
     const u8 *s = static_cast<const u8 *>(from);
-    for (u32 i = 0; i < n; i++)
+    u32 i = 0;
+    if (!((reinterpret_cast<u32>(d) | reinterpret_cast<u32>(s)) & 3)) {
+        /* both on a long: four bytes at a time */
+        using u32a = u32 __attribute__((__may_alias__));
+        for (; i + 4 <= n; i += 4)
+            *reinterpret_cast<u32a *>(d + i) = *reinterpret_cast<const u32a *>(s + i);
+    }
+    for (; i < n; i++)
         d[i] = s[i];
 }
 
@@ -216,6 +224,24 @@ u32 cube_levels(u32 depth)
 inline u32 level_of(u32 v, u32 L) { return (v * (L - 1) + 127) / 255; }
 inline u32 level_value(u32 l, u32 L) { return l * 255 / (L - 1); }
 
+/* The source columns of a row scaled from sw to dw pixels, one after another:
+ * xx * sw / dw for xx = 0, 1, ..., without a division for each pixel. */
+struct col_step {
+    u32 q, r, d, acc, v;
+    col_step(u32 sw, u32 dw) : q(sw / dw), r(sw % dw), d(dw), acc(0), v(0) {}
+    u32 next()
+    {
+        u32 o = v;
+        v += q;
+        acc += r;
+        if (acc >= d) {
+            acc -= d;
+            v++;
+        }
+        return o;
+    }
+};
+
 bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *gi)
 {
     void *screen = p->screen ? p->screen : gi ? gi->gi_Screen : nullptr;
@@ -241,19 +267,27 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     /* sizes of a BitMap (16 bits each), so dw * dh fits; 4 bytes a pixel
      * of a true colour picture checked before they are multiplied */
     u32 n = dw <= 0xffffUL && dh <= 0xffffUL ? dw * dh : 0;
-    u8 *buf = n && (!truecolour || n <= 0x3fffffffUL)
-                  ? static_cast<u8 *>(env->alloc(env, truecolour ? n * 4 : n)) : nullptr;
-    if (!buf || !x->alloc_bitmap) {
+    bool fits = n && (!truecolour || n <= 0x3fffffffUL);
+    /* ARGB pixels shown at their own size are written as they are: no copy */
+    bool direct = truecolour && p->store == PIC_STORE_ARGB && dw == sw && dh == sh;
+    u8 *buf = fits && !direct ? static_cast<u8 *>(env->alloc(env, truecolour ? n * 4 : n)) : nullptr;
+    if (!fits || (!buf && !direct) || !x->alloc_bitmap) {
         env->free(env, buf);
         set_err(env, DTC_ERROR_NO_FREE_STORE);
         return false;
     }
     u8 *cube = nullptr;
     u32 L = 0;
-    if (truecolour) {
-        for (u32 y = 0; y < dh; y++)
-            for (u32 xx = 0; xx < dw; xx++)
-                argb_of(p, (y * sh / dh) * sw + xx * sw / dw, buf + (y * dw + xx) * 4);
+    if (direct) {
+        /* p->pixels go to write_argb below */
+    } else if (truecolour) {
+        u8 *d = buf;
+        for (u32 y = 0; y < dh; y++) {
+            u32 row = (y * sh / dh) * sw;
+            col_step c(sw, dw);
+            for (u32 xx = 0; xx < dw; xx++, d += 4)
+                argb_of(p, row + c.next(), d);
+        }
     } else if (p->store == PIC_STORE_LUT8) {
         u32 nc = p->numcolors ? p->numcolors : 256;
         if (remap) {
@@ -295,9 +329,13 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
                 p->colortable[c] = p->colortable2[c] = static_cast<u8>(c);
             depth = p->bmhd.bmh_Depth >= 1 && p->bmhd.bmh_Depth <= 8 ? p->bmhd.bmh_Depth : 8;
         }
-        for (u32 y = 0; y < dh; y++)
+        u8 *d = buf;
+        for (u32 y = 0; y < dh; y++) {
+            const u8 *row = p->pixels + (y * sh / dh) * sw;
+            col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++)
-                buf[y * dw + xx] = p->colortable[p->pixels[(y * sh / dh) * sw + xx * sw / dw]];
+                *d++ = p->colortable[row[c.next()]];
+        }
     } else {
         /* true colour onto pens: through a cube of pens. ABI test: OS 3.2
          * may dither (PDTA_DitherQuality); ours takes the nearest. */
@@ -314,11 +352,18 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
                     cube[(r * L + g) * L + b] = static_cast<u8>(obtain(env, p, cm, level_value(r, L) * 0x01010101UL,
                                                                        level_value(g, L) * 0x01010101UL,
                                                                        level_value(b, L) * 0x01010101UL));
-        for (u32 y = 0; y < dh; y++)
+        u8 lv[256];                     /* each 8-bit level's place in the cube */
+        for (u32 v = 0; v < 256; v++)
+            lv[v] = static_cast<u8>(level_of(v, L));
+        u8 *d = buf;
+        for (u32 y = 0; y < dh; y++) {
+            const u8 *row = p->pixels + (y * sh / dh) * sw * 4;
+            col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++) {
-                const u8 *s = p->pixels + ((y * sh / dh) * sw + xx * sw / dw) * 4;
-                buf[y * dw + xx] = cube[(level_of(s[1], L) * L + level_of(s[2], L)) * L + level_of(s[3], L)];
+                const u8 *s = row + c.next() * 4;
+                *d++ = cube[(lv[s[1]] * L + lv[s[2]]) * L + lv[s[3]]];
             }
+        }
         env->free(env, cube);
     }
     if (truecolour && !remap)
@@ -332,7 +377,7 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     }
     if (truecolour) {
         if (x->write_argb)
-            x->write_argb(env, p->destbm, buf, dw, dh, dw * 4);
+            x->write_argb(env, p->destbm, direct ? p->pixels : buf, dw, dh, dw * 4);
         p->flags |= PIC_F_DESTARGB;
     } else if (x->write_lut8) {
         x->write_lut8(env, p->destbm, buf, dw, dh, dw);
@@ -356,10 +401,13 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
             set_err(env, DTC_ERROR_NO_FREE_STORE);
             return false;
         }
-        for (u32 y = 0; y < dh; y++)
-                for (u32 xx = 0; xx < dw; xx++)
-                    if (opaque(p, (y * sh / dh) * sw + xx * sw / dw))
-                        p->mask[y * rb + (xx >> 3)] |= static_cast<u8>(0x80 >> (xx & 7));
+        for (u32 y = 0; y < dh; y++) {
+            u32 row = (y * sh / dh) * sw;
+            col_step c(sw, dw);
+            for (u32 xx = 0; xx < dw; xx++)
+                if (opaque(p, row + c.next()))
+                    p->mask[y * rb + (xx >> 3)] |= static_cast<u8>(0x80 >> (xx & 7));
+        }
     }
     p->flags |= PIC_F_LAIDOUT;
     p->laid_screen = screen;
@@ -532,8 +580,15 @@ u32 write_pixels(env_t *env, pic_inst *p, pic_pdtBlitPixelArray *m)
     u32 w = min<u32>(m->pbpa_Width, p->pw - l), h = min<u32>(m->pbpa_Height, p->ph - t);
     const u8 *src = static_cast<const u8 *>(m->pbpa_PixelData);
     u32 bpp = fmt == PIC_PBPAFMT_RGB ? 3 : fmt <= PIC_PBPAFMT_ARGB ? 4 : 1;
+    bool same = (p->store == PIC_STORE_ARGB && fmt == PIC_PBPAFMT_ARGB) ||
+                (p->store == PIC_STORE_LUT8 && (fmt == PIC_PBPAFMT_LUT8 || fmt == PIC_PBPAFMT_GREY8));
     for (u32 y = 0; y < h; y++) {
         const u8 *s = src + y * m->pbpa_PixelArrayMod;
+        if (same) {
+            /* the store's own format: the row as it is */
+            copy(p->pixels + ((t + y) * p->pw + l) * bpp, s, w * bpp);
+            continue;
+        }
         for (u32 x = 0; x < w; x++, s += bpp) {
             u32 i = (t + y) * p->pw + l + x;
             u8 a = 0xff, r, g, b;
@@ -673,16 +728,12 @@ u32 frame_box(pic_inst *p, odt_dtFrameBox *m)
 extern "C" void pic_planar_to_chunky(const odt_BitMap *bm, odt_u32 w, odt_u32 h, odt_u8 *out)
 {
     u32 depth = min<u32>(bm->Depth, 8);
-    for (u32 y = 0; y < h; y++)
-        for (u32 x = 0; x < w; x++) {
-            u32 v = 0;
-            for (u32 d = 0; d < depth; d++) {
-                const u8 *pl = bm->Planes[d];
-                if (pl && (pl[y * bm->BytesPerRow + (x >> 3)] & (0x80 >> (x & 7))))
-                    v |= 1U << d;
-            }
-            out[y * w + x] = static_cast<u8>(v);
-        }
+    const u8 *rows[8];
+    for (u32 y = 0; y < h; y++) {
+        for (u32 d = 0; d < depth; d++)
+            rows[d] = bm->Planes[d] ? bm->Planes[d] + y * bm->BytesPerRow : nullptr;
+        odt_planar_row(rows, depth, w, out + y * w, 1);  /* 8 pixels at a time */
+    }
 }
 
 extern "C" void pic_chunky_to_planar(const odt_u8 *in, odt_u32 w, odt_u32 h, odt_u32 depth, odt_u8 *const *planes,

@@ -6,7 +6,7 @@
  * The decoder is reached through a function; the class makes it a
  * SDTM_CODEC to the object (streamclass.c).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef SDTCORE_H

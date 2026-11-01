@@ -14,7 +14,7 @@
  * second where the writer put them (0: not given). Rows of bitplanes are
  * padded to 16 bits.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef CDXL_CORE_H
 #define CDXL_CORE_H

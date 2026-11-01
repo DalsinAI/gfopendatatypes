@@ -1,6 +1,6 @@
-# Copyright (c) 2026 AmigaChrome Team. MIT licence.
+# Copyright (c) 2026 AmiCradle Team. MIT licence.
 # The pack: tools/build_pack.py on stand-ins for the builds, the drawer, the
-# icons and the archive, and Install-OpenDatatypes and Uninstall-OpenDatatypes
+# icons and the archive, and Install-GFOpenDatatypes and Uninstall-GFOpenDatatypes
 # run on a stand-in AmigaOS 3.2 disk (tests/pack/test_pack.py). The real
 # builds need the os32-gcc16 stove and are made on the build PC.
 name: Pack

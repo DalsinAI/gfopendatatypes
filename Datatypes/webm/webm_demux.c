@@ -6,7 +6,7 @@
  * SimpleBlock and BlockGroup for that track's frames. Clusters of unknown
  * size (live recordings) end at the next top-level element.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -59,6 +59,7 @@ typedef struct {
     uint32_t videoTrack;
     int codec;
     uint32_t width, height, defaultDuration;
+    uint32_t audioTracks;
 } Parser;
 
 static int readBytes(Source *s, uint32_t pos, void *buffer, uint32_t length)
@@ -289,7 +290,9 @@ static void parseTrackEntry(Source *s, Parser *p, uint32_t pos, uint32_t end)
         }
         pos += size;
     }
-    if (p->videoTrack || type != 1 || !number || !width || !height)
+    if (type == 2 && number && p->audioTracks < 0xffffffffu)
+        p->audioTracks++;
+    if (p->videoTrack || type != 1 || !number || !width || !height || width > WEBM_MAX_SIDE || height > WEBM_MAX_SIDE)
         return;
     if (!strcmp(codecId, "V_VP8"))
         p->codec = WEBM_CODEC_VP8;
@@ -399,6 +402,7 @@ int webm_parse(WebMReadFn read, void *handle, uint32_t fileSize, WebMInfo *info)
     info->height = p.height;
     info->frameDurationNs = p.defaultDuration;
     info->durationMs = info->frames[n - 1].timeMs;
+    info->audioTracks = p.audioTracks;
     free(p.blocks);
     return 0;
 

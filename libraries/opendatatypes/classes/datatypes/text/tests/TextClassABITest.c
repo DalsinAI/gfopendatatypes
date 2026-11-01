@@ -1,7 +1,7 @@
 /* TextClassABITest: OS 3.2's text.datatype and ascii.datatype next to
- * OpenDatatypes' (opentext.datatype, openascii.datatype), on the same
+ * GFOpenDatatypes' (gfopentext.datatype, gfopenascii.datatype), on the same
  * texts, every answer printed side by side.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  *   TextClassABITest          each line where ours answers otherwise
  *   TextClassABITest PROBE    OS 3.2's answers only, for the README's
@@ -108,7 +108,7 @@ static ULONG file_read(const char *name, UBYTE *buf, ULONG size)
     return n < 0 ? 0 : n;
 }
 
-/* One text through one class: base "ascii" (OS 3.2's) or "openascii" */
+/* One text through one class: base "ascii" (OS 3.2's) or "gfopenascii" */
 static void run(int ours, const char *what, const UBYTE *text, ULONG len, ULONG wrap)
 {
     static UBYTE buf[4096];
@@ -125,7 +125,7 @@ static void run(int ours, const char *what, const UBYTE *text, ULONG len, ULONG 
         dtn = ObtainDataTypeA(DTST_FILE, (APTR)lock, NULL);
         UnLock(lock);
     }
-    o = NewObject(NULL, (STRPTR)(ours ? "openascii.datatype" : "ascii.datatype"), DTA_Name, (ULONG) "T:odt_text.txt",
+    o = NewObject(NULL, (STRPTR)(ours ? "gfopenascii.datatype" : "ascii.datatype"), DTA_Name, (ULONG) "T:odt_text.txt",
                   DTA_SourceType, DTST_FILE, DTA_DataType, (ULONG)dtn, GA_Width, 160, GA_Height, 60,
                   TDTA_WordWrap, wrap, TAG_DONE);
     say(ours, "%s new %s ioerr %ld", what, o ? "ok" : "fail", o ? 0L : (long)IoErr());
@@ -188,8 +188,8 @@ int main(int argc, char **argv)
     DataTypesBase = OpenLibrary((STRPTR) "datatypes.library", 39);
     IFFParseBase = OpenLibrary((STRPTR) "iffparse.library", 39);
     if (!DataTypesBase || !IFFParseBase) { printf("no datatypes.library or iffparse.library\n"); return 20; }
-    if (!probe && !(ours = OpenLibrary((STRPTR) "datatypes/openascii.datatype", 0))) {
-        printf("no datatypes/openascii.datatype (copy build-amiga's datatypes/ to LIBS:datatypes/)\n");
+    if (!probe && !(ours = OpenLibrary((STRPTR) "datatypes/gfopenascii.datatype", 0))) {
+        printf("no datatypes/gfopenascii.datatype (copy build-amiga's datatypes/ to LIBS:datatypes/)\n");
         return 20;
     }
     for (i = 0; i < (int)(sizeof texts / sizeof texts[0]); i++) {

@@ -1,5 +1,5 @@
-/* OpenDatatypes anim.datatype core: IFF ANIM files.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+/* GFOpenDatatypes anim.datatype core: IFF ANIM files.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  * Clean-room; see anim_core.h for what this is written from.
  */
 #include "anim_core.h"
@@ -390,20 +390,44 @@ int anm_dec_init(const struct anm_env *env, struct anm_dec *d, const struct anm_
     d->size = (odt_u32)info->depth * info->bmhd.h * info->bpr;
     d->cur = -1;
     d->decoded = 0;
+    d->env = env;
+    d->cp = 0;
+    d->ncp = d->every = 0;
+    d->err = ANM_OK;
     d->buf[0] = env->alloc(env->ctx, d->size);
     d->buf[1] = env->alloc(env->ctx, d->size);
     if (!d->buf[0] || !d->buf[1]) {
         anm_dec_free(env, d);
         return ANM_ERR_MEMORY;
     }
+    /* the checkpoints: as many as ANM_CP_BYTES holds (two buffers each),
+     * spread over the frames; none when one would not fit */
+    if (d->size && d->size <= ANM_CP_BYTES / 2 && info->nframes > ANM_CP_MIN_EVERY) {
+        odt_u32 most = ANM_CP_BYTES / 2 / d->size, every;
+        if (most > ANM_CP_MAX) most = ANM_CP_MAX;
+        every = info->nframes / (most + 1) + 1;
+        if (every < ANM_CP_MIN_EVERY) every = ANM_CP_MIN_EVERY;
+        d->ncp = (info->nframes - 1) / every;
+        if (d->ncp > most) d->ncp = most;
+        d->every = every;
+        if (d->ncp && !(d->cp = env->alloc(env->ctx, d->ncp * (odt_u32)sizeof *d->cp))) d->ncp = 0;
+    }
     return ANM_OK;
 }
 
 void anm_dec_free(const struct anm_env *env, struct anm_dec *d)
 {
+    odt_u32 j;
     if (d->buf[0]) env->free(env->ctx, d->buf[0]);
     if (d->buf[1]) env->free(env->ctx, d->buf[1]);
     d->buf[0] = d->buf[1] = 0;
+    if (d->cp) {
+        for (j = 0; j < d->ncp; j++)
+            if (d->cp[j].buf) env->free(env->ctx, d->cp[j].buf);
+        env->free(env->ctx, d->cp);
+    }
+    d->cp = 0;
+    d->ncp = 0;
     d->cur = -1;
 }
 
@@ -445,14 +469,49 @@ static int decode_next(struct anm_dec *d)
     return r;
 }
 
+/* After frame cur: keep it as checkpoint when it is one not kept yet (no
+ * memory: not kept) */
+static void keep_cp(struct anm_dec *d)
+{
+    odt_u32 k = (odt_u32)d->cur, j;
+    struct anm_cp *c;
+    if (!d->ncp || !k || k % d->every) return;
+    j = k / d->every;
+    if (j > d->ncp) return;
+    c = &d->cp[j - 1];
+    if (c->buf || !(c->buf = d->env->alloc(d->env->ctx, 2 * d->size))) return;
+    copy_bytes(c->buf, d->buf[0], d->size);
+    copy_bytes(c->buf + d->size, d->buf[1], d->size);
+    c->err = d->err;
+}
+
 int anm_goto(struct anm_dec *d, odt_u32 n)
 {
     int r = ANM_OK;
     if (n >= d->info->nframes) return ANM_ERR_INVALID;
-    if (d->cur >= 0 && (odt_u32)d->cur > n) d->cur = -1;   /* behind: from the start */
+    if (d->cur >= 0 && (odt_u32)d->cur > n) {
+        /* behind: from the last checkpoint at or before n, else from the
+         * start; its frames' first error is reported as if they were
+         * decoded again */
+        odt_u32 j = d->every ? n / d->every : 0;
+        if (j > d->ncp) j = d->ncp;
+        while (j && !d->cp[j - 1].buf) j--;
+        if (j) {
+            const struct anm_cp *c = &d->cp[j - 1];
+            copy_bytes(d->buf[0], c->buf, d->size);
+            copy_bytes(d->buf[1], c->buf + d->size, d->size);
+            d->cur = (odt_s32)(j * d->every);
+            d->err = r = c->err;
+        } else {
+            d->cur = -1;
+            d->err = ANM_OK;
+        }
+    }
     while (d->cur < (odt_s32)n) {
         int r2 = decode_next(d);
         if (r2 != ANM_OK && r == ANM_OK) r = r2;
+        if (r2 != ANM_OK && d->err == ANM_OK) d->err = r2;
+        keep_cp(d);
     }
     return r;
 }

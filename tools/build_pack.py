@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds OpenDatatypes, the pack: a drawer to run the Installer from, and
+"""Builds GFOpenDatatypes, the pack: a drawer to run the Installer from, and
 the same as an LhA archive.
 
     python3 tools/build_pack.py [--version 0.1] [--out build/pack] [--no-build] [--lha]
@@ -9,27 +9,27 @@ that allows them to be installed as a pack". The pack holds every datatype
 Datatypes/build.sh makes, with its descriptors, and datatypes.library with
 the system classes (libraries/opendatatypes), offered and ticked. One
 Commodore Installer script installs it on AmigaOS 3.2 with nothing else
-needed; what it replaces is kept in SYS:Storage/OpenDatatypes, and
-Uninstall-OpenDatatypes puts it back. Both scripts are written here from
+needed; what it replaces is kept in SYS:Storage/GFOpenDatatypes, and
+Uninstall-GFOpenDatatypes puts it back. Both scripts are written here from
 what the builds made, so a new datatype needs no change to this file.
 
-  build/pack/OpenDatatypes/           the drawer: run Install-OpenDatatypes
-    Install-OpenDatatypes(.info)
-    Uninstall-OpenDatatypes(.info)    also copied to SYS:Storage/OpenDatatypes
-    OpenDatatypes.readme
+  build/pack/GFOpenDatatypes/           the drawer: run Install-GFOpenDatatypes
+    Install-GFOpenDatatypes(.info)
+    Uninstall-GFOpenDatatypes(.info)    also copied to SYS:Storage/GFOpenDatatypes
+    GFOpenDatatypes.readme
     Classes/DataTypes/                the Team's datatypes
     Devs/DataTypes/                   their descriptors
     Library/Libs/datatypes.library    the library, and its system classes in
     Library/Classes/DataTypes/        Library/Classes/DataTypes
-    Libs/z.library                    OpenZlib, for gzip and openpng's PNG writing
-  build/pack/OpenDatatypes.info       the drawer's icon
-  build/pack/OpenDatatypes.json       what is in it, for OpenUp's OpenImage part
-  build/pack/OpenDatatypes-<version>.lha   with --lha (jlha or lha on PATH)
+    Libs/z.library                    GFOpenZlib, for gzip and gfopenpng's PNG writing
+  build/pack/GFOpenDatatypes.info       the drawer's icon
+  build/pack/GFOpenDatatypes.json       what is in it, for GFOpenUp's GFOpenImage part
+  build/pack/GFOpenDatatypes-<version>.lha   with --lha (jlha or lha on PATH)
 
-z.library is the Team's OpenZlib (amigachrome-guest libraries/openzlib), built
-from a checkout of it (AMIGACHROME_GUEST or GUEST, else beside this one) and
+z.library is the Team's GFOpenZlib (amigachrome-guest libraries/openzlib), built
+from a checkout of it (AMICRADLE_GUEST or GUEST, else beside this one) and
 installed whenever a datatype that opens it is: the user, 23 October 2026,
-"OpenZlib as z.library". Without a checkout the pack has none, and the
+"GFOpenZlib as z.library". Without a checkout the pack has none, and the
 Installer says what needs one.
 
 Each datatype is one choice in the Installer, named by its class: a class's
@@ -41,7 +41,7 @@ The builds use the os32-gcc16 stove, as their own scripts do (OS32_GCC16 for
 Datatypes/build.sh, STOVE for the library's). --no-build takes what they
 already made.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 from __future__ import annotations
 
@@ -76,8 +76,8 @@ SYSTEM_CLASSES = {
 # What each class is called in the Installer; a class not named here is
 # shown by its file name. Short: the 3.2 Installer's choice list is narrow.
 LABELS = {
-    "openpng": "PNG pictures (openpng)",
-    "opentga": "Targa pictures (opentga)",
+    "gfopenpng": "PNG pictures (gfopenpng)",
+    "gfopentga": "Targa pictures (gfopentga)",
     "webp": "WebP pictures (webp)",
     "openpicture": "AVIF, HEIC, JPEG XL, RAW... by a Cradle (openpicture)",
     "opensound": "FLAC, Ogg, MP3, AAC... by a Cradle (opensound)",
@@ -90,14 +90,14 @@ LABELS = {
     "brotli": "Brotli files (brotli)",
 }
 # Shown first, in this order; the rest follow by name.
-ORDER = ["openpng", "opentga", "webp", "openpicture", "opensound", "openmodule",
+ORDER = ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound", "openmodule",
          "webm", "openvideo", "cdxl", "opendoc"]
-PAGE = 9            # the 3.2 Installer shows nine choices a page (OpenUp, 8 October 2026)
-# The datatypes that open z.library (Datatypes/README.md): the pack brings the Team's own, OpenZlib, and
-# installs it with them (the user, 23 October 2026: OpenZlib is the z.library).
-ZLIB_USERS = ("gzip.datatype", "openpng.datatype")
+PAGE = 9            # the 3.2 Installer shows nine choices a page (GFOpenUp, 8 October 2026)
+# The datatypes that open z.library (Datatypes/README.md): the pack brings the Team's own, GFOpenZlib, and
+# installs it with them (the user, 23 October 2026: GFOpenZlib is the z.library).
+ZLIB_USERS = ("gzip.datatype", "gfopenpng.datatype")
 
-STORE = "SYS:Storage/OpenDatatypes"
+STORE = "SYS:Storage/GFOpenDatatypes"
 DEST = {"Classes": "SYS:Classes/DataTypes", "Devs": "DEVS:DataTypes", "Libs": "LIBS:"}
 
 
@@ -112,8 +112,8 @@ def run(cmd: list, env: dict | None = None, cwd: Path | None = None) -> None:
 
 
 def guest_checkout() -> Path | None:
-    """amigachrome-guest, for OpenZlib: AMIGACHROME_GUEST or GUEST, else beside this repository."""
-    for p in (os.environ.get("AMIGACHROME_GUEST"), os.environ.get("GUEST"),
+    """amigachrome-guest, for GFOpenZlib: AMICRADLE_GUEST or GUEST, else beside this repository."""
+    for p in (os.environ.get("AMICRADLE_GUEST"), os.environ.get("GUEST"),
               ROOT.parent / "amigachrome-guest", ROOT.parent / "guest"):
         if p and (Path(p) / "libraries/openzlib/build-amiga.sh").is_file():
             return Path(p)
@@ -128,12 +128,12 @@ def build(lib_out: Path, zlib_out: Path) -> None:
         run(["sh", LIBDIR / "build-amiga.sh"], env=env)
         for family in SYSTEM_CLASSES:
             run(["sh", LIBDIR / "classes/datatypes" / family / "build-amiga.sh"], env=env)
-    # z.library: OpenZlib (amigachrome-guest libraries/openzlib), with its own script and stove, as OpenUp builds it
+    # z.library: GFOpenZlib (amigachrome-guest libraries/openzlib), with its own script and stove, as GFOpenUp builds it
     g = guest_checkout()
     if g:
         run(["sh", g / "libraries/openzlib/build-amiga.sh"], env=dict(os.environ, OUT=str(zlib_out)))
     else:
-        print("build_pack: no amigachrome-guest checkout (AMIGACHROME_GUEST): the pack has no z.library")
+        print("build_pack: no amigachrome-guest checkout (AMICRADLE_GUEST): the pack has no z.library")
 
 
 def base_name(descriptor: bytes) -> str:
@@ -200,7 +200,7 @@ def collect(dt_out: Path, lib_out: Path, zlib_out: Path) -> tuple[list[dict], li
     z = zlib_out / "libs/z.library"
     users = [n for n in ZLIB_USERS if n in classes]
     if z.is_file() and users:
-        zlib = {"label": "z.library (OpenZlib)", "for": users, "version": version_string(z.read_bytes()),
+        zlib = {"label": "z.library (GFOpenZlib)", "for": users, "version": version_string(z.read_bytes()),
                 "files": [{"pack": "Libs/z.library", "tag": "Libs", "name": "z.library", "src": z}]}
     return choices, always, library, zlib
 
@@ -231,7 +231,7 @@ PUT = """; Installs one file. What was there first is kept in Superseded, once: 
             (if (= (exists #old (noreq)) 0)
                 (copyfiles (source #dest) (dest (tackon #sup #tag)) (nogauge) (optional "force")))))
     (copyfiles (source #src) (dest #dir) (newname #name) (nogauge) (optional "force"))
-    (textfile (dest #mark) (append (cat "OpenDatatypes " #version "\\n")))
+    (textfile (dest #mark) (append (cat "GFOpenDatatypes " #version "\\n")))
 )
 
 (procedure P_DIRS
@@ -285,32 +285,32 @@ def library_version(library: dict) -> str:
 def install_script(version: str, date: str, choices: list, always: list, library: dict | None,
                    zlib: dict | None = None) -> str:
     n = len(choices) + len(always) + (1 if library else 0)
-    out = [f"""; $VER: Install-OpenDatatypes {version} ({date})
-; OpenDatatypes' Installer script (the Commodore Installer of AmigaOS 3.2).
-; Run it from its icon in the OpenDatatypes drawer. It installs the Team's
+    out = [f"""; $VER: Install-GFOpenDatatypes {version} ({date})
+; GFOpenDatatypes' Installer script (the Commodore Installer of AmigaOS 3.2).
+; Run it from its icon in the GFOpenDatatypes drawer. It installs the Team's
 ; datatypes and their descriptors{", and datatypes.library with the system classes," if library else ""}
 ; keeps what each file replaces in {STORE}/Superseded, and
-; leaves Uninstall-OpenDatatypes there to put it all back. Written by
+; leaves Uninstall-GFOpenDatatypes there to put it all back. Written by
 ; tools/build_pack.py from what the builds made.
-; MIT, Copyright (c) 2026 AmigaChrome Team.
+; MIT, Copyright (c) 2026 AmiCradle Team.
 
 (set #version {q(version)})
-(set @app-name "OpenDatatypes")
+(set @app-name "GFOpenDatatypes")
 {COMMON}
 {PUT}
 (if (< (/ (getversion) 65536) 47)
-    (abort "OpenDatatypes needs AmigaOS 3.2 or later. This Amiga has an older version."))
+    (abort "GFOpenDatatypes needs AmigaOS 3.2 or later. This Amiga has an older version."))
 ; The datatypes are built for the 68040 (soft float, so a 68LC040 or 68EC040 is fine).
 (set #cpu (database "cpu"))
 (if (= #cpu "68060") (set #cpu "68040"))
 (if (<> #cpu "68040")
-    (abort (cat "OpenDatatypes is built for a 68040 or 68060. This Amiga has a " #cpu ".")))
+    (abort (cat "GFOpenDatatypes is built for a 68040 or 68060. This Amiga has a " #cpu ".")))
 
 (set #zrestart 0)
-(welcome (cat "This installs OpenDatatypes " #version ": the AmigaChrome Team's datatypes, "
+(welcome (cat "This installs GFOpenDatatypes " #version ": the AmiCradle Team's datatypes, "
               "so every program that uses datatypes opens today's pictures, sounds, films and documents."))
-(message (cat "Nothing is deleted: a file OpenDatatypes replaces is kept in {STORE}/Superseded, "
-              "and Uninstall-OpenDatatypes in {STORE} puts it back.\\n\\n"
+(message (cat "Nothing is deleted: a file GFOpenDatatypes replaces is kept in {STORE}/Superseded, "
+              "and Uninstall-GFOpenDatatypes in {STORE} puts it back.\\n\\n"
               "The datatypes marked 'by a Cradle' decode on a services card or a paired Cradle; "
               "without one they say so and don't open."))
 """]
@@ -323,16 +323,16 @@ def install_script(version: str, date: str, choices: list, always: list, library
     if zneed or sneed:
         out.append('(set #needs "")\n')
     if zneed:
-        what = "gzip.datatype, and openpng.datatype's PNG writing," if len(zneed) == 2 else zneed[0]
+        what = "gzip.datatype, and gfopenpng.datatype's PNG writing," if len(zneed) == 2 else zneed[0]
         out.append(f"""(if (= (exists "LIBS:z.library" (noreq)) 0)
-    (set #needs (cat #needs {q(what + " need z.library in LIBS: (the Team's OpenZlib, or z.library 53 from "
+    (set #needs (cat #needs {q(what + " need z.library in LIBS: (the Team's GFOpenZlib, or z.library 53 from "
                                "Aminet), which this Amiga doesn't have yet. ")})))
 """)
     if sneed:
-        out.append(f"""(if (= (exists "DEVS:openservice.device" (noreq)) 0)
-    (set #needs (cat #needs {q("The datatypes marked 'by a Cradle' need openservice.device in DEVS: (OpenUp's "
-                               "OpenService part) and a services card or paired Cradle; this Amiga doesn't have "
-                               "openservice.device yet. ")})))
+        out.append(f"""(if (= (exists "DEVS:gfopenservice.device" (noreq)) 0)
+    (set #needs (cat #needs {q("The datatypes marked 'by a Cradle' need gfopenservice.device in DEVS: (GFOpenUp's "
+                               "GFOpenService part) and a services card or paired Cradle; this Amiga doesn't have "
+                               "gfopenservice.device yet. ")})))
 """)
     if zneed or sneed:
         out.append('(if (<> #needs "") (message #needs))\n')
@@ -349,13 +349,13 @@ def install_script(version: str, date: str, choices: list, always: list, library
         out.append(f"""(set #lib (askbool
     (prompt {q("Install the Team's datatypes.library" + library_version(library)
                + " and its system classes (picture, ilbm, sound, 8svx, text, ascii, animation, anim), in place of AmigaOS 3.2's? "
-               "They are kept, and come back with Uninstall-OpenDatatypes.")})
+               "They are kept, and come back with Uninstall-GFOpenDatatypes.")})
     (help @askbool-help)
     (choices "Install" "Leave AmigaOS 3.2's")
     (default 1)))
 """)
     out.append("""
-(working "Installing OpenDatatypes")
+(working "Installing GFOpenDatatypes")
 (P_DIRS)
 """)
     done = 0
@@ -387,7 +387,7 @@ def install_script(version: str, date: str, choices: list, always: list, library
         cond = tests[0]
         for t in tests[1:]:
             cond = f"(or {cond} {t})"
-        out.append(f"""; z.library, the Team's OpenZlib, for {" and ".join(zlib["for"])}
+        out.append(f"""; z.library, the Team's GFOpenZlib, for {" and ".join(zlib["for"])}
 (if {cond}
     (
         (if (= (exists "LIBS:z.library" (noreq)) 1)
@@ -396,35 +396,35 @@ def install_script(version: str, date: str, choices: list, always: list, library
 )
 """)
     out.append(f"""
-(copyfiles (source "Uninstall-OpenDatatypes") (dest #store) (infos) (nogauge) (optional "force"))
+(copyfiles (source "Uninstall-GFOpenDatatypes") (dest #store) (infos) (nogauge) (optional "force"))
 (run "C:AddDataTypes REFRESH QUIET >NIL:")
 (complete 100)
-(exit (cat "OpenDatatypes " #version " is installed. "
+(exit (cat "GFOpenDatatypes " #version " is installed. "
            {"(if #lib " + q("Restart the Amiga to use the new datatypes.library. ") + ' "")' if library else '""'}
-           {"(if #zrestart " + q("Restart the Amiga so every program uses OpenZlib's z.library. ") + ' "")' if zlib else '""'}
-           "To take it out, run Uninstall-OpenDatatypes in {STORE}."))
+           {"(if #zrestart " + q("Restart the Amiga so every program uses GFOpenZlib's z.library. ") + ' "")' if zlib else '""'}
+           "To take it out, run Uninstall-GFOpenDatatypes in {STORE}."))
 """)
     return "".join(out)
 
 
 def uninstall_script(version: str, date: str, choices: list, always: list, library: dict | None,
                      zlib: dict | None = None) -> str:
-    out = [f"""; $VER: Uninstall-OpenDatatypes {version} ({date})
-; Takes OpenDatatypes off this Amiga: each file it installed (it has a mark in
+    out = [f"""; $VER: Uninstall-GFOpenDatatypes {version} ({date})
+; Takes GFOpenDatatypes off this Amiga: each file it installed (it has a mark in
 ; {STORE}/Installed) goes, and what it replaced comes back from
 ; {STORE}/Superseded. Files it never installed are left alone.
-; Written by tools/build_pack.py. MIT, Copyright (c) 2026 AmigaChrome Team.
+; Written by tools/build_pack.py. MIT, Copyright (c) 2026 AmiCradle Team.
 
 (set #version {q(version)})
-(set @app-name "OpenDatatypes")
+(set @app-name "GFOpenDatatypes")
 {COMMON}
 {TAKE}
 (if (= (exists #ins (noreq)) 0)
-    (abort "OpenDatatypes is not installed on this Amiga."))
-(welcome "This takes OpenDatatypes off this Amiga and puts back what it replaced.")
+    (abort "GFOpenDatatypes is not installed on this Amiga."))
+(welcome "This takes GFOpenDatatypes off this Amiga and puts back what it replaced.")
 (set #took 0)
 (set #restart 0)
-(working "Taking OpenDatatypes out")
+(working "Taking GFOpenDatatypes out")
 """]
     for c in choices + always:
         out.append(f"; {c['class']}\n")
@@ -435,7 +435,7 @@ def uninstall_script(version: str, date: str, choices: list, always: list, libra
         for f in library["files"]:
             out.append(file_lines(f, "P_TAKE", ""))
     if zlib:
-        out.append("; z.library (OpenZlib)\n" + file_lines(zlib["files"][0], "P_TAKE", ""))
+        out.append("; z.library (GFOpenZlib)\n" + file_lines(zlib["files"][0], "P_TAKE", ""))
     out.append(f"""
 ; The folders, once empty, and this script
 (delete (tackon #ins "Classes") (optional "nofail"))
@@ -446,12 +446,12 @@ def uninstall_script(version: str, date: str, choices: list, always: list, libra
 (delete (tackon #sup "Devs") (optional "nofail"))
 (delete (tackon #sup "Libs") (optional "nofail"))
 (delete #sup (optional "nofail"))
-(delete (tackon #store "Uninstall-OpenDatatypes") (optional "force" "nofail"))
-(delete (tackon #store "Uninstall-OpenDatatypes.info") (optional "force" "nofail"))
+(delete (tackon #store "Uninstall-GFOpenDatatypes") (optional "force" "nofail"))
+(delete (tackon #store "Uninstall-GFOpenDatatypes.info") (optional "force" "nofail"))
 (delete #store (optional "nofail"))
 (run "C:AddDataTypes REFRESH QUIET >NIL:")
 (complete 100)
-(exit (cat "OpenDatatypes is taken out (" #took " files). "
+(exit (cat "GFOpenDatatypes is taken out (" #took " files). "
            (if #restart "Restart the Amiga so the libraries it put back are the ones in use." "")))
 """)
     return "".join(out)
@@ -468,9 +468,9 @@ def main() -> int:
     ap.add_argument("--library-out", type=Path, default=ROOT / "build" / "library",
                     help="the library's and its classes' build output (their OUT)")
     ap.add_argument("--zlib-out", type=Path, default=ROOT / "build" / "openzlib",
-                    help="OpenZlib's build output (its OUT), from an amigachrome-guest checkout")
+                    help="GFOpenZlib's build output (its OUT), from an amigachrome-guest checkout")
     ap.add_argument("--no-build", action="store_true", help="use what the builds already made")
-    ap.add_argument("--lha", action="store_true", help="also make OpenDatatypes-<version>.lha (jlha or lha on PATH)")
+    ap.add_argument("--lha", action="store_true", help="also make GFOpenDatatypes-<version>.lha (jlha or lha on PATH)")
     a = ap.parse_args()
 
     if not a.no_build:
@@ -480,7 +480,7 @@ def main() -> int:
         print("build_pack: no datatypes.library build: the pack has the datatypes only")
     date = time.strftime("%d.%m.%Y", time.gmtime(int(os.environ.get("SOURCE_DATE_EPOCH", time.time()))))
 
-    top = a.out / "OpenDatatypes"
+    top = a.out / "GFOpenDatatypes"
     if top.exists():
         shutil.rmtree(top)
     top.mkdir(parents=True)
@@ -494,24 +494,24 @@ def main() -> int:
     for c in choices + always + extras:
         for f in c["files"]:
             put(f["pack"], f["src"].read_bytes())
-    put("Install-OpenDatatypes", install_script(a.version, date, choices, always, library, zlib).encode("latin-1"))
-    put("Uninstall-OpenDatatypes", uninstall_script(a.version, date, choices, always, library, zlib).encode("latin-1"))
-    # NOLOG, as OpenUp's: the Installer's own log would stay behind after an uninstall
-    for script in ("Install-OpenDatatypes", "Uninstall-OpenDatatypes"):
+    put("Install-GFOpenDatatypes", install_script(a.version, date, choices, always, library, zlib).encode("latin-1"))
+    put("Uninstall-GFOpenDatatypes", uninstall_script(a.version, date, choices, always, library, zlib).encode("latin-1"))
+    # NOLOG, as GFOpenUp's: the Installer's own log would stay behind after an uninstall
+    for script in ("Install-GFOpenDatatypes", "Uninstall-GFOpenDatatypes"):
         put(script + ".info", amiga_icon.icon(amiga_icon.WBPROJECT, "install", "Installer",
-                                              ["APPNAME=OpenDatatypes", "MINUSER=NOVICE", "DEFUSER=NOVICE", "NOLOG"]))
-    readme = (ROOT / "pack" / "OpenDatatypes.readme").read_text(encoding="latin-1")
-    put("OpenDatatypes.readme", readme.replace("@VERSION@", a.version).encode("latin-1"))
-    (a.out / "OpenDatatypes.info").write_bytes(amiga_icon.icon(amiga_icon.WBDRAWER, "datatypes", window=(420, 200)))
+                                              ["APPNAME=GFOpenDatatypes", "MINUSER=NOVICE", "DEFUSER=NOVICE", "NOLOG"]))
+    readme = (ROOT / "pack" / "GFOpenDatatypes.readme").read_text(encoding="latin-1")
+    put("GFOpenDatatypes.readme", readme.replace("@VERSION@", a.version).encode("latin-1"))
+    (a.out / "GFOpenDatatypes.info").write_bytes(amiga_icon.icon(amiga_icon.WBDRAWER, "datatypes", window=(420, 200)))
 
     def entry(c: dict) -> dict:
         return {k: v for k, v in c.items() if k != "files"} | {"files": [
             {"pack": f["pack"], "dest": tackon(DEST[f["tag"]], f["name"]),
              "sha256": hashlib.sha256(f["src"].read_bytes()).hexdigest()} for f in c["files"]]}
-    manifest = {"pack": "OpenDatatypes", "version": a.version, "date": date,
+    manifest = {"pack": "GFOpenDatatypes", "version": a.version, "date": date,
                 "choices": [entry(c) for c in choices], "always": [entry(c) for c in always],
                 "library": entry(library) if library else None, "zlib": entry(zlib) if zlib else None}
-    (a.out / "OpenDatatypes.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    (a.out / "GFOpenDatatypes.json").write_text(json.dumps(manifest, indent=1) + "\n")
 
     n = sum(len(c["files"]) for c in choices + always + extras)
     print(f"{top}: {len(choices)} datatypes to choose, {len(always)} always, "
@@ -521,9 +521,9 @@ def main() -> int:
         lha = shutil.which("jlha") or shutil.which("lha")
         if not lha:
             sys.exit("build_pack: --lha needs jlha or lha on PATH")
-        arc = a.out / f"OpenDatatypes-{a.version}.lha"
+        arc = a.out / f"GFOpenDatatypes-{a.version}.lha"
         arc.unlink(missing_ok=True)
-        run([lha, "aq", arc.name, "OpenDatatypes", "OpenDatatypes.info"], cwd=a.out)
+        run([lha, "aq", arc.name, "GFOpenDatatypes", "GFOpenDatatypes.info"], cwd=a.out)
         print(f"{arc} ({arc.stat().st_size} bytes)")
     return 0
 

@@ -15,7 +15,7 @@ suffix. The strings go into one pool, each with its length before it; the
 tables hold offsets into it, so the data needs no pointers (and so no
 relocations or writable data in the library).
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 SPDX-License-Identifier: MIT
 """
 import hashlib

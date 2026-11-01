@@ -1,7 +1,7 @@
-/* OpenDatatypes classes: small helpers the text, ascii, animation and
+/* GFOpenDatatypes classes: small helpers the text, ascii, animation and
  * anim cores share, over dtclass_env.h (datatypesclass's numbers,
  * layouts and struct odt_cenv). Plain C, no Amiga headers.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: utility.library's tag walking and exec's list calls as
  * their autodocs describe them, written here so a class core calls

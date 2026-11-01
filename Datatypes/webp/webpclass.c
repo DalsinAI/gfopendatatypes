@@ -3,7 +3,7 @@
  * mode) subclass built on libwebp. Lossy, lossless and alpha pictures load
  * as 32-bit ARGB; an animated WebP shows its first frame.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team. libwebp is Google's, under its
+ * MIT, Copyright (c) 2026 AmiCradle Team. libwebp is Google's, under its
  * BSD licence (upstream/libwebp/COPYING).
  */
 #include <exec/memory.h>
@@ -23,7 +23,7 @@
 #include "webp/demux.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.1 (4.10.2026) AmigaChrome Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.1 (4.10.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
 static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.1 (4.10.2026)";

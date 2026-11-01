@@ -1,7 +1,7 @@
-/* OpenDatatypes: the animation family's services (struct adt_ext) on
+/* GFOpenDatatypes: the animation family's services (struct adt_ext) on
  * AmigaOS 3.2, for the animation.datatype and anim.datatype shells.
  * Included after ../text/dtc_shell.h. Built only on the os32-gcc16 stove.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the graphics, audio.device, timer.device and dos
  * autodocs and the NDK 3.2 headers' layouts; never from Kickstart's,
@@ -45,6 +45,12 @@ static void ax_free_bitmap(const struct odt_cenv *e, struct adt_BitMap *bm)
 }
 
 #ifndef ADT_EXT_BITMAPS_ONLY
+
+static void ax_wait_blit(const struct odt_cenv *e)
+{
+    (void)e;
+    WaitBlit();
+}
 
 static odt_s32 ax_obtain_pen(const struct odt_cenv *e, void *scr, odt_u32 r, odt_u32 g, odt_u32 b)
 {

@@ -1,5 +1,5 @@
 #!/bin/sh
-# OpenDatatypes' text.datatype, ascii.datatype, animation.datatype and
+# GFOpenDatatypes' text.datatype, ascii.datatype, animation.datatype and
 # anim.datatype (libraries/opendatatypes/classes/datatypes/): each core
 # is plain C with no Amiga headers, built with an m68k cross GCC at -O0
 # and -O2 for the 68040; checked with nm to call nothing
@@ -8,7 +8,8 @@
 # qemu-m68k on a script python3 writes at test time
 # (opendatatypes_textanim_ref.py: generated IFF ANIMs, no copyrighted
 # media), against the log python's own models expect: ANIM frames pixel
-# by pixel (ops 0, 5, 7, 8; short and long; XOR; interleave), the text
+# by pixel (ops 0, 5, 7, 8; short and long; XOR; interleave; backward
+# seeks from the decoder's checkpoints), the text
 # layout, word wrap, selection, FTXT, drawing, frame timing, sound
 # offsets, remapping, the control panel, and each class through its life
 # on a mock datatypesclass.

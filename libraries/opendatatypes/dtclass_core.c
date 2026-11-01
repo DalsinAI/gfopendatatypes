@@ -1,6 +1,6 @@
-/* OpenDatatypes: datatypesclass, the superclass of every datatype class,
+/* GFOpenDatatypes: datatypesclass, the superclass of every datatype class,
  * in plain C with no Amiga headers. See dtclass_env.h.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from the datatypesclass autodoc, datatypes.library's
  * autodocs and the NDK 3.2 layouts, never from Kickstart's, Hyperion's or
@@ -1161,7 +1161,10 @@ const char *odt_group_base(odt_u32 gid)
 
 /* LaunchToolA's command line: the program, a space, the project in
  * quotes (a quote in it escaped as AmigaDOS does, *"); 0 when it doesn't
- * fit, else its length */
+ * fit or the project has a control character, else its length. A line
+ * feed would end the Shell's command there and run the rest of the name
+ * as a second command, so a name with one (or any other C0 control) is
+ * refused, not quoted. */
 odt_u32 odt_tool_command(char *buf, odt_u32 size, const char *program, const char *project)
 {
     odt_u32 n = 0;
@@ -1173,6 +1176,7 @@ odt_u32 odt_tool_command(char *buf, odt_u32 size, const char *program, const cha
         buf[n++] = ' ';
         buf[n++] = '"';
         for (s = project; *s; s++) {
+            if ((unsigned char)*s < 0x20) return 0;
             if (*s == '"' || *s == '*') { if (n + 1 >= size) return 0; buf[n++] = '*'; }
             if (n + 2 >= size) return 0;
             buf[n++] = *s;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make TGA test pictures of every kind opentga.datatype reads, with no
+"""Make TGA test pictures of every kind gfopentga.datatype reads, with no
 downloads: every byte is written here, from Truevision's TGA File Format
 Specification 2.0, and the picture each should decode to is worked out
 here too.
@@ -28,7 +28,7 @@ With --pillow, each picture Pillow (the Python imaging library, when it is
 installed) also reads is checked against it: Pillow decodes these files as
 this script says they should decode.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 import os
 import struct

@@ -1,4 +1,4 @@
-# 8svx.datatype's jump table, as Open8svx builds it: LVO, call, registers.
+# 8svx.datatype's jump table, as GFOpen8svx builds it: LVO, call, registers.
 # A datatype class library has one call of its own, the class (the NDK's
 # datatype class libraries' ObtainEngine; OS 3.2's NDK ships no fd for
 # it, so build-amiga.sh has nothing to check this against).

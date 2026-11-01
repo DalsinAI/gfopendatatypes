@@ -1,9 +1,9 @@
-/* DatatypesABITest: OS 3.2's datatypes.library and OpenDatatypes side by
+/* DatatypesABITest: OS 3.2's datatypes.library and GFOpenDatatypes side by
  * side.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Runs one set of calls through a datatypes.library base and writes every
- * answer as a line of text. With opendatatypes.library in LIBS: (or the
+ * answer as a line of text. With gfopendatatypes.library in LIBS: (or the
  * directory given with LIB=) it runs the set through OS 3.2's library and
  * through ours and prints each line that differs, both answers. Without
  * it, or with PROBE, it prints OS 3.2's lines: what the autodocs leave
@@ -837,7 +837,7 @@ static const UBYTE ilbm_bytes[] = {
     'B','O','D','Y', 0,0,0,4, 0xa0,0, 0x50,0,
     'A','N','N','O', 0,0,0,8, 'o','d','t',' ','a','b','i',0
 };
-static const char text_bytes[] = "OpenDatatypes ABI test\nline two\nline three\n";
+static const char text_bytes[] = "GFOpenDatatypes ABI test\nline two\nline three\n";
 static const char *const obj_text = "T:ODT_text.txt";
 static const char *const obj_ilbm = "T:ODT_pic.ilbm";
 static const char *const obj_bin = "T:ODT_bytes.bin";
@@ -1164,10 +1164,10 @@ int main(int argc, char **argv)
     /* ours after the descriptors are on the disk: it reads them the first
      * time it is asked */
     if (dir) {
-        strcpy(path, dir); AddPart(path, "opendatatypes.library", sizeof path);
+        strcpy(path, dir); AddPart(path, "gfopendatatypes.library", sizeof path);
         our_base = OpenLibrary(path, 47);
-    } else our_base = OpenLibrary("opendatatypes.library", 47);
-    if (our_base) printf("opendatatypes.library %d.%d\n", our_base->lib_Version, our_base->lib_Revision);
+    } else our_base = OpenLibrary("gfopendatatypes.library", 47);
+    if (our_base) printf("gfopendatatypes.library %d.%d\n", our_base->lib_Version, our_base->lib_Revision);
     fflush(stdout);
 
     DataTypesBase = os_base;
@@ -1175,7 +1175,7 @@ int main(int argc, char **argv)
     run_set();
     if (probe || !our_base) {
         fwrite(out_buf, 1, out_len, stdout);
-        printf("%s: %lu bytes of answers\n", our_base ? "PROBE" : "no opendatatypes.library, OS 3.2's answers",
+        printf("%s: %lu bytes of answers\n", our_base ? "PROBE" : "no gfopendatatypes.library, OS 3.2's answers",
                (unsigned long)out_len);
     } else {
         ULONG os_len = out_len;

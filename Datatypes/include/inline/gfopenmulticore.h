@@ -1,7 +1,7 @@
-/* openmulticore.library 0.1 (DalsinAI/openamigamulticore at bef8aae, include/), copied for openmodule.datatype.
- * Copyright (c) 2026 AmigaChrome Team. OpenMulticore, MIT licence.
+/* gfopenmulticore.library 0.1 (DalsinAI/openamigamulticore at bef8aae, include/), copied for gfopenmodule.datatype.
+ * Copyright (c) 2026 AmiCradle Team. OpenMulticore, MIT licence.
  * SPDX-License-Identifier: MIT
- * Inline calls for bebbo's m68k-amigaos-gcc, from library/openmulticore_lib.sfd. */
+ * Inline calls for bebbo's m68k-amigaos-gcc, from library/gfopenmulticore_lib.sfd. */
 #ifndef _INLINE_OPENMULTICORE_H
 #define _INLINE_OPENMULTICORE_H
 #ifndef __INLINE_MACROS_H

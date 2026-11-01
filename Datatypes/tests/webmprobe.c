@@ -2,7 +2,7 @@
  * webm.datatype check: read a WebM file with the datatype's own reader,
  * decode every frame with libvpx and print a checksum of each picture, so
  * the Amiga's results can be compared with a PC's.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,7 +77,8 @@ int main(int argc, char **argv)
                 unsigned long p;
                 if (!chunky)
                     chunky = calloc(info.width, info.height);
-                webm_dither(&tables, img, chunky, info.width, info.height, info.width);
+                webm_dither(&tables, img, chunky, (unsigned long)info.width * info.height, info.width, info.height,
+                    info.width);
                 for (p = 0; p < (unsigned long)info.width * info.height; p++)
                     sum = (sum * 31 + chunky[p]) & 0xffffffffUL;
                 shown++;

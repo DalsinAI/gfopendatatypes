@@ -4,9 +4,9 @@
 
 - **SacredTrees** ([@SacredTrees](https://github.com/SacredTrees)): created openamigaimage, designs it and maintains it.
 
-## The AmigaChrome team
+## The AmiCradle team
 
-We are The AmigaChrome Team, who build AmigaChrome alongside SacredTrees:
+We are The AmiCradle Team, who build AmiCradle alongside SacredTrees:
 
 - **Agnus**, our coordinator, who keeps every thread moving.
 - **Thufir**, **Kynes** and **Galen**, who started the work on SacredTrees's x86 cores.
@@ -16,7 +16,7 @@ We are The AmigaChrome Team, who build AmigaChrome alongside SacredTrees:
 
 Our Amiga build of the libraries (the build scripts, patches, configuration
 headers, `achelpers/` and tests) and our datatypes are Copyright (c) 2026
-AmigaChrome Team, released under the MIT licence (`LICENSE`).
+AmiCradle Team, released under the MIT licence (`LICENSE`).
 
 ## Third-party work in this repository
 
@@ -30,7 +30,7 @@ fetched at build time (below).
 
 ## From our other repositories
 
-- `Datatypes/include/devices/openservice.h` is a copy of DalsinAI/openamigaservice's header.
+- `Datatypes/include/devices/gfopenservice.h` is a copy of DalsinAI/openamigaservice's header.
 - With `AC_HELPERS=1` the build reads AC090's native helpers (`common/amiga/ac_helpers*`, `ac_magic.h`) from DalsinAI/amigachrome-guest at the commit in `AMIGACHROME_GUEST_PINNED_COMMIT`.
 
 ## Fetched at build time, not committed

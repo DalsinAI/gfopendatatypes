@@ -1,12 +1,12 @@
 #!/bin/sh
-# opentga.datatype's decoder on x86 or ARM64 cores: makes the test pictures
+# gfopentga.datatype's decoder on x86 or ARM64 cores: makes the test pictures
 # (tests/make-tga.py; with Pillow installed it also checks Pillow reads them
 # the same way), decodes each with tga/tgadecode.c built for this computer
 # (tests/tgatest.c) and compares every picture with what make-tga.py says it
 # decodes to. Then every file cut short at every length, and with each
 # header byte changed, under AddressSanitizer and UBSan: nothing is read or
 # written outside the file or the picture.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC     the host compiler (default cc)
 #   SAN    sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

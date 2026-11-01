@@ -1,5 +1,5 @@
-/* OpenDatatypes core: datatypes.library's work in plain C.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+/* GFOpenDatatypes core: datatypes.library's work in plain C.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, written from datatypes.library's documented interface (the
  * autodocs and the structures' published layouts) and OS 3.2's answers

@@ -1,6 +1,6 @@
-/* OpenILBM: ilbm.datatype's class (ILBM and PBM, a picture.datatype
+/* GFOpenILBM: ilbm.datatype's class (ILBM and PBM, a picture.datatype
  * subclass) as a core with no Amiga headers, over struct odt_cenv.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the IFF ILBM specification and its updates (EA and
  * Commodore, public), the picture_dtc and datatypes autodocs and the NDK

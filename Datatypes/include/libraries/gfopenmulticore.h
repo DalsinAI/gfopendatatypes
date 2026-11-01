@@ -1,13 +1,13 @@
-/* (DalsinAI/openamigamulticore at bef8aae, include/, copied for openmodule.datatype.)
- * openmulticore.library 0.1: run 68k functions on extra cores, or on the
+/* (DalsinAI/openamigamulticore at bef8aae, include/, copied for gfopenmodule.datatype.)
+ * gfopenmulticore.library 0.1: run 68k functions on extra cores, or on the
  * main CPU when there are none (DESIGN.md sections 0 and 4).
- * MIT, Copyright (c) 2026 AmigaChrome Team. */
+ * MIT, Copyright (c) 2026 AmiCradle Team. */
 #ifndef LIBRARIES_OPENMULTICORE_H
 #define LIBRARIES_OPENMULTICORE_H
 
 #include <exec/types.h>
 
-#define OPENMULTICORE_NAME    "openmulticore.library"
+#define OPENMULTICORE_NAME    "gfopenmulticore.library"
 #define OPENMULTICORE_VERSION 0
 
 /* Memory a job may use besides its stack, by address and length. */
@@ -44,7 +44,7 @@ struct OMCGrant {
 #define OMCERR_NOCORE  (-20)       /* no core that can run it (a named core that isn't there) */
 #define OMCERR_BUSY    (-21)       /* the named core is busy and OMCF_NOWAIT was set */
 #define OMCERR_NOMEM   (-22)
-#define OMCERR_LOST    (-23)       /* openservice.device lost the board */
+#define OMCERR_LOST    (-23)       /* gfopenservice.device lost the board */
 
 /* omj_Where, after the job */
 #define OMCW_CPU0  1

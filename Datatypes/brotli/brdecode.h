@@ -12,7 +12,7 @@
  * output, up to the 2^WBITS the stream asks for: 64 KB to 16 MB) and each
  * meta-block's prefix codes and context maps.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef BRDECODE_H

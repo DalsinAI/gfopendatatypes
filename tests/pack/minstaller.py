@@ -1,12 +1,12 @@
 """A small interpreter for the part of the Commodore Installer's language
 that tools/build_pack.py writes, over a stand-in Amiga disk, so the tests can
-run Install-OpenDatatypes and Uninstall-OpenDatatypes and check what they leave.
+run Install-GFOpenDatatypes and Uninstall-GFOpenDatatypes and check what they leave.
 
 It is strict where the real Installer would fail: makedir needs its parent,
 copyfiles needs its destination folder, delete fails on a missing file or a
 full folder unless told "nofail". It does not stand in for a run on an Amiga.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 from __future__ import annotations
 

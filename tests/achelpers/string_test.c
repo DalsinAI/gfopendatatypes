@@ -6,7 +6,7 @@
  * second <string.h>, compiled with -Werror; then each call's result, and
  * where it went: calls of 64 bytes or more to the helpers (counted through
  * the linker's --wrap), smaller ones not.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <string.h>

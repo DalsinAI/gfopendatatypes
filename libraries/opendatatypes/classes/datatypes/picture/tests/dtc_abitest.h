@@ -1,11 +1,11 @@
 /* The picture and sound families' ABI tests: one set of calls run through
  * OS 3.2's class and through ours (the side-by-side open<name>.datatype),
  * each answer a line of text, and the lines compared.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * A test defines its set as  static void run_set(const char *cls)  where
  * cls is the public class name to make objects of ("ilbm.datatype" or
- * "openilbm.datatype"), and DTC_TEST_CLASS (the class's file name), then
+ * "gfopenilbm.datatype"), and DTC_TEST_CLASS (the class's file name), then
  * calls dtc_main(argc, argv). Inside the set: out("fmt", ...) writes a
  * line; probe("fmt", ...) writes one that answers an "ABI test" corner
  * of the autodocs, marked so PROBE's listing is the measured answers.

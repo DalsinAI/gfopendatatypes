@@ -1,6 +1,6 @@
-/* Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root). */
-/* OpenDatatypes' datatypesclass under qemu-m68k: libraries/opendatatypes/
- * dtclass_core.c hosted on OpenIntuition's BOOPSI core (rootclass and
+/* Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root). */
+/* GFOpenDatatypes' datatypesclass under qemu-m68k: libraries/opendatatypes/
+ * dtclass_core.c hosted on GFOpenIntuition's BOOPSI core (rootclass and
  * gadgetclass, libraries/openintuition), with a probe subclass
  * (probe.datatype) and a mock env that logs every source it opens, every
  * band it draws, every render and every notification.
@@ -23,7 +23,7 @@
  *                                (dispose, print, dtdispose, relayout), run quietly; one line
  *   print                        PrintDTObjectA
  *   dispose
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -642,13 +642,15 @@ int main(int argc, char **argv)
                        h == 0 ? "0" : h == 7 ? "7" : (void *)h == iff_obj ? "iff" : "?", (unsigned long)stt);
             }
         } else if (!strcmp(w[0], "tool")) {
-            /* tool PROGRAM PROJECT SIZE: ~ is a space, ' a quote, - no project */
+            /* tool PROGRAM PROJECT SIZE: ~ is a space, ' a quote, ^ a line
+             * feed, ` a carriage return, - no project */
             char buf[256], prog[128], proj[128];
             unsigned i;
             odt_u32 r;
             for (i = 0; w[1][i] && i < 127; i++) prog[i] = w[1][i] == '~' ? ' ' : w[1][i] == '\'' ? '"' : w[1][i];
             prog[i] = 0;
-            for (i = 0; w[2][i] && i < 127; i++) proj[i] = w[2][i] == '~' ? ' ' : w[2][i] == '\'' ? '"' : w[2][i];
+            for (i = 0; w[2][i] && i < 127; i++)
+                proj[i] = w[2][i] == '~' ? ' ' : w[2][i] == '\'' ? '"' : w[2][i] == '^' ? '\n' : w[2][i] == '`' ? '\r' : w[2][i];
             proj[i] = 0;
             memset(buf, 'x', sizeof buf);
             r = odt_tool_command(buf, (odt_u32)atol(w[3]), prog, strcmp(w[2], "-") ? proj : NULL);

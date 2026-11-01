@@ -1,4 +1,4 @@
-# OpenILBM: an open ilbm.datatype
+# GFOpenILBM: an open ilbm.datatype
 
 ilbm.datatype 47.100 for AmigaOS 3.2, a picture.datatype subclass, API and
 ABI compatible, clean-room (from the public IFF ILBM specification and its
@@ -11,7 +11,7 @@ datatype). The family's shell, env and build are in
 | --- | --- |
 | `ilbm_core.cpp`, `.h` | The class, lean C++ with no Amiga headers. |
 | `openilbm_dtclass.c`, `ilbm.lvo` | Its shell (`../picture/dtc_shell.h`) and its one call, ObtainEngine at -30. |
-| `build-amiga.sh` | `ilbm.datatype`, `openilbm.datatype` (over `openpicture.datatype`) and the ABI test. |
+| `build-amiga.sh` | `ilbm.datatype`, `gfopenilbm.datatype` (over `gfopenpicture.datatype`) and the ABI test. |
 | `tests/ILBMDTClassABITest.c` | ILBM and PBM files made by the test, through OS 3.2's class and ours. |
 
 ## What it does

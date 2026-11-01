@@ -10,13 +10,13 @@
 2. tools/build_pack.py --no-build --lha: the drawer, the icons (read back),
    the scripts (parsed), the manifest, the archive (listed and unpacked
    with lhasa when it is there).
-3. Install-OpenDatatypes and Uninstall-OpenDatatypes run by minstaller.py
+3. Install-GFOpenDatatypes and Uninstall-GFOpenDatatypes run by minstaller.py
    on an AmigaOS 3.2 disk that has its own datatypes.library, classes and
    CDXL datatype: a Novice install; an install over it; the uninstall,
    which must leave the disk as it was; the same with the library left out
    and with some datatypes left out; and the refusals (OS 3.1, a 68030).
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 from __future__ import annotations
 
@@ -46,8 +46,8 @@ def check(ok: bool, what: str) -> None:
 
 # class -> its descriptors: (file, name, group, id), as Datatypes/build.sh names them
 DATATYPES = {
-    "openpng": [("OpenPNG", "OpenPNG", "pict", "png")],
-    "opentga": [("OpenTGA", "Targa picture", "pict", "tga")],
+    "gfopenpng": [("GFOpenPNG", "GFOpenPNG", "pict", "png")],
+    "gfopentga": [("GFOpenTGA", "Targa picture", "pict", "tga")],
     "webp": [("WebP", "WebP", "pict", "webp")],
     "openpicture": [("AVIF", "AVIF", "pict", "avif"), ("HEIC", "HEIC", "pict", "heic")],
     "opensound": [("FLAC", "FLAC", "soun", "flac"), ("WMA", "Windows Media audio", "soun", "wma")],
@@ -62,7 +62,7 @@ SUPERCLASSES = ["stream"]
 SYSTEM = ["picture", "ilbm", "sound", "8svx", "text", "ascii", "animation", "anim"]
 
 
-ZLIB = b"\0$VER: z.library 53.12 (13.10.2026) OpenZlib, AmigaChrome Team\0"
+ZLIB = b"\0$VER: z.library 53.12 (13.10.2026) GFOpenZlib, AmiCradle Team\0"
 
 
 def stand_ins(base: Path) -> tuple[Path, Path, Path]:
@@ -82,7 +82,7 @@ def stand_ins(base: Path) -> tuple[Path, Path, Path]:
     (lib / "libs").mkdir(parents=True)
     (lib / "datatypes").mkdir()
     (lib / "libs/datatypes.library").write_bytes(
-        b"\0$VER: datatypes.library 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team\0")
+        b"\0$VER: datatypes.library 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team\0")
     for c in SYSTEM:
         (lib / f"datatypes/{c}.datatype").write_bytes(f"\0$VER: {c}.datatype 47.100 Team\0".encode())
         (lib / f"datatypes/open{c}.datatype").write_bytes(b"twin, for the ABI test")
@@ -124,12 +124,12 @@ def main() -> int:
         if r.returncode:
             print(r.stderr)
             return 1
-        top = out / "OpenDatatypes"
-        man = json.loads((out / "OpenDatatypes.json").read_text())
+        top = out / "GFOpenDatatypes"
+        man = json.loads((out / "GFOpenDatatypes.json").read_text())
 
         # the drawer
         names = [c["class"] for c in man["choices"]]
-        check(names[:10] == [f"{c}.datatype" for c in ["openpng", "opentga", "webp", "openpicture", "opensound",
+        check(names[:10] == [f"{c}.datatype" for c in ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound",
                                                        "openmodule", "webm", "openvideo", "cdxl", "opendoc"]]
               and names[10:] == ["gzip.datatype"], "a choice a datatype, in the Installer's order")
         check([c["class"] for c in man["always"]] == ["stream.datatype"], "the superclass goes in with every install")
@@ -141,29 +141,29 @@ def main() -> int:
         check(lfiles == {"Library/Libs/datatypes.library"} | {f"Library/Classes/DataTypes/{c}.datatype" for c in SYSTEM},
               "the library and its eight system classes, not the ABI twins")
         check(man["zlib"] and [f["dest"] for f in man["zlib"]["files"]] == ["LIBS:z.library"]
-              and man["zlib"]["for"] == ["gzip.datatype", "openpng.datatype"],
-              "z.library (OpenZlib) in the pack, for gzip and openpng")
+              and man["zlib"]["for"] == ["gzip.datatype", "gfopenpng.datatype"],
+              "z.library (GFOpenZlib) in the pack, for gzip and gfopenpng")
         for c in man["choices"] + man["always"] + [man["library"], man["zlib"]]:
             for f in c["files"]:
                 if not (top / f["pack"]).is_file():
                     check(False, f"{f['pack']} in the drawer")
-        for info in ("Install-OpenDatatypes.info", "Uninstall-OpenDatatypes.info"):
+        for info in ("Install-GFOpenDatatypes.info", "Uninstall-GFOpenDatatypes.info"):
             d = amiga_icon.parse((top / info).read_bytes())
             check(d["kind"] == amiga_icon.WBPROJECT and d["tool"] == "Installer"
-                  and "APPNAME=OpenDatatypes" in d["types"] and "NOLOG" in d["types"], f"{info}: a project for Installer")
-        check(amiga_icon.parse((out / "OpenDatatypes.info").read_bytes())["kind"] == amiga_icon.WBDRAWER,
-              "OpenDatatypes.info: a drawer")
-        readme = (top / "OpenDatatypes.readme").read_text(encoding="latin-1")
+                  and "APPNAME=GFOpenDatatypes" in d["types"] and "NOLOG" in d["types"], f"{info}: a project for Installer")
+        check(amiga_icon.parse((out / "GFOpenDatatypes.info").read_bytes())["kind"] == amiga_icon.WBDRAWER,
+              "GFOpenDatatypes.info: a drawer")
+        readme = (top / "GFOpenDatatypes.readme").read_text(encoding="latin-1")
         check("Version:      0.1" in readme and max(len(x) for x in readme.splitlines()) <= 78,
               "the readme: its version, 78 columns")
-        for s in ("Install-OpenDatatypes", "Uninstall-OpenDatatypes"):
+        for s in ("Install-GFOpenDatatypes", "Uninstall-GFOpenDatatypes"):
             text = (top / s).read_text(encoding="latin-1")
             try:
                 mi.parse(text)
                 check(text.startswith(f"; $VER: {s} 0.1 ("), f"{s}: parses, $VER first")
             except SyntaxError as e:
                 check(False, f"{s}: {e}")
-        arc = out / "OpenDatatypes-0.1.lha"
+        arc = out / "GFOpenDatatypes-0.1.lha"
         if arc.exists():
             ex = tmp / "unpacked"
             ex.mkdir()
@@ -171,7 +171,7 @@ def main() -> int:
             subprocess.run([tool, "xq" if "lhasa" not in tool else "x", arc], cwd=ex, check=True,
                            capture_output=True)
             same = all((ex / p.relative_to(out)).read_bytes() == p.read_bytes()
-                       for p in [out / "OpenDatatypes.info", *top.rglob("*")] if p.is_file())
+                       for p in [out / "GFOpenDatatypes.info", *top.rglob("*")] if p.is_file())
             check(same, f"{arc.name}: unpacks to the drawer, byte for byte")
         else:
             print("skip the archive: no jlha or lha")
@@ -179,101 +179,101 @@ def main() -> int:
         # the Installer, on an AmigaOS 3.2 disk
         disk = os32_disk()
         before = disk.snapshot()
-        i = run(disk, top, "Install-OpenDatatypes")
+        i = run(disk, top, "Install-GFOpenDatatypes")
         every = man["choices"] + man["always"] + [man["library"], man["zlib"]]
         put_ok = all(disk.files.get(mi.norm(f["dest"])) == (top / f["pack"]).read_bytes() for c in every for f in c["files"])
         check(put_ok, "a Novice install puts every file where it goes")
-        check(disk.files[mi.norm("SYS:Storage/OpenDatatypes/Superseded/Libs/datatypes.library")]
+        check(disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Libs/datatypes.library")]
               == b"OS 3.2 datatypes.library 47.4"
-              and disk.files[mi.norm("SYS:Storage/OpenDatatypes/Superseded/Devs/CDXL")] == b"OS 3.2 CDXL descriptor"
-              and disk.files[mi.norm("SYS:Storage/OpenDatatypes/Superseded/Classes/picture.datatype")]
+              and disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Devs/CDXL")] == b"OS 3.2 CDXL descriptor"
+              and disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Classes/picture.datatype")]
               == b"OS 3.2 picture.datatype", "what it replaced is kept: OS 3.2's library, classes and CDXL")
-        kept = [k for k in disk.files if k.startswith("sys:storage/opendatatypes/superseded/")]
+        kept = [k for k in disk.files if k.startswith("sys:storage/gfopendatatypes/superseded/")]
         check(len(kept) == 2 + len(SYSTEM) + 1, f"only what was there is kept ({len(kept)} files)")
-        check(mi.norm("SYS:Storage/OpenDatatypes/Uninstall-OpenDatatypes") in disk.files
-              and mi.norm("SYS:Storage/OpenDatatypes/Uninstall-OpenDatatypes.info") in disk.files,
-              "the uninstaller and its icon are left in SYS:Storage/OpenDatatypes")
+        check(mi.norm("SYS:Storage/GFOpenDatatypes/Uninstall-GFOpenDatatypes") in disk.files
+              and mi.norm("SYS:Storage/GFOpenDatatypes/Uninstall-GFOpenDatatypes.info") in disk.files,
+              "the uninstaller and its icon are left in SYS:Storage/GFOpenDatatypes")
         check(i.ran == ["C:AddDataTypes REFRESH QUIET >NIL:"], "AddDataTypes REFRESH runs")
         check("Restart the Amiga" in i.exit_text, "it says to restart, for the library")
         check(len(i.asked) == 3, f"two pages of datatypes and the library's question ({len(i.asked)})")
-        needs = [m for m in i.messages if "z.library" in m or "openservice.device" in m]
-        check(len(needs) == 1 and "z.library" not in needs[0] and "openservice.device in DEVS:" in needs[0],
-              "it says what openservice.device is needed for when it is missing, and nothing of z.library: it brings it")
-        check(disk.files.get(mi.norm("LIBS:z.library")) == ZLIB and "OpenZlib" not in i.exit_text
-              and "z.library" not in i.exit_text, "OpenZlib's z.library goes in; no restart for it when none was there")
+        needs = [m for m in i.messages if "z.library" in m or "gfopenservice.device" in m]
+        check(len(needs) == 1 and "z.library" not in needs[0] and "gfopenservice.device in DEVS:" in needs[0],
+              "it says what gfopenservice.device is needed for when it is missing, and nothing of z.library: it brings it")
+        check(disk.files.get(mi.norm("LIBS:z.library")) == ZLIB and "GFOpenZlib" not in i.exit_text
+              and "z.library" not in i.exit_text, "GFOpenZlib's z.library goes in; no restart for it when none was there")
         d2 = os32_disk()
-        d2.files[mi.norm("LIBS:z.library")] = b"OpenZlib"
-        d2.files[mi.norm("DEVS:openservice.device")] = b"OpenService"
-        i2 = run(d2, top, "Install-OpenDatatypes")
-        check(not any("z.library" in m or "openservice.device" in m for m in i2.messages),
+        d2.files[mi.norm("LIBS:z.library")] = b"GFOpenZlib"
+        d2.files[mi.norm("DEVS:gfopenservice.device")] = b"GFOpenService"
+        i2 = run(d2, top, "Install-GFOpenDatatypes")
+        check(not any("z.library" in m or "gfopenservice.device" in m for m in i2.messages),
               "and says nothing when both are there")
 
-        run(disk, top, "Install-OpenDatatypes")
-        check(disk.files[mi.norm("SYS:Storage/OpenDatatypes/Superseded/Libs/datatypes.library")]
+        run(disk, top, "Install-GFOpenDatatypes")
+        check(disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Libs/datatypes.library")]
               == b"OS 3.2 datatypes.library 47.4", "installed again: OS 3.2's library stays the one kept")
 
-        u = run(disk, top, "Uninstall-OpenDatatypes")
+        u = run(disk, top, "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "the uninstall leaves the disk as it was")
         check("Restart the Amiga" in u.exit_text, "the uninstall says to restart, for the library")
 
         # without the library, and with some datatypes left out
         disk = os32_disk()
         before = disk.snapshot()
-        run(disk, top, "Install-OpenDatatypes",
+        run(disk, top, "Install-GFOpenDatatypes",
             answers={"datatypes.library": 0, "(1 of 2)": 0b111111110, "(2 of 2)": 0})
         check(disk.files[mi.norm("SYS:Libs/datatypes.library")] == b"OS 3.2 datatypes.library 47.4"
               and disk.files[mi.norm("SYS:Classes/DataTypes/picture.datatype")] == b"OS 3.2 picture.datatype",
               "the library left out: OS 3.2's stays")
-        check(mi.norm("DEVS:DataTypes/OpenPNG") not in disk.files and mi.norm("DEVS:DataTypes/gzip") not in disk.files
+        check(mi.norm("DEVS:DataTypes/GFOpenPNG") not in disk.files and mi.norm("DEVS:DataTypes/gzip") not in disk.files
               and mi.norm("DEVS:DataTypes/WebP") in disk.files, "datatypes left out stay out")
-        u = run(disk, top, "Uninstall-OpenDatatypes")
+        u = run(disk, top, "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "and the uninstall leaves the disk as it was")
         check("Restart" not in u.exit_text, "no restart when the library wasn't installed")
 
-        # an Aminet z.library already there: replaced by OpenZlib, kept, and put back
+        # an Aminet z.library already there: replaced by GFOpenZlib, kept, and put back
         disk = os32_disk()
         disk.files[mi.norm("LIBS:z.library")] = b"Aminet z.library 53.11"
         before = disk.snapshot()
-        i = run(disk, top, "Install-OpenDatatypes")
+        i = run(disk, top, "Install-GFOpenDatatypes")
         check(disk.files[mi.norm("LIBS:z.library")] == ZLIB
-              and disk.files[mi.norm("SYS:Storage/OpenDatatypes/Superseded/Libs/z.library")] == b"Aminet z.library 53.11"
-              and "OpenZlib's z.library" in i.exit_text,
-              "an Aminet z.library is replaced by OpenZlib's, kept, and it says to restart")
-        i = run(disk, top, "Install-OpenDatatypes")
-        check(disk.files[mi.norm("SYS:Storage/OpenDatatypes/Superseded/Libs/z.library")] == b"Aminet z.library 53.11"
-              and "OpenZlib's z.library" not in i.exit_text,
+              and disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Libs/z.library")] == b"Aminet z.library 53.11"
+              and "GFOpenZlib's z.library" in i.exit_text,
+              "an Aminet z.library is replaced by GFOpenZlib's, kept, and it says to restart")
+        i = run(disk, top, "Install-GFOpenDatatypes")
+        check(disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Libs/z.library")] == b"Aminet z.library 53.11"
+              and "GFOpenZlib's z.library" not in i.exit_text,
               "installed again: the Aminet one stays the one kept, and no restart for its own z.library")
-        run(disk, top, "Uninstall-OpenDatatypes")
+        run(disk, top, "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "the uninstall puts the Aminet z.library back")
-        for answers, what, want in ((({"(1 of 2)": 0b111111110, "(2 of 2)": 0b01}), "neither gzip nor openpng", False),
-                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b11}), "gzip without openpng", True),
-                                    (({"(1 of 2)": 0b000000001, "(2 of 2)": 0b00}), "openpng without gzip", True)):
+        for answers, what, want in ((({"(1 of 2)": 0b111111110, "(2 of 2)": 0b01}), "neither gzip nor gfopenpng", False),
+                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b11}), "gzip without gfopenpng", True),
+                                    (({"(1 of 2)": 0b000000001, "(2 of 2)": 0b00}), "gfopenpng without gzip", True)):
             disk = os32_disk()
-            run(disk, top, "Install-OpenDatatypes", answers=answers)
+            run(disk, top, "Install-GFOpenDatatypes", answers=answers)
             check((mi.norm("LIBS:z.library") in disk.files) == want,
                   f"{what}: z.library {'goes in' if want else 'stays out'}")
 
-        # an OpenUp-installed copy of a datatype is put back as it was
+        # an GFOpenUp-installed copy of a datatype is put back as it was
         disk = os32_disk()
-        disk.files[mi.norm("SYS:Classes/DataTypes/webp.datatype")] = b"OpenUp's webp 47.8"
+        disk.files[mi.norm("SYS:Classes/DataTypes/webp.datatype")] = b"GFOpenUp's webp 47.8"
         before = disk.snapshot()
-        run(disk, top, "Install-OpenDatatypes")
-        run(disk, top, "Uninstall-OpenDatatypes")
-        check(disk.snapshot() == before, "a datatype OpenUp put there comes back after the uninstall")
+        run(disk, top, "Install-GFOpenDatatypes")
+        run(disk, top, "Uninstall-GFOpenDatatypes")
+        check(disk.snapshot() == before, "a datatype GFOpenUp put there comes back after the uninstall")
 
         for kw, what in (({"os_version": 40}, "OS 3.1"), ({"cpu": "68030"}, "a 68030")):
             disk = os32_disk()
             before = disk.snapshot()
             try:
-                run(disk, top, "Install-OpenDatatypes", **kw)
+                run(disk, top, "Install-GFOpenDatatypes", **kw)
                 check(False, f"refuses {what}")
             except mi.Abort as e:
                 check(disk.snapshot() == before, f"refuses {what}, touching nothing: {e}")
         disk = os32_disk()
-        run(disk, top, "Install-OpenDatatypes", cpu="68060")
+        run(disk, top, "Install-GFOpenDatatypes", cpu="68060")
         check(mi.norm("SYS:Classes/DataTypes/webp.datatype") in disk.files, "installs on a 68060")
         try:
-            run(os32_disk(), top, "Uninstall-OpenDatatypes")
+            run(os32_disk(), top, "Uninstall-GFOpenDatatypes")
             check(False, "the uninstaller refuses when nothing is installed")
         except mi.Abort:
             check(True, "the uninstaller refuses when nothing is installed")
@@ -283,17 +283,17 @@ def main() -> int:
         r = subprocess.run([sys.executable, "-I", ROOT / "tools/build_pack.py", "--no-build", "--datatypes-out", dt,
                             "--library-out", tmp / "none", "--zlib-out", tmp / "none", "--out", out2],
                            capture_output=True, text=True)
-        man2 = json.loads((out2 / "OpenDatatypes.json").read_text())
-        text = (out2 / "OpenDatatypes/Install-OpenDatatypes").read_text(encoding="latin-1")
+        man2 = json.loads((out2 / "GFOpenDatatypes.json").read_text())
+        text = (out2 / "GFOpenDatatypes/Install-GFOpenDatatypes").read_text(encoding="latin-1")
         check(r.returncode == 0 and man2["library"] is None and "#lib" not in text and man2["zlib"] is None,
-              "no library or OpenZlib build: the datatypes only, and no library question")
-        i = run(os32_disk(), out2 / "OpenDatatypes", "Install-OpenDatatypes")
-        check(any("gzip.datatype, and openpng.datatype's PNG writing, need z.library" in m for m in i.messages),
-              "and without OpenZlib it says what needs a z.library")
+              "no library or GFOpenZlib build: the datatypes only, and no library question")
+        i = run(os32_disk(), out2 / "GFOpenDatatypes", "Install-GFOpenDatatypes")
+        check(any("gzip.datatype, and gfopenpng.datatype's PNG writing, need z.library" in m for m in i.messages),
+              "and without GFOpenZlib it says what needs a z.library")
         disk = os32_disk()
         before = disk.snapshot()
-        run(disk, out2 / "OpenDatatypes", "Install-OpenDatatypes")
-        run(disk, out2 / "OpenDatatypes", "Uninstall-OpenDatatypes")
+        run(disk, out2 / "GFOpenDatatypes", "Install-GFOpenDatatypes")
+        run(disk, out2 / "GFOpenDatatypes", "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "and that pack installs and comes out cleanly")
 
     print("all passed" if not fails else f"{fails} failed")

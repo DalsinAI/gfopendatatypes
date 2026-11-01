@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenDatatypes text, ascii, animation and anim: the test's script and the
+"""GFOpenDatatypes text, ascii, animation and anim: the test's script and the
 log the cores must print for it, from python's own models.
 
     opendatatypes_textanim_ref.py <dir> <script> <expected> [seed]
@@ -1325,23 +1325,41 @@ def expect_nclass(data, ops, truth):
     def can_remap():
         return st["remap"] and st["screen"] and ncol and remap_ok and depth <= 8
 
-    def load(f):
+    kept = []                           # each slot's remapped bitmap, kept from frame to frame
+
+    def load(f, i):
         # first ask with ADTM_LOADNEWFORMATFRAME (anim knows it)
         out.append("allocbm %d %d %d" % (w, h, depth))
         out.append("load 7 %d dur %d -> 1" % (f, duration(info, f)))
         st["newformat"] = 1
         s = dict(frame=f, dur=duration(info, f), remapped=False)
+        while len(kept) <= i:
+            kept.append(False)
         if can_remap():
             st["pens"] = True
-            out.append("allocbm %d %d 4" % (w, h))
+            # the slot's bitmap from an earlier frame is drawn over, after a WaitBlit
+            out.append("waitblit" if kept[i] else "allocbm %d %d 4" % (w, h))
+            kept[i] = True
             s["remapped"] = True
+        elif kept[i]:
+            out.append("freebm")
+            kept[i] = False
         return s
 
     def unload(s):
         out.append("freebm")
         out.append("unload 8 %d" % s["frame"])
-        if s["remapped"]:
-            out.append("freebm")
+
+    def flush():
+        # every frame back to anim, and each slot's remapped bitmap freed
+        for i in range(max(len(st["slots"]), len(kept))):
+            sl = st["slots"][i] if i < len(st["slots"]) else None
+            if sl is not None:
+                unload(sl)
+                st["slots"][i] = None
+            if i < len(kept) and kept[i]:
+                out.append("freebm")
+                kept[i] = False
 
     def cache(frame):
         k = window()
@@ -1361,11 +1379,13 @@ def expect_nclass(data, ops, truth):
                 f -= n
             s = next((s for s in st["slots"] if s is not None and s["frame"] == f), None)
             if s is None:
-                s = load(f)
                 if None in st["slots"]:
-                    st["slots"][st["slots"].index(None)] = s
+                    j = st["slots"].index(None)
                 else:
-                    st["slots"].append(s)
+                    j = len(st["slots"])
+                    st["slots"].append(None)
+                s = load(f, j)
+                st["slots"][j] = s
             if i == 0:
                 shown = s
         return shown
@@ -1497,10 +1517,7 @@ def expect_nclass(data, ops, truth):
                     for i in range(ncol):
                         out.append("releasepen %d" % table[i])
                     st["pens"] = False
-                for i, sl in enumerate(st["slots"]):
-                    if sl is not None:
-                        unload(sl)
-                        st["slots"][i] = None
+                flush()
             st["remap"] = False
             out.append("noremap -> 0")
         elif op == "nopanel":
@@ -1554,9 +1571,7 @@ def expect_nclass(data, ops, truth):
     if player[0]:
         out.append("playerstop")
     sound_off()
-    for s in st["slots"]:
-        if s is not None:
-            unload(s)
+    flush()
     if st["pens"]:
         for i in range(ncol):
             out.append("releasepen %d" % table[i])
@@ -1637,6 +1652,26 @@ def main():
         path = os.path.join(outdir, "r%02d.anim" % j)
         open(path, "wb").write(data)
         cmd("ANIM %s 0 1" % path, expect_anim(path, data, [0, 1], None))
+    # long ANIMs sought back and forth: a backward seek starts from the
+    # decoder's last checkpoint at or before the frame (ANM_CP_*) and must
+    # give what decoding again from frame 0 gives, its first error too
+    # (op 4: every delta fails). ANIMBACK steps back from the last frame to
+    # the first, against a new decoder for each frame, and fails when that
+    # takes more than nframes + nframes^2 / 4 frames decoded (going back to
+    # frame 0 each time takes about nframes^2 / 2).
+    longs = [dict(op=5, w=16, h=3, depth=2, frames=61, interleave=2, xor=True),
+             dict(op=7, long=True, w=33, h=5, depth=3, frames=45, interleave=0),
+             dict(op=8, w=24, h=4, depth=4, frames=38, interleave=1, body_at=(17,)),
+             dict(op=4, w=16, h=3, depth=1, frames=30)]
+    for j, sp in enumerate(longs):
+        data, truth = make_anim(rnd, sp)
+        path = os.path.join(outdir, "l%02d.anim" % j)
+        open(path, "wb").write(data)
+        nfr = sp["frames"]
+        order = [nfr - 1] + [rnd.randrange(nfr) for _ in range(25)] + list(range(nfr - 1, -1, -3)) + [0, nfr - 1, 1]
+        cmd("ANIM %s %s" % (path, " ".join(map(str, order))),
+            expect_anim(path, data, order, truth if sp["op"] != 4 else None))
+        cmd("ANIMBACK %s" % path, ["animback %d ok" % nfr])
 
     # ---- text layout ----
     texts = [b"", b"\n", b"abc", b"abc\n", b"one two three four five six seven eight nine ten",
@@ -1693,6 +1728,8 @@ def main():
         planes = bytes(rnd.getrandbits(8) for _ in range(bpr_of(w) * sd * h))
         cmd("AREMAP %d %d %d %d %s %s" % (w, h, sd, dd, table.hex(), planes.hex()),
             [remap(w, h, sd, dd, table, planes)])
+    # the remap against the one it replaced, on bitmaps the test makes
+    cmd("AREMAPCMP 2026 3000", ["aremapcmp 3000 cases, 0 differ from the old remap"])
     for _ in range(10):
         l, t, w, h, ys, fr = (rnd.randint(0, 30), rnd.randint(0, 30), rnd.randint(0, 200), rnd.randint(0, 40),
                               rnd.choice([6, 8, 11]), rnd.randint(0, 40))

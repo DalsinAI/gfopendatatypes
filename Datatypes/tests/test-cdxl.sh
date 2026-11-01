@@ -7,7 +7,7 @@
 # changed, under AddressSanitizer and UBSan: nothing is read outside the
 # film. With QEMU_M68K set (qemu-m68k), the core is built for the 68040 with
 # m68k-linux-gnu-gcc and must give the same answers there.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC          the host compiler (default cc)
 #   SAN         sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

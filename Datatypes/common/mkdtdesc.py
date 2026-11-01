@@ -18,7 +18,7 @@ usage: mkdtdesc.py OUT NAME BASENAME GROUP ID PATTERN VERSION [MASK...]
   text descriptors on a file that reads as text, so SVG, PostScript, RTF,
   CSV and the like need it or the ascii datatype takes them.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 import os
 import struct

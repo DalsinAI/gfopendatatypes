@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenDatatypes' picture and sound classes: the test's files, script and
+"""GFOpenDatatypes' picture and sound classes: the test's files, script and
 expected log (tests/m68k/test_opendatatypes_picsound.sh).
 
 Writes, into OUTDIR, ILBM, PBM and 8SVX files made here (no media of
@@ -13,7 +13,7 @@ and mask planes, the 8SVX decoder (Fibonacci delta, stereo) and
 sound.datatype's audio.device plan.
 
   python3 -I opendatatypes_picsound_ref.py OUTDIR SEED
-Copyright (c) 2026 AmigaChrome Team. MIT.
+Copyright (c) 2026 AmiCradle Team. MIT.
 """
 import os
 import random

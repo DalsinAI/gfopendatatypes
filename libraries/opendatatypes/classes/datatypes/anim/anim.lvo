@@ -1,4 +1,4 @@
-# anim.datatype's jump table, as OpenDatatypes builds it: LVO, call,
+# anim.datatype's jump table, as GFOpenDatatypes builds it: LVO, call,
 # registers. A datatype class library has one call of its own, which
 # answers its class; the NDK 3.2 has no fd for the class libraries, so
 # build-amiga.sh checks this against anim_lib.fd only when one is found.

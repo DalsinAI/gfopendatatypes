@@ -4,7 +4,7 @@
  * memory all 0 whatever AllocVec gave, cleared by exec (MEMF_CLEAR) only
  * without the helpers; realloc keeping the contents; and calls of 64 bytes
  * or more going to the helpers (counted through the linker's --wrap).
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <stdlib.h>

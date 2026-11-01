@@ -1,7 +1,7 @@
-/* OpenDatatypes class libraries: the C around the picture, ilbm, sound and
+/* GFOpenDatatypes class libraries: the C around the picture, ilbm, sound and
  * 8svx cores. Built only on the os32-gcc16 stove, with the NDK 3.2
  * headers; the cores never see them.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the autodocs of exec, dos, intuition, graphics,
  * iffparse, datatypes and audio.device and the NDK 3.2 headers' published
@@ -9,7 +9,7 @@
  *
  * A shell (open<name>_dtclass.c) defines, then includes this file:
  *   LIBNAME        "picture.datatype", or for the ABI test's side-by-side
- *                  build "openpicture.datatype"; the public class has the
+ *                  build "gfopenpicture.datatype"; the public class has the
  *                  same name
  *   DTC_SUPER      the superclass: "datatypesclass", or a class library's
  *                  name ("picture.datatype")
@@ -72,7 +72,7 @@ _Static_assert(__builtin_offsetof(struct DrawInfo, dri_Pens) == __builtin_offset
                "DrawInfo.dri_Pens");
 
 #define LIB_VERSION  47
-#define LIB_REVISION 100                /* 47.100 and up: OpenDatatypes */
+#define LIB_REVISION 100                /* 47.100 and up: GFOpenDatatypes */
 
 struct DTCBase {
     struct Library lib;
@@ -345,7 +345,7 @@ static int x_play(const struct odt_cenv *e, void **slot, const struct dtc_audio_
     pl->creator = FindTask(NULL);
     pl->plan = plan;
     t[0].ti_Tag = NP_Entry; t[0].ti_Data = (ULONG)player_main;
-    t[1].ti_Tag = NP_Name; t[1].ti_Data = (ULONG) "OpenSound player";
+    t[1].ti_Tag = NP_Name; t[1].ti_Data = (ULONG) "GFOpenSound player";
     t[2].ti_Tag = NP_Priority; t[2].ti_Data = 21;   /* ABI test: OS 3.2's player priority */
     t[3].ti_Tag = TAG_DONE;
     SetSignal(0, SIGF_SINGLE);

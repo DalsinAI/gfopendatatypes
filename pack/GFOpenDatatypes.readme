@@ -1,19 +1,19 @@
 Short:        Today's pictures, sounds, films and documents for datatypes
-Author:       AmigaChrome Team
-Uploader:     AmigaChrome Team
+Author:       AmiCradle Team
+Uploader:     AmiCradle Team
 Type:         util/dtype
 Version:      @VERSION@
 Architecture: m68k-amigaos >= 3.2.0
 Requires:     AmigaOS 3.2, a 68040 or 68060
 Distribution: MIT licence
 
-OpenDatatypes is the AmigaChrome Team's datatypes, in one pack, with an
+GFOpenDatatypes is the AmiCradle Team's datatypes, in one pack, with an
 Installer. Every program that opens files through datatypes (MultiView,
-OpenBench, OpenBrowser, picture viewers, players) opens what they read.
+GFOpenBench, GFOpenBrowser, picture viewers, players) opens what they read.
 
 On the Amiga itself:
-  PNG pictures       openpng.datatype, every colour type, with alpha
-  Targa pictures     opentga.datatype
+  PNG pictures       gfopenpng.datatype, every colour type, with alpha
+  Targa pictures     gfopentga.datatype
   WebP pictures      webp.datatype (libwebp)
   WebM films         webm.datatype (libvpx)
   CDXL films         cdxl.datatype
@@ -21,7 +21,7 @@ On the Amiga itself:
                      Oktalyzer, DigiBooster, XM, S3M, IT and more, through
                      AHI, else Paula
 
-Through a services card or a paired Cradle (they ask openservice.device's
+Through a services card or a paired Cradle (they ask gfopenservice.device's
 media.decode/1 and doc.render/1; without one they say so and don't open):
   openpicture.datatype   AVIF, HEIC, JPEG XL, camera RAW, PSD, XCF, SVG...
   opensound.datatype     FLAC, Ogg Vorbis, Opus, AAC, ALAC, MP3, MIDI, SID
@@ -34,20 +34,20 @@ ABI compatible with AmigaOS 3.2's, written clean room.
 
 Installing
 ----------
-Open the OpenDatatypes drawer and double-click Install-OpenDatatypes. As a
+Open the GFOpenDatatypes drawer and double-click Install-GFOpenDatatypes. As a
 Novice user everything goes in; as an Intermediate or Expert user you
 choose each datatype, and whether the library and its classes go in.
 
 Nothing is deleted: a file the pack replaces is kept in
-SYS:Storage/OpenDatatypes/Superseded. Uninstall-OpenDatatypes, left in
-SYS:Storage/OpenDatatypes, takes the pack out and puts those files back.
+SYS:Storage/GFOpenDatatypes/Superseded. Uninstall-GFOpenDatatypes, left in
+SYS:Storage/GFOpenDatatypes, takes the pack out and puts those files back.
 After installing or taking out the library, restart the Amiga.
 
 Built for the 68040 with soft float, so a 68LC040 or 68EC040 is fine.
-gzip.datatype, and openpng.datatype's PNG writing, open z.library: the
-pack brings the Team's own, OpenZlib (z.library 53.12), and installs it with
+gzip.datatype, and gfopenpng.datatype's PNG writing, open z.library: the
+pack brings the Team's own, GFOpenZlib (z.library 53.12), and installs it with
 them; a z.library already there is kept and comes back with the uninstaller.
-The datatypes that decode by a Cradle need openservice.device (OpenUp's
-OpenService part); the Installer says so when it is missing.
+The datatypes that decode by a Cradle need gfopenservice.device (GFOpenUp's
+GFOpenService part); the Installer says so when it is missing.
 
 Source: https://github.com/DalsinAI/opendatatypes

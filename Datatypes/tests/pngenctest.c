@@ -1,5 +1,5 @@
 /*
- * openpng.datatype's encoder (png/pngencode.c) on x86 or ARM64 cores
+ * gfopenpng.datatype's encoder (png/pngencode.c) on x86 or ARM64 cores
  * (tests/test-pngenc.sh): encodes test pictures of many kinds and sizes,
  * each through z.library's deflate (tests/zlhost.c), and writes for each
  *
@@ -7,10 +7,10 @@
  *     OUT/NAME.rgba   what it must decode to: RGBA, 8 bits, rows one after another
  *
  * and a line "NAME WIDTH HEIGHT ALPHA" to stdout, for the script to have
- * Python read every file back. Each is also read back here by openpng's own
+ * Python read every file back. Each is also read back here by gfopenpng's own
  * decoder (png/pngdecode.c), which must give the same pixels.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>
@@ -112,14 +112,14 @@ static void one(const char *out, const char *name, ULONG w, ULONG h, ULONG pad, 
     snprintf(path, sizeof path, "%s/%s.rgba", out, name);
     save(path, rgba, w * h * 4);
     {
-        /* back through openpng's decoder */
+        /* back through gfopenpng's decoder */
         struct png_head *hd = malloc(sizeof(*hd));
         UBYTE *idat, *raw;
         ULONG *dec, i;
         void *work = malloc(PNG_WORKSIZE);
         int bad = 0;
         if (png_read_head(png, size, hd)) {
-            printf("%s: openpng's decoder refuses it\n", name);
+            printf("%s: gfopenpng's decoder refuses it\n", name);
             fails++;
         } else {
             idat = malloc(hd->idat_len ? hd->idat_len : 1);
@@ -135,7 +135,7 @@ static void one(const char *out, const char *name, ULONG w, ULONG h, ULONG pad, 
                     bad = 1;
             }
             if (bad || hd->alpha != alpha) {
-                printf("%s: openpng's decoder reads it otherwise\n", name);
+                printf("%s: gfopenpng's decoder reads it otherwise\n", name);
                 fails++;
             }
             free(idat);

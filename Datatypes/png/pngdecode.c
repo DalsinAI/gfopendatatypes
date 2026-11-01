@@ -1,5 +1,5 @@
 /*
- * openpng.datatype's decoder (pngdecode.h): the chunks, inflate, the five
+ * gfopenpng.datatype's decoder (pngdecode.h): the chunks, inflate, the five
  * row filters, Adam7 and the colour types, to 0xAARRGGBB.
  *
  * Inflate (RFC 1951) decodes Huffman codes of up to nine bits with one table
@@ -8,7 +8,7 @@
  * ends early or goes wrong keeps the rows it reached (the rest stay clear),
  * as web browsers show a cut-off picture.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "pngdecode.h"
 

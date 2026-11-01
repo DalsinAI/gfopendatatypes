@@ -1,15 +1,15 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
-# OpenDatatypes with the os32-gcc16 stove: checks datatypes.lvo against the
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
+# GFOpenDatatypes with the os32-gcc16 stove: checks datatypes.lvo against the
 # NDK 3.2 datatypes_lib.fd and every constant and layout dt_core.h and
 # dtclass_env.h carry against the NDK 3.2 headers (ndk_check.c, compiled
 # only), then builds
 #   datatypes.library      the replacement (its class is "datatypesclass")
-#   opendatatypes.library  the same under its own name, for the ABI test
+#   gfopendatatypes.library  the same under its own name, for the ABI test
 #                          (its class is "opendatatypesclass")
-#   AddDataTypes           OpenBench's AddDataTypes (amigachrome-guest's
+#   AddDataTypes           GFOpenBench's AddDataTypes (amigachrome-guest's
 #                          commands/adddatatypes, with GUEST=), which talks
-#                          to OpenDatatypes' private call
+#                          to GFOpenDatatypes' private call
 #   DatatypesABITest       runs the same calls through OS 3.2's library and
 #                          ours and lists every difference
 # and sys/datatypes.catalog's descriptor stays in catalogs/datatypes.cd.
@@ -17,7 +17,7 @@ set -eu
 SOFT040="-specs=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../../build/m68k-soft-m68040.specs"   # the 68040 soft-float link (build/m68k-soft-m68040.specs)
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-STOVE=${STOVE:-"$HOME/AmigaChrome/stoves/os32-gcc16"}
+STOVE=${STOVE:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 P="$STOVE/prefix"
 CC=${CC:-"$P/bin/m68k-amigaos-gcc"}
 OUT=${OUT:-"$HERE/build-amiga"}
@@ -45,7 +45,7 @@ for lib in datatypes opendatatypes; do
     [ -z "$und" ] || { echo "undefined in $lib.library: $und" >&2; exit 1; }
 done
 
-# AddDataTypes is OpenBench's command, in amigachrome-guest: GUEST= a checkout
+# AddDataTypes is GFOpenBench's command, in amigachrome-guest: GUEST= a checkout
 # (default amigachrome-guest, else guest, beside this repository); without
 # one it is left out.
 G=${GUEST:-"$HERE/../../../amigachrome-guest"}

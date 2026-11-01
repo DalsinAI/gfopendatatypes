@@ -1,4 +1,4 @@
-# Open8SVX: an open 8svx.datatype
+# GFOpen8SVX: an open 8svx.datatype
 
 8svx.datatype 47.100 for AmigaOS 3.2, a sound.datatype subclass, API and
 ABI compatible, clean-room (from the public IFF 8SVX specification, the
@@ -10,7 +10,7 @@ family's shell, env and build are in [`../picture`](../picture/README.md).
 | --- | --- |
 | `svx_core.cpp`, `.h` | The class, lean C++ with no Amiga headers. |
 | `open8svx_dtclass.c`, `8svx.lvo` | Its shell and its one call, ObtainEngine at -30. |
-| `build-amiga.sh` | `8svx.datatype`, `open8svx.datatype` (over `opensound.datatype`) and the ABI test. |
+| `build-amiga.sh` | `8svx.datatype`, `gfopen8svx.datatype` (over `gfopensound.datatype`) and the ABI test. |
 | `tests/8SVXDTClassABITest.c` | 8SVX files made by the test, through OS 3.2's class and ours. |
 
 ## What it does

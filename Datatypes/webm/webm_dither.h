@@ -2,7 +2,7 @@
  * webm.datatype: a decoded picture (4:2:0, 4:4:4, or VP9's RGB) to 256
  * colours, the 6x6x6 colour cube with 4x4 ordered dithering. Shared by the
  * datatype and its tests, so both make the same pixels. Integer only (BT.601, limited range).
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef WEBM_DITHER_H
 #define WEBM_DITHER_H
@@ -32,8 +32,12 @@ static inline int webm_clamp8(int v)
 }
 
 /* Colour index i < 216 is red (i / 36), green (i / 6 % 6), blue (i % 6),
- * each step 51; 216..255 are a grey ramp. */
-static void webm_dither(const WebMDitherTables *t, const vpx_image_t *img, unsigned char *out, unsigned width, unsigned height, unsigned pitch)
+ * each step 51; 216..255 are a grey ramp. out holds size bytes, rows pitch
+ * bytes apart: only the pixels that are in the decoded picture (img->d_w x
+ * img->d_h), in width x height and in those size bytes are written, so a
+ * frame larger than its header said never writes past the buffer. */
+static void webm_dither(const WebMDitherTables *t, const vpx_image_t *img, unsigned char *out, unsigned long size,
+    unsigned width, unsigned height, unsigned pitch)
 {
     static const unsigned char bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
     unsigned x, y;
@@ -41,6 +45,12 @@ static void webm_dither(const WebMDitherTables *t, const vpx_image_t *img, unsig
         width = img->d_w;
     if (img->d_h < height)
         height = img->d_h;
+    if (width > pitch)
+        width = pitch;
+    if (!width || size < width)
+        return;
+    if (height > (size - width) / pitch + 1)
+        height = (unsigned)((size - width) / pitch + 1);
     for (y = 0; y < height; y++) {
         const unsigned char *py = img->planes[VPX_PLANE_Y] + y * img->stride[VPX_PLANE_Y];
         const unsigned char *pu = img->planes[VPX_PLANE_U] + (y >> img->y_chroma_shift) * img->stride[VPX_PLANE_U];
