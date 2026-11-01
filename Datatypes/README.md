@@ -54,7 +54,9 @@ The services are described in openamigaservice's `docs/MEDIA_DECODE.md`
 and `docs/DOC_RENDER.md`.
 
 `webm.datatype` reads the WebM container itself (`webm/webm_demux.c`) and
-decodes with libvpx. Once OpenMedia's `openmedia.library` exists
+decodes with libvpx. The reader's small reads come from a 4 KB cache of the
+file (`webm/webm_readcache.h`), one Read for many elements where it took a
+Seek and a Read for each (`tests/test-webm-read.sh`). Once OpenMedia's `openmedia.library` exists
 (DalsinAI/openamigamedia), the datatype will hand the frames to it for
 hardware decoding where a driver offers VP8 or VP9, and keep libvpx as the
 fallback.
@@ -406,7 +408,9 @@ test file is make-tga.py's), 8-bit screens, and the speed on a real 68k.
   is asked for at half the size (down to 160 wide), and running out says
   "not enough memory" rather than nothing.
 - `webm.datatype`: sound (Vorbis or Opus) only through a services card or a
-  paired Cradle, as 8-bit mono, for files up to 64 MB; 256 colours only
+  paired Cradle, as 8-bit mono, for files up to 64 MB (the service takes the
+  whole file, so it is read into memory, but only when the clip has an
+  audio track and the service is there); 256 colours only
   (VP9 in 4:2:0, 4:4:4 or RGB; 8-bit only); VP9 decoded in software is slow on a real 68k;
   files over 4 GB and laced video blocks are not supported.
 

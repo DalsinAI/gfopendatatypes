@@ -71,6 +71,9 @@ amigachrome-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 
 - `sh Datatypes/tests/test-tga.sh` and `sh Datatypes/tests/test-cdxl.sh`:
   the decoders on the host under AddressSanitizer and UBSan (CI runs both).
+- `sh Datatypes/tests/test-webm-read.sh`: webm.datatype's reader through its
+  read cache gives the same frames as straight reads, under the same
+  sanitizers.
 - `sh tests/achelpers/test_achelpers.sh`: the AC090 helpers and dtlib.c's
   memory functions under qemu-m68k.
 - `Datatypes/tests/dtpic.c`, `dtsound.c`, `dtanim.c`: the Amiga-side checks.
