@@ -12,6 +12,10 @@
 
 enum { WEBM_CODEC_NONE, WEBM_CODEC_VP8, WEBM_CODEC_VP9 };
 
+/* The widest and tallest picture the reader takes. A track that says more
+ * is skipped: width x height must fit in memory and in 32 bits. */
+#define WEBM_MAX_SIDE 8192
+
 typedef struct {
     uint32_t offset;     /* where the frame's data starts in the file */
     uint32_t size;       /* its length in bytes */
@@ -33,8 +37,9 @@ typedef struct {
 } WebMInfo;
 
 /* Fills info from a source of fileSize bytes. Returns 0 on success, or a
- * negative error: -1 not WebM, -2 no VP8/VP9 video track, -3 no memory,
- * -4 damaged file. info->frames is allocated with malloc(). */
+ * negative error: -1 not WebM, -2 no VP8/VP9 video track (of at most
+ * WEBM_MAX_SIDE each way), -3 no memory, -4 damaged file. info->frames is
+ * allocated with malloc(). */
 int webm_parse(WebMReadFn read, void *handle, uint32_t fileSize, WebMInfo *info);
 void webm_free(WebMInfo *info);
 
