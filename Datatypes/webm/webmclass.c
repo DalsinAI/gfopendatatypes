@@ -67,6 +67,7 @@ typedef struct {
     int codecReady;
     LONG lastDecoded;              /* frame the decoder last produced, -1 if none */
     UBYTE *chunky;                 /* width x height palette indices */
+    ULONG chunkySize;              /* bytes allocated at chunky */
     UBYTE *frameData;
     ULONG frameDataSize;
     struct BitMap *keyFrame;
@@ -134,7 +135,7 @@ static BOOL decodeOne(WebMData *d, ULONG index)
     while ((img = vpx_codec_get_frame(&d->codec, &iter)))
         last = img;
     if (last)
-        webm_dither(&ditherTables, last, d->chunky, d->info.width, d->info.height, d->info.width);
+        webm_dither(&ditherTables, last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
     d->lastDecoded = index;
     return TRUE;
 }
@@ -317,7 +318,15 @@ static BOOL loadWebM(Class *cl, Object *o)
         SetIoErr(rc == -3 ? ERROR_NO_FREE_STORE : DTERROR_INVALID_DATA);
         return FALSE;
     }
-    d->chunky = AllocVec(d->info.width * d->info.height, MEMF_ANY | MEMF_CLEAR);
+    /* webm_parse takes no side over WEBM_MAX_SIDE; width x height is
+     * checked again so the buffer can never be smaller than the picture */
+    if (!d->info.width || !d->info.height || d->info.width > WEBM_MAX_SIDE || d->info.height > WEBM_MAX_SIDE
+        || d->info.width > 0xffffffffUL / d->info.height) {
+        SetIoErr(DTERROR_INVALID_DATA);
+        return FALSE;
+    }
+    d->chunkySize = d->info.width * d->info.height;
+    d->chunky = AllocVec(d->chunkySize, MEMF_ANY | MEMF_CLEAR);
     if (!d->chunky) {
         SetIoErr(ERROR_NO_FREE_STORE);
         return FALSE;

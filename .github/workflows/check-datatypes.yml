@@ -2,6 +2,8 @@
 # The datatypes' decoder cores on the host (x86), under AddressSanitizer and
 # UBSan: opentga.datatype's (Datatypes/tests/test-tga.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),
+# webm.datatype's picture sizes against crafted headers
+# (Datatypes/tests/test-webm.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
 # (Datatypes/tests/test-stream.sh), and openpng.datatype's PNG writer
 # (Datatypes/tests/test-pngenc.sh); and the datatypes' RomTag versions
@@ -32,6 +34,8 @@ jobs:
         run: sh Datatypes/tests/test-tga.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
+      - name: webm.datatype picture sizes
+        run: sh Datatypes/tests/test-webm.sh
       - name: stream.datatype with gzip and Brotli
         run: sh Datatypes/tests/test-stream.sh
       - name: openpng.datatype's PNG writer

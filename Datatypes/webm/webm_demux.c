@@ -289,7 +289,7 @@ static void parseTrackEntry(Source *s, Parser *p, uint32_t pos, uint32_t end)
         }
         pos += size;
     }
-    if (p->videoTrack || type != 1 || !number || !width || !height)
+    if (p->videoTrack || type != 1 || !number || !width || !height || width > WEBM_MAX_SIDE || height > WEBM_MAX_SIDE)
         return;
     if (!strcmp(codecId, "V_VP8"))
         p->codec = WEBM_CODEC_VP8;
