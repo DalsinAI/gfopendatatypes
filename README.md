@@ -1,34 +1,34 @@
 # opendatatypes
 
-The AmigaChrome Team's datatypes for AmigaOS 3.x on 68k, in one place. Every
-decoder is a datatype, so any datatypes program (MultiView, OpenBench,
-OpenBrowser) opens the formats they read.
+The AmiCradle Team's datatypes for AmigaOS 3.x on 68k, in one place. Every
+decoder is a datatype, so any datatypes program (MultiView, GFOpenBench,
+GFOpenBrowser) opens the formats they read.
 
 | Datatype | Folder | What it reads |
 | --- | --- | --- |
-| `openpicture.datatype` | `Datatypes/openpicture` | picture class (our own) |
-| `openpng.datatype` | `Datatypes/png` | PNG (our own decoder; writes PNG from 47.4) |
-| `opentga.datatype` | `Datatypes/tga` | TGA (our own decoder) |
+| `gfopenpicture.datatype` | `Datatypes/openpicture` | picture class (our own) |
+| `gfopenpng.datatype` | `Datatypes/png` | PNG (our own decoder; writes PNG from 47.4) |
+| `gfopentga.datatype` | `Datatypes/tga` | TGA (our own decoder) |
 | `webp.datatype` | `Datatypes/webp` (libwebp 1.6.0) | WebP pictures |
 | `webm.datatype` | `Datatypes/webm` (libvpx 1.17.0) | WebM films |
-| `opensound.datatype` | `Datatypes/opensound` | sound class (our own) |
-| `openmodule.datatype` | `Datatypes/openmodule` (libxmp 4.7.3) | music modules: MOD, MED, Oktalyzer, DigiBooster, XM, S3M, IT |
-| `opendoc.datatype` | `Datatypes/opendoc` | documents |
+| `gfopensound.datatype` | `Datatypes/opensound` | sound class (our own) |
+| `gfopenmodule.datatype` | `Datatypes/openmodule` (libxmp 4.7.3) | music modules: MOD, MED, Oktalyzer, DigiBooster, XM, S3M, IT |
+| `gfopendoc.datatype` | `Datatypes/opendoc` | documents |
 | `cdxl.datatype` | `Datatypes/cdxl` | CDXL films |
-| `openvideo.datatype` | `Datatypes/openvideo` | video class |
+| `gfopenvideo.datatype` | `Datatypes/openvideo` | video class |
 | `stream.datatype` | `Datatypes/stream` | the data class (GID_DATA): byte streams, read as a whole or a piece at a time |
-| `gzip.datatype` | `Datatypes/gzip` | gzip and zlib data, inflated by z.library (OpenZlib) |
+| `gzip.datatype` | `Datatypes/gzip` | gzip and zlib data, inflated by z.library (GFOpenZlib) |
 | `brotli.datatype` | `Datatypes/brotli` | Brotli data (our own decoder, RFC 7932) |
 
-## OpenDatatypes: datatypes.library and the system's class datatypes
+## GFOpenDatatypes: datatypes.library and the system's class datatypes
 
-`libraries/opendatatypes/` is OpenDatatypes: our clean-room
+`libraries/opendatatypes/` is GFOpenDatatypes: our clean-room
 `datatypes.library` 47.100 (the ROM's) and its eight class datatypes in
 `libraries/opendatatypes/classes/datatypes/`: picture, ilbm, sound, 8svx,
 text, ascii, animation and anim. Its README has the steps, the files and
 what OS 3.2's probe measured. Build it with
 `libraries/opendatatypes/build-amiga.sh` (os32-gcc16 stove; `GUEST=` an
-amigachrome-guest checkout adds OpenBench's AddDataTypes). Its m68k tests
+amigachrome-guest checkout adds GFOpenBench's AddDataTypes). Its m68k tests
 are `tests/m68k/test_opendatatypes*.sh`. The ROM build
 (amigachrome-guest's `tools/openkickrom/trial-1m/build.sh`) takes it from a
 checkout of this repository (`DT=`).
@@ -63,7 +63,7 @@ native helpers for `Datatypes/common/dtlib.c` (`AC_HELPERS`, see
 `Datatypes/build.sh`), built from amigachrome-guest at the commit in
 `AMIGACHROME_GUEST_PINNED_COMMIT`.
 
-The ROM's datatypes (openpicture, openpng, opentga, opensound, opendoc in
+The ROM's datatypes (gfopenpicture, gfopenpng, gfopentga, gfopensound, gfopendoc in
 ROM:Classes/DataTypes) and datatypes.library are built from a checkout of this repository by
 amigachrome-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 

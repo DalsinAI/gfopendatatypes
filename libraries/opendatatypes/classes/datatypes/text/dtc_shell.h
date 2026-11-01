@@ -1,4 +1,4 @@
-/* OpenDatatypes classes: the C around the text, ascii, animation and anim
+/* GFOpenDatatypes classes: the C around the text, ascii, animation and anim
  * class cores, shared by their shells (open<name>_class.c). Built only on
  * the os32-gcc16 stove, with the NDK 3.2 headers; the cores never see them.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
@@ -9,7 +9,7 @@
  *
  * A shell defines, then includes this file:
  *   LIBNAME          the library's name, "text.datatype", or for the ABI
- *                    test's side-by-side build "opentext.datatype"; the
+ *                    test's side-by-side build "gfopentext.datatype"; the
  *                    public class is made under the same name
  *   DTC_SUPERCLASS   the superclass's public name ("datatypesclass",
  *                    "text.datatype", "animation.datatype")
@@ -80,7 +80,7 @@ _Static_assert(__builtin_offsetof(struct Gadget, SpecialInfo) == __builtin_offse
 _Static_assert(__builtin_offsetof(struct IFFHandle, iff_Stream) == 0, "IFFHandle.iff_Stream");
 
 #define LIB_VERSION  47
-#define LIB_REVISION 100                /* 47.100 and up: OpenDatatypes */
+#define LIB_REVISION 100                /* 47.100 and up: GFOpenDatatypes */
 
 struct DTCBase {
     struct Library lib;

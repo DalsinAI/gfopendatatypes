@@ -65,8 +65,8 @@
 
 /* ---- attributes --------------------------------------------------------- */
 
-/* TAG_USER with the AmigaChrome Team's number ($DA15) in the middle, as
- * datatypes/openimage.h; the stream class's are $DA151xx. */
+/* TAG_USER with the AmiCradle Team's number ($DA15) in the middle, as
+ * datatypes/gfopenimage.h; the stream class's are $DA151xx. */
 #define SDTA_StreamDummy   (TAG_USER + 0x0DA15100)
 
 /* (UBYTE *, G) The plain bytes of a whole-buffer object, owned by it.

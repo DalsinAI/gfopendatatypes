@@ -1,18 +1,18 @@
 /*
- * opentga.datatype: Targa (TGA) pictures for AmigaOS 3.x, a picture.datatype
+ * gfopentga.datatype: Targa (TGA) pictures for AmigaOS 3.x, a picture.datatype
  * (V43 mode) subclass that decodes on the Amiga itself (tgadecode.c; no
  * other library). Uncompressed and run-length encoded; colour-mapped,
  * 15/16, 24 and 32-bit true-colour with alpha, and greyscale; rows from the
  * bottom or the top. The pixels go to picture.datatype as 32-bit ARGB
- * (bmh_Depth 32), as openpng.datatype's do, so a program reading them back
+ * (bmh_Depth 32), as gfopenpng.datatype's do, so a program reading them back
  * as ARGB gets them as they were decoded, alpha included.
  *
  * A read or write of the pixels with no pixel array (pbpa_PixelData NULL)
- * is refused here rather than passed on, as in openpng.datatype: that is
+ * is refused here rather than passed on, as in gfopenpng.datatype: that is
  * what PDTM_READPIXELARRAY sent with DoDTMethodA() instead of DoMethodA()
  * arrives as, and picture.datatype would write the picture from address 0.
  *
- * A TGA file has no signature at its start, so DEVS:DataTypes/OpenTGA
+ * A TGA file has no signature at its start, so DEVS:DataTypes/GFOpenTGA
  * (build.sh) goes by the name: #?.tga, and the other names Truevision gave
  * (.targa, .icb, .vda, .vst). A descriptor with no mask is tried after every
  * one with a mask (Datatypes/openmodule/DESIGN.md), so a file of another
@@ -36,11 +36,11 @@
 #include "dtlib.h"
 #include "tgadecode.h"
 
-const char LibName[] = "opentga.datatype";
-const char LibIdString[] = "opentga.datatype 47.1 (12.10.2026) AmigaChrome Team";
+const char LibName[] = "gfopentga.datatype";
+const char LibIdString[] = "gfopentga.datatype 47.1 (12.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: opentga.datatype 47.1 (12.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.1 (12.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;

@@ -1,7 +1,7 @@
 /*
- * openpng.datatype's encoder: 32-bit ARGB pixels to a PNG file in memory,
+ * gfopenpng.datatype's encoder: 32-bit ARGB pixels to a PNG file in memory,
  * written from the PNG specification (ISO/IEC 15948, W3C PNG 3rd edition).
- * The deflate and the chunk CRCs are z.library's (OpenZlib), through
+ * The deflate and the chunk CRCs are z.library's (GFOpenZlib), through
  * common/zlibrary.h, so neither libpng nor a zlib is linked in.
  *
  * The file is RGBA 8 (colour type 6) when any pixel is not opaque, else RGB

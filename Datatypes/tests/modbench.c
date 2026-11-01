@@ -1,5 +1,5 @@
 /*
- * modbench: how long libxmp takes to mix a module, as openmodule.datatype
+ * modbench: how long libxmp takes to mix a module, as gfopenmodule.datatype
  * asks it to (xmp_play_buffer, 8-bit stereo, in chunks of an eighth of a
  * second), and optionally the sound as a WAV file. Built for the PC (to
  * check the test modules) and for the Amiga (to measure the CPU it costs).

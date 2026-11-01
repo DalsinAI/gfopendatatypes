@@ -1,7 +1,7 @@
 /*
  * dtsound: open sounds through datatypes.library and say which datatype
  * took each, with its name, length and rate; optionally play it for some
- * seconds through DTM_TRIGGER (as OpenPlay does), pausing in the middle,
+ * seconds through DTM_TRIGGER (as GFOpenPlay does), pausing in the middle,
  * to hear or record it.
  *
  *   dtsound [PLAY=seconds] [VOL=volume] [WAIT=seconds] [LOAD=1] [MARK=file] FILE...
@@ -34,7 +34,7 @@
 #include <proto/intuition.h>
 #include <proto/datatypes.h>
 #include <clib/alib_protos.h>
-#include <datatypes/openimage.h>
+#include <datatypes/gfopenimage.h>
 
 struct Library *DataTypesBase;
 

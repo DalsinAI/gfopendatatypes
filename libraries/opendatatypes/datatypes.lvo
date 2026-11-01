@@ -1,4 +1,4 @@
-# datatypes.library's jump table, as OpenDatatypes builds it: LVO, call,
+# datatypes.library's jump table, as GFOpenDatatypes builds it: LVO, call,
 # registers. build-amiga.sh (with ../common/check_fd.py) checks this against
 # the NDK 3.2 datatypes_lib.fd in the stove and stops on any difference;
 # opendatatypes_lib.c's lib_vectors[] follows it line for line.
@@ -43,7 +43,7 @@
 -234 private
 -240 private
 -246 private
--252 private    # ours: OpenDatatypes AddDataTypes a0,d0,a1 (our AddDataTypes command)
+-252 private    # ours: GFOpenDatatypes AddDataTypes a0,d0,a1 (our AddDataTypes command)
 -258 FindMethod a0,a1
 -264 FindTriggerMethod a0,a1,d0
 -270 CopyDTMethods a0,a1,a2

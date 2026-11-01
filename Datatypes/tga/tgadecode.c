@@ -1,5 +1,5 @@
 /*
- * opentga.datatype's decoder (tgadecode.h): Targa pictures to ARGB, from
+ * gfopentga.datatype's decoder (tgadecode.h): Targa pictures to ARGB, from
  * Truevision's TGA File Format Specification 2.0.
  *
  * The file: an 18-byte header (little-endian words), the image ID, the

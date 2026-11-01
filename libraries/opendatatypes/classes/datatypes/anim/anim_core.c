@@ -1,4 +1,4 @@
-/* OpenDatatypes anim.datatype core: IFF ANIM files.
+/* GFOpenDatatypes anim.datatype core: IFF ANIM files.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  * Clean-room; see anim_core.h for what this is written from.
  */

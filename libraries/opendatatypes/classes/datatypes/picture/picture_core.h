@@ -1,4 +1,4 @@
-/* OpenPicture: picture.datatype's class (V43 and up) as a core with no
+/* GFOpenPicture: picture.datatype's class (V43 and up) as a core with no
  * Amiga headers, over struct odt_cenv and struct dtc_ext.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *

@@ -1,4 +1,4 @@
-/* OpenILBM: ilbm.datatype's class, lean C++ with no Amiga headers.
+/* GFOpenILBM: ilbm.datatype's class, lean C++ with no Amiga headers.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
  * Clean-room, from the IFF ILBM specification and its updates (EA and

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenDatatypes' datatypesclass: python's own model of the class, for
+"""GFOpenDatatypes' datatypesclass: python's own model of the class, for
 tests/m68k/test_opendatatypes_class.sh. Writes a random script of objects,
 layouts, scrolls, drags and drag selections, and the log
 opendatatypes_class_test.c must print for it.

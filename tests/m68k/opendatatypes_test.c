@@ -1,4 +1,4 @@
-/* OpenDatatypes core under qemu-m68k: descriptor files made here are read,
+/* GFOpenDatatypes core under qemu-m68k: descriptor files made here are read,
  * ordered and asked to recognise data; the V45 method tables, tools and
  * strings. What OS 3.2 answers is DatatypesABITest's to check; this holds
  * the core to what it means to do.

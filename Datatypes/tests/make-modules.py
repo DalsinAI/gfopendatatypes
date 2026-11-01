@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make small music modules for testing openmodule.datatype, with no
+"""Make small music modules for testing gfopenmodule.datatype, with no
 downloads: every sample is synthesised here and every byte written by hand.
 
     make-modules.py OUTDIR

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make TGA test pictures of every kind opentga.datatype reads, with no
+"""Make TGA test pictures of every kind gfopentga.datatype reads, with no
 downloads: every byte is written here, from Truevision's TGA File Format
 Specification 2.0, and the picture each should decode to is worked out
 here too.

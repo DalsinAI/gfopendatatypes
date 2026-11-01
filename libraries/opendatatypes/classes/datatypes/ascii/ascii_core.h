@@ -1,4 +1,4 @@
-/* OpenDatatypes ascii.datatype core, in plain C with no Amiga headers.
+/* GFOpenDatatypes ascii.datatype core, in plain C with no Amiga headers.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
  * Clean-room, from the ascii_dtc and text_dtc autodocs, NDK 3.2's

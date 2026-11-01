@@ -1,6 +1,6 @@
 /* Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root). */
-/* OpenDatatypes' datatypesclass under qemu-m68k: libraries/opendatatypes/
- * dtclass_core.c hosted on OpenIntuition's BOOPSI core (rootclass and
+/* GFOpenDatatypes' datatypesclass under qemu-m68k: libraries/opendatatypes/
+ * dtclass_core.c hosted on GFOpenIntuition's BOOPSI core (rootclass and
  * gadgetclass, libraries/openintuition), with a probe subclass
  * (probe.datatype) and a mock env that logs every source it opens, every
  * band it draws, every render and every notification.

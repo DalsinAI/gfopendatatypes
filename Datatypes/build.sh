@@ -1,12 +1,12 @@
 #!/bin/sh
-# openamigaimage datatypes: webp, webm, openpicture, opensound, openmodule, opendoc, cdxl and openvideo.datatype,
+# openamigaimage datatypes: webp, webm, gfopenpicture, gfopensound, gfopenmodule, gfopendoc, cdxl and gfopenvideo.datatype,
 # and stream, gzip and brotli.datatype (stream/build.sh)
 # for AmigaOS 3.x, built with the os32-gcc16 compiler (bebbo's amiga-gcc, GCC 16.2,
 # libnix). The datatypes are built for the 68040, soft float (no FPU code).
 # MIT, Copyright (c) 2026 AmigaChrome Team. libwebp and libvpx keep their
 # BSD licences, libxmp its MIT licence.
 #
-#   OS32_GCC16   compiler root holding prefix/ (default ~/AmigaChrome/stoves/os32-gcc16)
+#   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
 #   PREFIX       where Classes/ and Devs/ go (default ./out)
 #   TARBALLS     folder holding the upstream tarballs listed in ../SOURCES
 #                (default ./tarballs, else ../tarballs); the script checks
@@ -23,7 +23,7 @@
 # usage: ./build.sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-S=${OS32_GCC16:-"$HOME/AmigaChrome/stoves/os32-gcc16"}
+S=${OS32_GCC16:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 P=$S/prefix
 OUT=${PREFIX:-"$HERE/out"}
 # The tarballs sit in the repository's tarballs/ folder, or in one here.
@@ -139,20 +139,20 @@ python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/WebM" WebM webm anim web
     '$VER: WebM 47.1 (4.10.2026)' 0x1a 0x45 0xdf 0xa3
 echo "Devs/DataTypes/WebM: $(wc -c < "$OUT/Devs/DataTypes/WebM") bytes"
 
-# --- openpicture.datatype -----------------------------------------------------
+# --- gfopenpicture.datatype -----------------------------------------------------
 # AVIF, HEIC, JPEG XL, camera RAW, PSD, XCF, EXR, HDR, QOI, DDS and JPEG 2000,
 # decoded by the media.decode/1 service (openamigaservice) on the services
 # card or a paired Cradle; no codec on the 68k.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-openpicture" \
     common/dtstart.c common/dtlib.c common/dtservice.c openpicture/pictureclass.c
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/openpicture.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpicture.datatype" \
     "$WORK"/obj-openpicture/common_dtstart.o "$WORK"/obj-openpicture/common_dtlib.o \
     "$WORK"/obj-openpicture/common_dtservice.o "$WORK"/obj-openpicture/openpicture_pictureclass.o $ACLIB -lamiga \
-    -Wl,-Map="$WORK/openpicture.datatype.map"
-echo "openpicture.datatype: $(wc -c < "$OUT/Classes/DataTypes/openpicture.datatype") bytes"
+    -Wl,-Map="$WORK/gfopenpicture.datatype.map"
+echo "gfopenpicture.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpicture.datatype") bytes"
 picdesc() {      # FILE NAME ID PATTERN MASK...
     f=$1; n=$2; i=$3; pat=$4; shift 4
-    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" openpicture pict "$i" "$pat" \
+    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" gfopenpicture pict "$i" "$pat" \
         "\$VER: $f 47.1 (5.10.2026)" "$@"
     echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"
 }
@@ -210,11 +210,11 @@ picdesc OTF-TT "OpenType font (TrueType outlines)" otf "#?.otf" 0 1 0 0
 DT_PRIORITY=1 picdesc RAW "Camera RAW" raw \
     "#?.(cr2|cr3|crw|nef|nrw|arw|srf|sr2|dng|orf|rw2|raf|pef|srw|x3f|erf|kdc|dcr|mrw|3fr|iiq|rwl)"
 
-# --- openpng.datatype ---------------------------------------------------------
+# --- gfopenpng.datatype ---------------------------------------------------------
 # PNG on the Amiga itself, our own decoder (png/pngclass.c, png/build.sh).
 OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/png/build.sh"
 
-# --- opentga.datatype ---------------------------------------------------------
+# --- gfopentga.datatype ---------------------------------------------------------
 # Targa (TGA) on the Amiga itself, our own decoder (tga/tgaclass.c,
 # tga/build.sh); tests/test-tga.sh checks the decoder on x86 or ARM64 cores.
 OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/tga/build.sh"
@@ -225,19 +225,19 @@ OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/tga/build.sh"
 # or ARM64 cores.
 OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/stream/build.sh"
 
-# --- opensound.datatype -------------------------------------------------------
+# --- gfopensound.datatype -------------------------------------------------------
 # FLAC, Ogg (Vorbis, Opus), AAC/M4A, ALAC, WMA and MP3, decoded by the
 # media.decode/1 service on the services card or a paired Cradle.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opensound" \
     common/dtstart.c common/dtlib.c common/dtservice.c opensound/soundclass.c
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/opensound.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopensound.datatype" \
     "$WORK"/obj-opensound/common_dtstart.o "$WORK"/obj-opensound/common_dtlib.o \
     "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/opensound_soundclass.o $ACLIB -lamiga \
-    -Wl,-Map="$WORK/opensound.datatype.map"
-echo "opensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/opensound.datatype") bytes"
+    -Wl,-Map="$WORK/gfopensound.datatype.map"
+echo "gfopensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
 sounddesc() {    # FILE NAME ID MASK...
     f=$1; n=$2; i=$3; shift 3
-    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" opensound soun "$i" "#?" \
+    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" gfopensound soun "$i" "#?" \
         "\$VER: $f 47.1 (5.10.2026)" "$@"
     echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"
 }
@@ -245,8 +245,8 @@ sounddesc FLAC FLAC flac "'f'" "'L'" "'a'" "'C'"
 sounddesc Ogg "Ogg sound" ogg "'O'" "'g'" "'g'" "'S'"
 sounddesc M4A "MPEG-4 audio" m4a ANY ANY ANY ANY "'f'" "'t'" "'y'" "'p'" "'M'" "'4'" "'A'" "' '"
 sounddesc M4B "MPEG-4 audiobook" m4b ANY ANY ANY ANY "'f'" "'t'" "'y'" "'p'" "'M'" "'4'" "'B'" "' '"
-# ASF holds both: Windows Media audio by its name here, video in openvideo.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/WMA" "Windows Media audio" opensound soun wma "#?.wma" \
+# ASF holds both: Windows Media audio by its name here, video in gfopenvideo.
+python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/WMA" "Windows Media audio" gfopensound soun wma "#?.wma" \
     '$VER: WMA 47.1 (5.10.2026)' 0x30 0x26 0xb2 0x75 0x8e 0x66 0xcf 0x11
 echo "Devs/DataTypes/WMA: $(wc -c < "$OUT/Devs/DataTypes/WMA") bytes"
 sounddesc MP3-ID3 "MP3 (ID3)" mp3 "'I'" "'D'" "'3'"
@@ -258,7 +258,7 @@ sounddesc MIDI MIDI midi $(chars "MThd") 0 0 0 6
 sounddesc PSID "C64 SID tune" psid $(chars "PSID")
 # shellcheck disable=SC2046
 sounddesc RSID "C64 SID tune (RSID)" rsid $(chars "RSID")
-# PC tracker modules through libopenmpt, when openmodule.datatype (below,
+# PC tracker modules through libopenmpt, when gfopenmodule.datatype (below,
 # played on the Amiga itself, tried first) is not installed.
 # shellcheck disable=SC2046
 sounddesc XM "FastTracker module" xm $(chars "Extended Module: ")
@@ -267,11 +267,11 @@ sounddesc IT "Impulse Tracker module" it $(chars "IMPM")
 # shellcheck disable=SC2046
 sounddesc S3M "Scream Tracker module" s3m $(i=0; while [ $i -lt 44 ]; do printf 'ANY '; i=$((i+1)); done) $(chars "SCRM")
 
-# --- openmodule.datatype -----------------------------------------------------
+# --- gfopenmodule.datatype -----------------------------------------------------
 # Music modules: libxmp mixes them a chunk at a time for a player process
 # of the object's own, which plays them through AHI (16-bit) or Paula
 # (openmodule/DESIGN.md). The mixing goes to a cores board core
-# (openmulticore.library, headers copied in include/), else to
+# (gfopenmulticore.library, headers copied in include/), else to
 # media.decode/1 (dtservice), else stays on this CPU. libxmp's loaders, all of
 # them; no depackers or ProWizard (they write temporary files) and no Ogg
 # Vorbis samples (openmodule/xmpglue.c).
@@ -284,28 +284,28 @@ XFLAGS="$XMPFLAGS -w" compile "$X" "$WORK/obj-libxmp" \
     $(cd "$X" && ls src/loaders/*.c | grep -v -e pw_load.c -e vorbis.c)
 rm -f "$WORK/libxmp.a"
 "$AR" rcs "$WORK/libxmp.a" "$WORK"/obj-libxmp/*.o
-# dtlib without its malloc (DT_OWN_MALLOC): openmodule's own keeps libxmp's
+# dtlib without its malloc (DT_OWN_MALLOC): gfopenmodule's own keeps libxmp's
 # memory in one arena when a cores board may mix (openmodule/xmpglue.h);
 # dtservice for media.decode/1, the third rung.
 XFLAGS="-I$HERE/common -I$HERE/include -I$X/include -DLIBXMP_STATIC -DDT_OWN_MALLOC $ACFLAGS" compile "$HERE" "$WORK/obj-openmodule" \
     common/dtstart.c common/dtlib.c common/dtservice.c openmodule/moduleclass.c openmodule/xmpglue.c openmodule/novorbis.c
 # libm: libnix's soft floating point, which calls the ROM math libraries
 # (opened in the player process; see moduleclass.c).
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/openmodule.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenmodule.datatype" \
     "$WORK"/obj-openmodule/common_dtstart.o "$WORK"/obj-openmodule/common_dtlib.o \
     "$WORK"/obj-openmodule/common_dtservice.o "$WORK"/obj-openmodule/openmodule_moduleclass.o \
     "$WORK"/obj-openmodule/openmodule_xmpglue.o \
     "$WORK"/obj-openmodule/openmodule_novorbis.o \
     "$WORK/libxmp.a" $ACLIB -lamiga -lm \
-    -Wl,-Map="$WORK/openmodule.datatype.map"
-echo "openmodule.datatype: $(wc -c < "$OUT/Classes/DataTypes/openmodule.datatype") bytes"
+    -Wl,-Map="$WORK/gfopenmodule.datatype.map"
+echo "gfopenmodule.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenmodule.datatype") bytes"
 # modbench (tests/modbench.c): libxmp's mixing time on this Amiga, a plain
 # Shell program, left in work/.
 $CC -O2 -m68040 $SOFT -fomit-frame-pointer $NONULL -I"$X/include" -DLIBXMP_STATIC -o "$WORK/modbench" \
     "$HERE/tests/modbench.c" "$WORK"/obj-openmodule/openmodule_novorbis.o "$WORK/libxmp.a" -lm
 moddesc() {      # FILE NAME ID PATTERN MASK...
     f=$1; n=$2; i=$3; pat=$4; shift 4
-    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" openmodule soun "$i" "$pat" \
+    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" gfopenmodule soun "$i" "$pat" \
         "\$VER: $f 47.1 (8.10.2026)" "$@"
     echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"
 }
@@ -346,11 +346,11 @@ moddesc Oktalyzer "Oktalyzer module" okt "#?" $(chars "OKTASONG")
 moddesc DigiBooster "DigiBooster module" digi "#?" $(chars "DIGI Booster module")
 # shellcheck disable=SC2046
 moddesc DigiBooster-Pro "DigiBooster Pro module" dbm "#?" $(chars "DBM0")
-# FastTracker 2, Scream Tracker 3 and Impulse Tracker: opensound.datatype
+# FastTracker 2, Scream Tracker 3 and Impulse Tracker: gfopensound.datatype
 # has descriptors for these too (played by libopenmpt on the Cradle).
 # AmigaOS 3.2's datatypes.library tries longer masks first and does not go
 # by priority (openmodule/DESIGN.md), so these masks are one byte longer
-# than opensound's (ANY: an XM, S3M or IT is never that short), and these
+# than gfopensound's (ANY: an XM, S3M or IT is never that short), and these
 # play here when both are installed.
 # shellcheck disable=SC2046
 moddesc Module-XM "FastTracker 2 module" xm "#?" $(chars "Extended Module: ") ANY
@@ -359,19 +359,19 @@ moddesc Module-S3M "Scream Tracker 3 module" s3m "#?" $(anys 44) $(chars "SCRM")
 # shellcheck disable=SC2046
 moddesc Module-IT "Impulse Tracker 2 module" it "#?" $(chars "IMPM") ANY
 
-# --- opendoc.datatype ---------------------------------------------------------
+# --- gfopendoc.datatype ---------------------------------------------------------
 # Office documents as pictures of their pages, laid out by LibreOffice through
 # the doc.render/1 service on the services card or a paired Cradle.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opendoc" \
     common/dtstart.c common/dtlib.c common/dtservice.c opendoc/docclass.c
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/opendoc.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopendoc.datatype" \
     "$WORK"/obj-opendoc/common_dtstart.o "$WORK"/obj-opendoc/common_dtlib.o \
     "$WORK"/obj-opendoc/common_dtservice.o "$WORK"/obj-opendoc/opendoc_docclass.o $ACLIB -lamiga \
-    -Wl,-Map="$WORK/opendoc.datatype.map"
-echo "opendoc.datatype: $(wc -c < "$OUT/Classes/DataTypes/opendoc.datatype") bytes"
+    -Wl,-Map="$WORK/gfopendoc.datatype.map"
+echo "gfopendoc.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopendoc.datatype") bytes"
 docdesc() {      # FILE NAME ID PATTERN MASK...
     f=$1; n=$2; i=$3; pat=$4; shift 4
-    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" opendoc pict "$i" "$pat" \
+    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" gfopendoc pict "$i" "$pat" \
         "\$VER: $f 47.1 (5.10.2026)" "$@"
     echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"
 }
@@ -414,19 +414,19 @@ python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/CDXL" CDXL cdxl anim cdx
     '$VER: CDXL 47.1 (20.10.2026)' 0x01
 echo "Devs/DataTypes/CDXL: $(wc -c < "$OUT/Devs/DataTypes/CDXL") bytes"
 
-# --- openvideo.datatype -------------------------------------------------------
+# --- gfopenvideo.datatype -------------------------------------------------------
 # MP4, MOV, MKV, AVI, WMV, MPEG and FLV, decoded frame by frame by the
 # media.decode/1 service on the services card or a paired Cradle.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-openvideo" \
     common/dtstart.c common/dtlib.c common/dtservice.c openvideo/videoclass.c
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/openvideo.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenvideo.datatype" \
     "$WORK"/obj-openvideo/common_dtstart.o "$WORK"/obj-openvideo/common_dtlib.o \
     "$WORK"/obj-openvideo/common_dtservice.o "$WORK"/obj-openvideo/openvideo_videoclass.o $ACLIB -lamiga \
-    -Wl,-Map="$WORK/openvideo.datatype.map"
-echo "openvideo.datatype: $(wc -c < "$OUT/Classes/DataTypes/openvideo.datatype") bytes"
+    -Wl,-Map="$WORK/gfopenvideo.datatype.map"
+echo "gfopenvideo.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenvideo.datatype") bytes"
 videodesc() {    # FILE NAME ID PATTERN MASK...
     f=$1; n=$2; i=$3; pat=$4; shift 4
-    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" openvideo anim "$i" "$pat" \
+    python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/$f" "$n" gfopenvideo anim "$i" "$pat" \
         "\$VER: $f 47.1 (5.10.2026)" "$@"
     echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"
 }

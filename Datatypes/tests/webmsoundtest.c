@@ -5,7 +5,7 @@
  * fake media.decode/1 that keeps a record of every request. The object is
  * made (OM_NEW), every frame loaded in order (ADTM_LOADFRAME), then a few
  * out of order, then disposed; with a clip that has sound:
- *   - no buffer of more than 256 KB (openvideo.datatype's VUPLOAD part)
+ *   - no buffer of more than 256 KB (gfopenvideo.datatype's VUPLOAD part)
  *     goes to the service, and with a link that carries no more than that
  *     the sound still comes;
  *   - the file goes up once (one VUPLOAD started, its parts the file's
@@ -36,7 +36,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define PIECE (256UL * 1024)         /* openvideo.datatype's VUPLOAD part */
+#define PIECE (256UL * 1024)         /* gfopenvideo.datatype's VUPLOAD part */
 #define RING_FRAMES 64
 
 static int failures, checks;

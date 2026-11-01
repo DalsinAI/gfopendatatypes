@@ -36,7 +36,7 @@
 #include "cdxl_core.h"
 
 const char LibName[] = "cdxl.datatype";
-const char LibIdString[] = "cdxl.datatype 47.1 (20.10.2026) AmigaChrome Team";
+const char LibIdString[] = "cdxl.datatype 47.1 (20.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
 static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.1 (20.10.2026)";
@@ -340,7 +340,7 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         return rc;
     }
     case ADTM_LOADFRAME: {
-        /* As openvideo.datatype: animation.datatype 47 hands bitmaps back
+        /* As gfopenvideo.datatype: animation.datatype 47 hands bitmaps back
          * in alf_BitMap to be drawn again; alf_UserData follows a bitmap
          * and it is freed once, when the frame holding it last unloads. */
         CdxlData *d = INST_DATA(cl, o);

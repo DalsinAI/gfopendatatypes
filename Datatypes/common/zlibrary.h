@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: the calls they make to z.library (OpenZlib, ours:
+ * openamigaimage datatypes: the calls they make to z.library (GFOpenZlib, ours:
  * DalsinAI amigachrome-guest libraries/openzlib, API and ABI those of the
  * Aminet z.library). Every inflate and deflate in the datatypes goes
  * through it: no zlib is linked in.
@@ -10,7 +10,7 @@
  *
  * On the Amiga the calls are common/zlibrary.c, through z.library's jump
  * table (openzlib's z.lvo). On x86 or ARM64 cores the tests give their own
- * (tests/zlhost.c, over OpenZlib's core).
+ * (tests/zlhost.c, over GFOpenZlib's core).
  *
  * MIT, Copyright (c) 2026 AmigaChrome Team.
  * SPDX-License-Identifier: MIT
@@ -23,7 +23,7 @@
 struct Library;
 
 #define ZL_NAME    "z.library"
-#define ZL_VERSION 53              /* OpenZlib is 53.12; the Aminet one 53.x */
+#define ZL_VERSION 53              /* GFOpenZlib is 53.12; the Aminet one 53.x */
 
 /* zlib.h's z_stream, as z.library lays it out on the 68k (56 bytes) */
 struct zl_stream {

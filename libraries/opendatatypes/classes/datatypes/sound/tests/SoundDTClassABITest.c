@@ -1,4 +1,4 @@
-/* SoundDTClassABITest: OS 3.2's sound.datatype and OpenSound side by side.
+/* SoundDTClassABITest: OS 3.2's sound.datatype and GFOpenSound side by side.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
  * Makes sounds in memory (DTST_RAM objects of sound.datatype itself) and

@@ -2,8 +2,8 @@
 
 Open versions of OS 3.2's `text.datatype` (a subclass of datatypesclass)
 and `ascii.datatype` (a minimal subclass of it). Version 47.100. The
-side-by-side builds are `opentext.datatype` and `openascii.datatype`, and
-`openascii` sits on `opentext`. They are written from the NDK 3.2 headers,
+side-by-side builds are `gfopentext.datatype` and `gfopenascii.datatype`, and
+`gfopenascii` sits on `gfopentext`. They are written from the NDK 3.2 headers,
 the autodocs and measured behaviour only.
 
 | File | What |
@@ -15,7 +15,7 @@ the autodocs and measured behaviour only.
 | `../ascii/ascii_core.c/.h` | ascii.datatype: reads FILE, MEMORY, clipboard/IFF (FTXT CHRS) and RAM sources into TDTA_Buffer |
 | `../ascii/openascii_class.c` | ascii.datatype's shell |
 | `build-amiga.sh`, `build-family.sh` | Builds all four classes and their ABI tests (stove) |
-| `tests/TextClassABITest.c` | OS 3.2's ascii.datatype next to openascii.datatype |
+| `tests/TextClassABITest.c` | OS 3.2's ascii.datatype next to gfopenascii.datatype |
 
 The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`, against the
 python model `tests/m68k/opendatatypes_textanim_ref.py`.

@@ -1,4 +1,4 @@
-/* OpenDatatypes: datatypesclass, the superclass of every datatype class,
+/* GFOpenDatatypes: datatypesclass, the superclass of every datatype class,
  * in plain C with no Amiga headers. See dtclass_env.h.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *

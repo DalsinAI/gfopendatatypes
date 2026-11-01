@@ -23,7 +23,7 @@
 #include "webp/demux.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.1 (4.10.2026) AmigaChrome Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.1 (4.10.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
 static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.1 (4.10.2026)";

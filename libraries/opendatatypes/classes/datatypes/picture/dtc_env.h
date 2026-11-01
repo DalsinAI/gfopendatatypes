@@ -1,4 +1,4 @@
-/* OpenDatatypes class libraries: what the picture and sound families
+/* GFOpenDatatypes class libraries: what the picture and sound families
  * (picture, ilbm, sound, 8svx) ask of the system beyond struct odt_cenv:
  * struct dtc_ext, what env->class_ext points at. Plain C, no Amiga
  * headers: the cores built with it run under qemu-m68k.

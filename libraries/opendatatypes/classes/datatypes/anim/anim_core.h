@@ -1,4 +1,4 @@
-/* OpenDatatypes anim.datatype core: IFF ANIM files, in plain C with no
+/* GFOpenDatatypes anim.datatype core: IFF ANIM files, in plain C with no
  * Amiga headers.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *

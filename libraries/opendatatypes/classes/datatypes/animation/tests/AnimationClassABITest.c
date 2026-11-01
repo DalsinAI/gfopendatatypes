@@ -1,5 +1,5 @@
 /* AnimationClassABITest: OS 3.2's animation.datatype and anim.datatype
- * next to OpenDatatypes' (openanimation.datatype, openanim.datatype), on
+ * next to GFOpenDatatypes' (gfopenanimation.datatype, gfopenanim.datatype), on
  * ANIMs the test makes itself, every answer printed side by side.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
@@ -174,7 +174,7 @@ static void run(int ours, const char *what, int xor, int il, ULONG rel, int camg
         dtn = ObtainDataTypeA(DTST_FILE, (APTR)lock, NULL);
         UnLock(lock);
     }
-    o = NewObject(NULL, (STRPTR)(ours ? "openanim.datatype" : "anim.datatype"), DTA_Name, (ULONG) "T:odt_anim",
+    o = NewObject(NULL, (STRPTR)(ours ? "gfopenanim.datatype" : "anim.datatype"), DTA_Name, (ULONG) "T:odt_anim",
                   DTA_SourceType, DTST_FILE, DTA_DataType, (ULONG)dtn, GA_Width, 100, GA_Height, 60, TAG_DONE);
     say(ours, "%s new %s ioerr %ld", what, o ? "ok" : "fail", o ? 0L : (long)IoErr());
     if (!o) { if (dtn) ReleaseDataType(dtn); return; }
@@ -215,8 +215,8 @@ int main(int argc, char **argv)
         if (!strcmp(argv[i], "ALL")) all = 1;
     }
     if (!(DataTypesBase = OpenLibrary((STRPTR) "datatypes.library", 39))) { printf("no datatypes.library\n"); return 20; }
-    if (!probe && !(ours = OpenLibrary((STRPTR) "datatypes/openanim.datatype", 0))) {
-        printf("no datatypes/openanim.datatype (copy build-amiga's datatypes/ to LIBS:datatypes/)\n");
+    if (!probe && !(ours = OpenLibrary((STRPTR) "datatypes/gfopenanim.datatype", 0))) {
+        printf("no datatypes/gfopenanim.datatype (copy build-amiga's datatypes/ to LIBS:datatypes/)\n");
         return 20;
     }
     for (i = 0; i < (int)(sizeof cases / sizeof cases[0]); i++) {

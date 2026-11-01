@@ -1,6 +1,6 @@
 #!/bin/sh
 # Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
-# OpenDatatypes' picture and sound classes (libraries/opendatatypes/classes/
+# GFOpenDatatypes' picture and sound classes (libraries/opendatatypes/classes/
 # datatypes: picture.datatype, ilbm.datatype, sound.datatype, 8svx.datatype):
 # each core is lean C++ (no exceptions, no RTTI, no libstdc++), built with
 # an m68k cross G++ at -O0 and -O2 for the 68040; checked

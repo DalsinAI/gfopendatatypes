@@ -1,17 +1,17 @@
 /*
- * openvideo.datatype: MP4, MOV, MKV, AVI, WMV and MPEG video (H.264, HEVC,
+ * gfopenvideo.datatype: MP4, MOV, MKV, AVI, WMV and MPEG video (H.264, HEVC,
  * AV1, VP9, MPEG-4, MPEG-1/2, WMV) for AmigaOS 3.x, an animation.datatype
  * subclass. The media.decode/1 service (DalsinAI/openamigaservice
  * docs/MEDIA_DECODE.md) on the services card or a paired Cradle keeps the
- * video open and sends each frame, scaled to fit ENV:OpenImage/VideoWidth x
+ * video open and sends each frame, scaled to fit ENV:GFOpenImage/VideoWidth x
  * VideoHeight: in 256 colours (webm.datatype's dithered colour cube), or in
- * HAM8 on an AGA screen (ENV:OpenImage/VideoMode). The sound comes the same
+ * HAM8 on an AGA screen (ENV:GFOpenImage/VideoMode). The sound comes the same
  * way, 8-bit mono handed out with each frame.
  *
  * Streams: a NETSTREAM file (what the NETSTREAM: handler gives for a
  * channel, or a saved one: "#NETSTREAM", then NAME= and URL= lines) is
  * opened by the host from its URL, and played as it comes. A file bigger
- * than ENV:OpenImage/VideoChunk KB (default 2048) goes to the host in
+ * than ENV:GFOpenImage/VideoChunk KB (default 2048) goes to the host in
  * parts, so the Amiga never holds it whole.
  *
  * Without a card or a Cradle the video does not open: these codecs are far
@@ -46,11 +46,11 @@
 #include "dtlib.h"
 #include "dtservice.h"
 
-const char LibName[] = "openvideo.datatype";
-const char LibIdString[] = "openvideo.datatype 47.2 (20.10.2026) AmigaChrome Team, decoded by media.decode/1";
+const char LibName[] = "gfopenvideo.datatype";
+const char LibIdString[] = "gfopenvideo.datatype 47.2 (20.10.2026) AmiCradle Team, decoded by media.decode/1";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: openvideo.datatype 47.2 (20.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopenvideo.datatype 47.2 (20.10.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
@@ -134,8 +134,8 @@ static ULONG envNumber(const char *name, ULONG fallback, ULONG least)
     return v >= least ? v : fallback;
 }
 
-/* With ENV:OpenImage/VideoLog set, each method animation.datatype sends
- * is added to T:openvideo.log, for finding out how it plays a video.
+/* With ENV:GFOpenImage/VideoLog set, each method animation.datatype sends
+ * is added to T:gfopenvideo.log, for finding out how it plays a video.
  * Only from processes: the loader and player are, a plain task can't use DOS. */
 static void vlog(const char *fmt, ...)
 {
@@ -145,7 +145,7 @@ static void vlog(const char *fmt, ...)
     BPTR f;
     LONG n;
 
-    if (me->tc_Node.ln_Type != NT_PROCESS || GetVar((CONST_STRPTR)"OpenImage/VideoLog", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY) < 0)
+    if (me->tc_Node.ln_Type != NT_PROCESS || GetVar((CONST_STRPTR)"GFOpenImage/VideoLog", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY) < 0)
         return;
     for (n = 0; me->tc_Node.ln_Name && me->tc_Node.ln_Name[n] && n < 40; n++)
         line[n] = me->tc_Node.ln_Name[n];
@@ -157,7 +157,7 @@ static void vlog(const char *fmt, ...)
     if (n > (LONG)sizeof line - 2)
         n = sizeof line - 2;
     line[n++] = '\n';
-    if ((f = Open((CONST_STRPTR)"T:openvideo.log", MODE_READWRITE)) != 0) {
+    if ((f = Open((CONST_STRPTR)"T:gfopenvideo.log", MODE_READWRITE)) != 0) {
         Seek(f, 0, OFFSET_END);
         Write(f, line, n);
         Close(f);
@@ -232,14 +232,14 @@ static ULONG nativeMode(void)
     return id;
 }
 
-/* HAM8 or 256 colours: ENV:OpenImage/VideoMode HAM8 or 256; AUTO (the
+/* HAM8 or 256 colours: ENV:GFOpenImage/VideoMode HAM8 or 256; AUTO (the
  * default) is HAM8 on an AGA machine whose screen is a chipset one, and
  * 256 colours on a graphics card, where HAM shows nothing. */
 static BOOL wantHam8(void)
 {
     char mode[8];
 
-    envText("OpenImage/VideoMode", mode, sizeof mode);
+    envText("GFOpenImage/VideoMode", mode, sizeof mode);
     if ((mode[0] | 0x20) == 'h')
         return TRUE;
     if (mode[0] == '2')
@@ -421,7 +421,7 @@ static LONG openOnHost(Object *o, struct dt_service *svc, ULONG extra[4], UBYTE 
     }
 
     /* A big file: in parts, so it is never all in memory here. */
-    chunk = envNumber("OpenImage/VideoChunk", 2048, 1) * 1024;
+    chunk = envNumber("GFOpenImage/VideoChunk", 2048, 1) * 1024;
     if ((ULONG)size > chunk) {
         if (!(data = AllocVec(PART, MEMF_ANY)))
             return VERR_NOMEM;
@@ -477,11 +477,11 @@ static BOOL loadVideo(Class *cl, Object *o)
         return FALSE;
     }
     d->ham8 = wantHam8();
-    envText("OpenImage/VideoCMap", cmapVar, sizeof cmapVar);
+    envText("GFOpenImage/VideoCMap", cmapVar, sizeof cmapVar);
     d->ownColours = d->ham8 && cmapVar[0];
     /* HAM8 defaults to a PAL low-resolution screen's size, 256 colours to 640 x 480. */
-    extra[0] = envNumber("OpenImage/VideoWidth", d->ham8 ? 320 : 640, 16);
-    extra[1] = envNumber("OpenImage/VideoHeight", d->ham8 ? 256 : 480, 16);
+    extra[0] = envNumber("GFOpenImage/VideoWidth", d->ham8 ? 320 : 640, 16);
+    extra[1] = envNumber("GFOpenImage/VideoHeight", d->ham8 ? 256 : 480, 16);
     /* Each frame is a planar bitmap in chip RAM, and animation.datatype
      * keeps a few: ask for a smaller picture when chip RAM is short, so a
      * third or fourth video still opens. */

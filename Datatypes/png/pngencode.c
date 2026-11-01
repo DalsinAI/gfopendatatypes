@@ -1,5 +1,5 @@
 /*
- * openpng.datatype's encoder (pngencode.h).
+ * gfopenpng.datatype's encoder (pngencode.h).
  *
  * Each row is converted to RGB or RGBA (alpha undone first when the colour
  * is premultiplied), filtered (PNG 9.2: None, Sub, Up, Average, Paeth) and

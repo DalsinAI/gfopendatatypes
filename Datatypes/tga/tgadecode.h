@@ -1,5 +1,5 @@
 /*
- * opentga.datatype's decoder: Targa (TGA) pictures read on the Amiga itself,
+ * gfopentga.datatype's decoder: Targa (TGA) pictures read on the Amiga itself,
  * written from Truevision's TGA File Format Specification 2.0. No other
  * library.
  *
