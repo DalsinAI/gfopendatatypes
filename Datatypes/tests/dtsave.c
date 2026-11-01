@@ -1,0 +1,216 @@
+/*
+ * dtsave: a picture datatype's raw write, checked on the Amiga. Opens SRC
+ * through datatypes.library, saves it with DTM_WRITE in raw mode to DST,
+ * opens DST again and compares every pixel read back as ARGB (RGB only
+ * when either has no alpha). With AS, it converts instead, as
+ * docs/DESIGN.md says a program does: an empty object of that class
+ * (DTST_RAM with DTA_BaseName), the pixels written into it, and that
+ * object saved. With STORE, OIA_Compression 0 goes in dtw_AttrList.
+ * With SAMEBYTES, any datatype (a film too) saves SRC raw, and DST must be
+ * SRC byte for byte: what cdxl.datatype's raw write promises for an intact
+ * film, and a writer's own output read and written again.
+ *
+ *     dtsave SRC DST [AS gfopentga|gfopenpng|...] [STORE]
+ *     dtsave SRC DST SAMEBYTES
+ *
+ * Prints "SRC -> DST: SAME w x h alpha=0|1 bytes=N" or what went wrong;
+ * returns 0, or 10 when the pictures differ, 20 on an error. Built by
+ * tests/build-dtsave.sh.
+ *
+ * MIT, Copyright (c) 2026 AmiCradle Team.
+ * SPDX-License-Identifier: MIT
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <datatypes/datatypes.h>
+#include <datatypes/datatypesclass.h>
+#include <datatypes/pictureclass.h>
+#include <datatypes/gfopenimage.h>
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <proto/intuition.h>
+#include <proto/datatypes.h>
+#include <clib/alib_protos.h>
+
+struct Library *DataTypesBase;
+
+/* The picture as ARGB, and its size and alpha. NULL with a message on failure. */
+static UBYTE *pixels(Object *o, const char *name, ULONG *w, ULONG *h, ULONG *alpha)
+{
+    struct BitMapHeader *bmh = NULL;
+    UBYTE *px;
+    *alpha = 0;
+    if (GetDTAttrs(o, PDTA_BitMapHeader, (ULONG)&bmh, PDTA_AlphaChannel, (ULONG)alpha, TAG_DONE) < 1 || !bmh) {
+        printf("%s: NO_BITMAPHEADER\n", name);
+        return NULL;
+    }
+    *w = bmh->bmh_Width;
+    *h = bmh->bmh_Height;
+    if (!(px = malloc(*w * *h * 4))
+        || !DoMethod(o, PDTM_READPIXELARRAY, (ULONG)px, PBPAFMT_ARGB, *w * 4, 0, 0, *w, *h)) {
+        printf("%s: READ_FAIL\n", name);
+        free(px);
+        return NULL;
+    }
+    return px;
+}
+
+/* SAMEBYTES: any datatype's raw write of SRC must be SRC, byte for byte */
+static int same_bytes(const char *src, const char *dst)
+{
+    Object *o = NewDTObject((APTR)src, TAG_DONE);
+    BPTR fh, a, b;
+    UBYTE x[4096], y[4096];
+    LONG n, m, at = 0;
+    int rc = 20;
+    if (!o) {
+        printf("%s: NEWDTOBJECT_FAIL ioerr=%ld\n", src, (long)IoErr());
+        return 20;
+    }
+    if (!(fh = Open((STRPTR)dst, MODE_NEWFILE))) {
+        printf("%s: can't open, ioerr=%ld\n", dst, (long)IoErr());
+        DisposeDTObject(o);
+        return 20;
+    }
+    if (!DoMethod(o, DTM_WRITE, NULL, fh, DTWM_RAW, 0UL)) {
+        printf("%s -> %s: WRITE_FAIL ioerr=%ld\n", src, dst, (long)IoErr());
+        Close(fh);
+        DisposeDTObject(o);
+        return 20;
+    }
+    Close(fh);
+    DisposeDTObject(o);
+    if (!(a = Open((STRPTR)src, MODE_OLDFILE)) || !(b = Open((STRPTR)dst, MODE_OLDFILE))) {
+        if (a)
+            Close(a);
+        printf("%s -> %s: can't read them back\n", src, dst);
+        return 20;
+    }
+    for (;;) {
+        n = Read(a, x, sizeof x);
+        m = Read(b, y, sizeof y);
+        if (n != m || (n > 0 && memcmp(x, y, (size_t)n))) {
+            printf("%s -> %s: DIFFERENT from byte %ld\n", src, dst, (long)at);
+            rc = 10;
+            break;
+        }
+        if (n <= 0) {
+            printf("%s -> %s: SAMEBYTES %ld bytes\n", src, dst, (long)at);
+            rc = n < 0 ? 20 : 0;
+            break;
+        }
+        at += n;
+    }
+    Close(a);
+    Close(b);
+    return rc;
+}
+
+static Object *open_picture(const char *name)
+{
+    Object *o = NewDTObject((APTR)name, DTA_GroupID, GID_PICTURE, PDTA_DestMode, PMODE_V43, PDTA_Remap, FALSE, TAG_DONE);
+    if (!o)
+        printf("%s: NEWDTOBJECT_FAIL ioerr=%ld\n", name, (long)IoErr());
+    else
+        DoMethod(o, DTM_PROCLAYOUT, NULL, 1);
+    return o;
+}
+
+int main(int argc, char **argv)
+{
+    const char *src, *dst, *as = NULL;
+    struct TagItem store[] = { { OIA_Compression, 0 }, { TAG_DONE, 0 } };
+    Object *o = NULL, *target = NULL, *back = NULL;
+    UBYTE *a = NULL, *b = NULL;
+    ULONG w = 0, h = 0, al = 0, w2 = 0, h2 = 0, al2 = 0, i, diff = 0, ok;
+    BPTR fh;
+    LONG bytes = 0;
+    int rc = 20, k, st = 0, bytes_mode = 0;
+
+    if (argc < 3) {
+        printf("usage: dtsave SRC DST [AS class] [STORE] | SRC DST SAMEBYTES\n");
+        return 20;
+    }
+    src = argv[1];
+    dst = argv[2];
+    for (k = 3; k < argc; k++) {
+        if (!strcmp(argv[k], "AS") && k + 1 < argc)
+            as = argv[++k];
+        else if (!strcmp(argv[k], "STORE"))
+            st = 1;
+        else if (!strcmp(argv[k], "SAMEBYTES"))
+            bytes_mode = 1;
+    }
+    if (!(DataTypesBase = OpenLibrary((CONST_STRPTR)"datatypes.library", 43)))
+        return 20;
+    if (bytes_mode) {
+        rc = same_bytes(src, dst);
+        CloseLibrary(DataTypesBase);
+        return rc;
+    }
+    if (!(o = open_picture(src)) || !(a = pixels(o, src, &w, &h, &al)))
+        goto out;
+    target = o;
+    if (as) {
+        struct BitMapHeader *bmh = NULL;
+        if (!(target = NewDTObject(NULL, DTA_SourceType, DTST_RAM, DTA_BaseName, (ULONG)as,
+                                   DTA_GroupID, GID_PICTURE, PDTA_DestMode, PMODE_V43, TAG_DONE))) {
+            printf("%s: no empty %s object, ioerr=%ld\n", src, as, (long)IoErr());
+            goto out;
+        }
+        if (GetDTAttrs(target, PDTA_BitMapHeader, (ULONG)&bmh, TAG_DONE) < 1 || !bmh) {
+            printf("%s: the %s object has no BitMapHeader\n", src, as);
+            goto out;
+        }
+        bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)w;
+        bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h;
+        bmh->bmh_Depth = 32;
+        bmh->bmh_Masking = al ? mskHasAlpha : mskNone;
+        SetDTAttrs(target, NULL, NULL, PDTA_SourceMode, PMODE_V43, PDTA_AlphaChannel, al, TAG_DONE);
+        if (!DoMethod(target, PDTM_WRITEPIXELARRAY, (ULONG)a, PBPAFMT_ARGB, w * 4, 0, 0, w, h)) {
+            printf("%s: WRITEPIXELARRAY into %s failed\n", src, as);
+            goto out;
+        }
+    }
+    if (!(fh = Open((STRPTR)dst, MODE_NEWFILE))) {
+        printf("%s: can't open, ioerr=%ld\n", dst, (long)IoErr());
+        goto out;
+    }
+    ok = DoMethod(target, DTM_WRITE, NULL, fh, DTWM_RAW, st ? (ULONG)store : 0UL);
+    if (ok)
+        bytes = Seek(fh, 0, OFFSET_CURRENT);
+    Close(fh);
+    if (!ok) {
+        printf("%s -> %s: WRITE_FAIL ioerr=%ld\n", src, dst, (long)IoErr());
+        goto out;
+    }
+    if (!(back = open_picture(dst)) || !(b = pixels(back, dst, &w2, &h2, &al2)))
+        goto out;
+    if (w2 != w || h2 != h) {
+        printf("%s -> %s: SIZE %lux%lu, not %lux%lu\n", src, dst, (unsigned long)w2, (unsigned long)h2,
+               (unsigned long)w, (unsigned long)h);
+        rc = 10;
+        goto out;
+    }
+    for (i = 0; i < w * h; i++) {
+        int j = (al && al2) ? 0 : 1;   /* compare alpha only when both have it */
+        for (; j < 4; j++)
+            if (a[4 * i + j] != b[4 * i + j])
+                diff++;
+    }
+    printf("%s -> %s: %s %lu x %lu alpha=%d bytes=%ld%s\n", src, dst, diff ? "DIFFERENT" : "SAME",
+           (unsigned long)w, (unsigned long)h, al ? 1 : 0, (long)bytes, al != al2 ? " (alpha lost)" : "");
+    rc = (diff || al != al2) ? 10 : 0;
+out:
+    free(a);
+    free(b);
+    if (back)
+        DisposeDTObject(back);
+    if (target && target != o)
+        DisposeDTObject(target);
+    if (o)
+        DisposeDTObject(o);
+    CloseLibrary(DataTypesBase);
+    return rc;
+}

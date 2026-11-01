@@ -1,0 +1,110 @@
+--- a/src/dsp/lossless_enc.c
++++ b/src/dsp/lossless_enc.c
+@@ -277,7 +277,18 @@
+     return orig_v * (kLog2Table[v] + (log_cnt << LOG_2_PRECISION_BITS)) +
+            correction;
+   } else {
+-    return (uint64_t)(LOG_2_RECIPROCAL_FIXED_DOUBLE * v * log((double)v) + .5);
++    // AmigaOS 3.x datatypes: no floating point, so the encoder runs without
++    // an FPU and without the ROM math libraries. Past the approximation's
++    // range, v * log2(v) is v * (log2 of v's top 8 bits, from the table, plus
++    // the shift) with the same first-order correction: within a fraction of
++    // a bit of log(), and only ever a cost estimate.
++    const uint64_t orig_v = v;
++    const uint64_t log_cnt = BitsLog2Floor(v) - 7;
++    const uint64_t y = (uint64_t)1 << log_cnt;
++    const uint64_t correction = LOG_2_RECIPROCAL_FIXED * (orig_v & (y - 1));
++    v >>= log_cnt;
++    return orig_v * (kLog2Table[v] + (log_cnt << LOG_2_PRECISION_BITS)) +
++           correction;
+   }
+ }
+ 
+@@ -309,7 +320,15 @@
+     }
+     return log_2;
+   } else {
+-    return (uint32_t)(LOG_2_RECIPROCAL_FIXED_DOUBLE * log((double)v) + .5);
++    // No floating point (see FastSLog2Slow_C): the table and the shift, with
++    // the correction the branch above adds for large values.
++    const uint32_t orig_v = v;
++    const uint32_t log_cnt = BitsLog2Floor(v) - 7;
++    const uint32_t y = 1 << log_cnt;
++    const uint64_t correction = LOG_2_RECIPROCAL_FIXED * (orig_v & (y - 1));
++    v >>= log_cnt;
++    return kLog2Table[v] + (log_cnt << LOG_2_PRECISION_BITS) +
++           (uint32_t)DivRound(correction, orig_v);
+   }
+ }
+ 
+--- a/src/enc/histogram_enc.c
++++ b/src/enc/histogram_enc.c
+@@ -591,8 +591,16 @@
+ static int GetBinIdForEntropy(uint64_t min, uint64_t max, uint64_t val) {
+   const uint64_t range = max - min;
+   if (range > 0) {
++    // AmigaOS 3.x datatypes: no floating point. (NUM_PARTITIONS - 1e-6) *
++    // delta / range in integers: NUM_PARTITIONS * delta / range, one less
++    // where that is exact (the 1e-6 keeps val == max in the last bin). Only
++    // the binning heuristic, never the output's correctness.
+     const uint64_t delta = val - min;
+-    return (int)((NUM_PARTITIONS - 1e-6) * delta / range);
++    const uint64_t n = (delta / range) * NUM_PARTITIONS;
++    const uint64_t r = (delta % range) * NUM_PARTITIONS;
++    uint64_t id = n + r / range;
++    if (delta > 0 && r % range == 0 && id > 0) --id;
++    return (int)(id < NUM_PARTITIONS ? id : NUM_PARTITIONS - 1);
+   } else {
+     return 0;
+   }
+--- a/src/enc/vp8l_enc.c
++++ b/src/enc/vp8l_enc.c
+@@ -31,6 +31,21 @@
+ #include "src/webp/format_constants.h"
+ #include "src/webp/types.h"
+ 
++// AmigaOS 3.x datatypes: no floating point, so the encoder runs without an
++// FPU and without the ROM math libraries. The quality, a float from 0 to
++// 100, truncated to an integer from its IEEE single-precision bits.
++static int QualityInt(float quality) {
++  union { float f; uint32_t u; } v;
++  int exponent;
++  uint32_t mantissa;
++  v.f = quality;
++  exponent = (int)((v.u >> 23) & 0xff) - 127;
++  if ((v.u >> 31) || exponent < 0) return 0;      // negative, or below 1
++  if (exponent > 23) return 100;                  // far above 100
++  mantissa = (v.u & 0x7fffff) | 0x800000;
++  return (int)(mantissa >> (23 - exponent));
++}
++
+ // Maximum number of histogram images (sub-blocks).
+ #define MAX_HUFF_IMAGE_SIZE       2600
+ #define MAX_HUFFMAN_BITS (MIN_HUFFMAN_BITS + (1 << NUM_HUFFMAN_BITS) - 1)
+@@ -352,7 +367,7 @@
+                         red_and_blue_always_zero)) {
+       return 0;
+     }
+-    if (method == 6 && config->quality == 100) {
++    if (method == 6 && QualityInt(config->quality) >= 100) {
+       do_no_cache = 1;
+       // Go brute force on all transforms.
+       *crunch_configs_size = 0;
+@@ -392,7 +407,7 @@
+       crunch_configs[0].entropy_idx = min_entropy_ix;
+       crunch_configs[0].palette_sorting_type =
+           use_palette ? kMinimizeDelta : kUnusedPalette;
+-      if (config->quality >= 75 && method == 5) {
++      if (QualityInt(config->quality) >= 75 && method == 5) {
+         // Test with and without color cache.
+         do_no_cache = 1;
+         // If we have a palette, also check in combination with spatial.
+@@ -1521,7 +1536,7 @@
+ #if !defined(WEBP_DISABLE_STATS)
+   WebPAuxStats* const stats = params->stats;
+ #endif
+-  const int quality = (int)config->quality;
++  const int quality = QualityInt(config->quality);
+   const int low_effort = (config->method == 0);
+ #if (WEBP_NEAR_LOSSLESS == 1)
+   const int width = picture->width;

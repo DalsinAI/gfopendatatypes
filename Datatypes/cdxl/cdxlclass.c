@@ -6,6 +6,11 @@
  * graphics cards) shown in 256 colours. The sound, mono or stereo, is
  * handed out with each frame as 8-bit mono.
  *
+ * DTM_WRITE in raw mode (47.2) writes the film as it plays: each frame the
+ * object found, in order, as it is in the file, so an intact film comes out
+ * byte for byte the same. Never onto the file it plays from. IFF mode is
+ * animation.datatype's.
+ *
  * media.cdxl/1 (DalsinAI/openamigaservice docs/MEDIA_CDXL.md) and ToCDXL
  * make CDXL from any film; this plays them, and the CDXL on CDTV and CD32
  * discs.
@@ -36,10 +41,10 @@
 #include "cdxl_core.h"
 
 const char LibName[] = "cdxl.datatype";
-const char LibIdString[] = "cdxl.datatype 47.1 (20.10.2026) AmiCradle Team";
+const char LibIdString[] = "cdxl.datatype 47.2 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.1 (20.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.2 (23.10.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
@@ -318,9 +323,56 @@ out:
     return FALSE;
 }
 
+/* DTM_WRITE, DTWM_RAW: the film's frames, in order, as they are in the file.
+ * 0, or an IoErr() code. */
+static LONG writeFilm(CdxlData *d, BPTR out)
+{
+    struct cdxl_frame f;
+    BPTR a, b;
+    ULONG i;
+    LONG err = 0;
+
+    if (!out)
+        return ERROR_REQUIRED_ARG_MISSING;
+    if (!d->fh || !d->frames)
+        return ERROR_OBJECT_WRONG_TYPE;
+    /* never onto the film it plays from (AmigaDOS's locks stop most of these
+     * already; a handle opened with MODE_READWRITE would not be stopped) */
+    a = DupLockFromFH(out);
+    b = DupLockFromFH(d->fh);
+    if (a && b && SameLock(a, b) == LOCK_SAME)
+        err = ERROR_OBJECT_IN_USE;
+    if (a)
+        UnLock(a);
+    if (b)
+        UnLock(b);
+    for (i = 0; !err && i < d->frames; i++) {
+        UBYTE *frame = readFrame(d, i, &f);
+        if (!frame)
+            err = IoErr() ? IoErr() : ERROR_SEEK_ERROR;
+        else {
+            if (Write(out, frame, f.size) != (LONG)f.size)
+                err = IoErr() ? IoErr() : ERROR_DISK_FULL;
+            FreeVec(frame);
+        }
+    }
+    return err;
+}
+
 ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
 {
     switch (msg->MethodID) {
+    case DTM_WRITE: {
+        struct dtWrite *w = (struct dtWrite *)msg;
+        LONG err;
+        if (w->dtw_Mode != DTWM_RAW)
+            return DoSuperMethodA(cl, o, msg);
+        if ((err = writeFilm(INST_DATA(cl, o), w->dtw_FileHandle))) {
+            SetIoErr(err);
+            return FALSE;
+        }
+        return TRUE;
+    }
     case OM_NEW: {
         Object *obj = (Object *)DoSuperMethodA(cl, o, msg);
         if (obj && !loadFilm(cl, obj)) {

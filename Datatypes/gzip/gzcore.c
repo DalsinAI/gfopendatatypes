@@ -155,3 +155,34 @@ void gz_free(struct gz_state *s)
         zl_InflateEnd(s->zbase, &s->z);
     s->live = 0;
 }
+
+LONG gz_encode(struct Library *zbase, LONG kind, LONG level, const UBYTE *in, ULONG len,
+               LONG (*put)(void *h, const UBYTE *p, ULONG n), void *h, UBYTE *work, ULONG room)
+{
+    struct zl_stream z;
+    LONG rc, err = 0, wb = kind == GZ_ZLIB ? 15 : kind == GZ_RAW ? -15 : 31;
+    ULONG i;
+    UBYTE *zp = (UBYTE *)&z;
+
+    if (level < -1 || level > 9)
+        level = -1;
+    for (i = 0; i < sizeof z; i++)             /* NULL zalloc/zfree: z.library allocates */
+        zp[i] = 0;
+    if ((rc = zl_DeflateInit2(zbase, &z, level, ZL_DEFLATED, wb, 8, ZL_DEFAULT_STRATEGY)) != ZL_OK)
+        return rc == ZL_MEM_ERROR ? SDT_ERR_MEMORY : SDT_ERR_DATA;
+    z.next_in = in;
+    z.avail_in = len;
+    do {
+        z.next_out = work;
+        z.avail_out = room;
+        rc = zl_Deflate(zbase, &z, ZL_FINISH);
+        if (rc != ZL_OK && rc != ZL_STREAM_END && rc != ZL_BUF_ERROR) {
+            err = rc == ZL_MEM_ERROR ? SDT_ERR_MEMORY : SDT_ERR_DATA;
+            break;
+        }
+        if (room - z.avail_out && (err = put(h, work, room - z.avail_out)) != 0)
+            break;
+    } while (rc != ZL_STREAM_END);
+    zl_DeflateEnd(zbase, &z);
+    return err;
+}

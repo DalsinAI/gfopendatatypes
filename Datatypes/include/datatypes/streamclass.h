@@ -36,7 +36,11 @@
  * DoMethod() and DoDTMethod() both deliver it as written (pass NULL).
  *
  * DTM_WRITE with DTWM_RAW writes the plain bytes to dtw_FileHandle, so a
- * viewer can save a .gz file decoded. DTWM_IFF is refused.
+ * viewer can save a .gz file decoded. With SDTA_WriteCoded TRUE in its
+ * dtw_AttrList it writes them coded again, in the format they came in,
+ * where the subclass can (gzip.datatype: gzip, zlib or raw deflate, at
+ * OIA_Compression's level when given); a subclass that can't refuses
+ * (brotli.datatype). DTWM_IFF is refused.
  *
  * The group, GID_DATA, is new: our own datatypes library accepts it by
  * design; that AmigaOS 3.2's datatypes.library accepts a group it does not
@@ -104,6 +108,12 @@
 #define SDTW_GZIP    1
 #define SDTW_ZLIB    2
 #define SDTW_RAW     3
+
+/* (BOOL, in DTM_WRITE's dtw_AttrList) TRUE: write the bytes coded again in
+ * the format they came in, rather than plain. Only a whole-buffer object
+ * can: a streaming one has handed its bytes out. Refused with
+ * ERROR_NOT_IMPLEMENTED by a subclass that has no encoder. Default FALSE. */
+#define SDTA_WriteCoded    (SDTA_StreamDummy + 9)
 
 #define SDTM_INPUT   (TAG_USER + 0x0DA15805)
 struct sdtInputMsg {

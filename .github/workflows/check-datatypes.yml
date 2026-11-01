@@ -5,8 +5,11 @@
 # webm.datatype's picture sizes against crafted headers
 # (Datatypes/tests/test-webm.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
-# (Datatypes/tests/test-stream.sh), and gfopenpng.datatype's PNG writer
-# (Datatypes/tests/test-pngenc.sh); and the datatypes' RomTag versions
+# (Datatypes/tests/test-stream.sh), and the writers: gfopenpng.datatype's
+# (Datatypes/tests/test-pngenc.sh), gfopentga's (test-tgaenc.sh), webp's
+# lossless one with libwebp patched as for the Amiga (test-webpenc.sh) and
+# gzip's (test-gzenc.sh), each read back by our decoders and by Pillow or
+# Python's zlib; and the datatypes' RomTag versions
 # (Datatypes/tests/test-romtag.py); and webm.datatype's reader through its
 # read cache (Datatypes/tests/test-webm-read.sh).
 # GFOpenDatatypes' cores (datatypes.library and its eight class datatypes) under
@@ -46,6 +49,12 @@ jobs:
         run: sh Datatypes/tests/test-webm-read.sh
       - name: gfopenpng.datatype's PNG writer
         run: sh Datatypes/tests/test-pngenc.sh
+      - name: gfopentga.datatype's TGA writer
+        run: sh Datatypes/tests/test-tgaenc.sh
+      - name: webp.datatype's lossless WebP writer
+        run: sh Datatypes/tests/test-webpenc.sh
+      - name: gzip.datatype's gzip writer
+        run: sh Datatypes/tests/test-gzenc.sh
       - name: the datatypes' RomTags carry their version
         run: python3 Datatypes/tests/test-romtag.py
       - name: bitplanes to pixels (common/include/odt_planar.h)

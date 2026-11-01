@@ -29,6 +29,13 @@
  * are tried in: a core, then the service, then this CPU.) */
 #define OIA_Rung       (OIA_Dummy + 3)
 
+/* (LONG, in DTM_WRITE's dtw_AttrList) How much a raw write compresses: 0
+ * stores (gfopentga.datatype: no run-length encoding; gfopenpng.datatype:
+ * deflate level 0), 1 to 9 a deflate level where the format has one, -1 or
+ * no tag the datatype's default. A datatype whose format has no choice
+ * ignores it. */
+#define OIA_Compression (OIA_Dummy + 4)
+
 /* ---- gfopenpng.datatype: PNG out --------------------------------------------- */
 
 /* Encodes 32-bit ARGB pixels to a PNG file in memory (canvas toDataURL and

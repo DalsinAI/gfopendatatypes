@@ -7,6 +7,12 @@
  * (bmh_Depth 32), as gfopenpng.datatype's do, so a program reading them back
  * as ARGB gets them as they were decoded, alpha included.
  *
+ * DTM_WRITE in raw mode writes the picture as a TGA (tgaencode.c): 32 bits
+ * with alpha when it has any, else 24, run-length encoded unless
+ * OIA_Compression is 0 in dtw_AttrList (include/datatypes/gfopenimage.h).
+ * IFF mode is picture.datatype's ILBM. An object made with no source
+ * (DTST_RAM) is a picture to write into and save: a converter's target.
+ *
  * A read or write of the pixels with no pixel array (pbpa_PixelData NULL)
  * is refused here rather than passed on, as in gfopenpng.datatype: that is
  * what PDTM_READPIXELARRAY sent with DoDTMethodA() instead of DoMethodA()
@@ -35,12 +41,15 @@
 
 #include "dtlib.h"
 #include "tgadecode.h"
+#include "tgaencode.h"
+#include <datatypes/gfopenimage.h>
+#include <proto/utility.h>
 
 const char LibName[] = "gfopentga.datatype";
-const char LibIdString[] = "gfopentga.datatype 47.1 (12.10.2026) AmiCradle Team";
+const char LibIdString[] = "gfopentga.datatype 47.2 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.1 (12.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.2 (23.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -116,11 +125,74 @@ static BOOL loadTGA(Class *cl, Object *o)
     return ok;
 }
 
+static void *e_alloc(struct tgae_env *e, ULONG n)
+{
+    (void)e;
+    return big_alloc(n);
+}
+
+static void e_free(struct tgae_env *e, void *p)
+{
+    (void)e;
+    FreeVec(p);
+}
+
+/* DTM_WRITE, DTWM_RAW: the picture as a TGA. 0, or an IoErr() code. */
+static LONG writeTGA(Class *cl, Object *o, struct dtWrite *w)
+{
+    struct BitMapHeader *bmh = NULL;
+    struct tgae_env env;
+    ULONG alpha = TRUE, width, height, size = 0, flags = 0;
+    UBYTE *px, *tga = NULL;
+    LONG err;
+
+    if (!w->dtw_FileHandle)
+        return ERROR_REQUIRED_ARG_MISSING;
+    if (GetDTAttrs(o, PDTA_BitMapHeader, (ULONG)&bmh, TAG_DONE) < 1 || !bmh
+        || !bmh->bmh_Width || !bmh->bmh_Height)
+        return ERROR_OBJECT_WRONG_TYPE;
+    width = bmh->bmh_Width;
+    height = bmh->bmh_Height;
+    if (GetDTAttrs(o, PDTA_AlphaChannel, (ULONG)&alpha, TAG_DONE) == 1 && !alpha)
+        flags |= TGAE_OPAQUE;             /* a picture without alpha is written as 24 bits */
+    if ((LONG)GetTagData(OIA_Compression, (ULONG)-1, w->dtw_AttrList) == 0)
+        flags |= TGAE_RAW;
+    if (!(px = big_alloc(width * height * 4)))
+        return ERROR_NO_FREE_STORE;
+    if (!DoSuperMethod(cl, o, PDTM_READPIXELARRAY, (ULONG)px, PBPAFMT_ARGB, width * 4, 0, 0, width, height)) {
+        FreeVec(px);
+        return ERROR_OBJECT_WRONG_TYPE;
+    }
+    env.alloc = e_alloc;
+    env.free = e_free;
+    err = tga_encode(&env, px, width, height, width * 4, flags, &tga, &size);
+    FreeVec(px);
+    if (!err) {
+        if (Write(w->dtw_FileHandle, tga, size) != (LONG)size)
+            err = IoErr() ? IoErr() : ERROR_DISK_FULL;
+        FreeVec(tga);
+    }
+    return err;
+}
+
 ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
 {
     switch (msg->MethodID) {
+    case DTM_WRITE: {
+        struct dtWrite *w = (struct dtWrite *)msg;
+        LONG err;
+        if (w->dtw_Mode != DTWM_RAW)
+            return DoSuperMethodA(cl, o, msg);   /* IFF: picture.datatype's ILBM */
+        if ((err = writeTGA(cl, o, w))) {
+            SetIoErr(err);
+            return FALSE;
+        }
+        return TRUE;
+    }
     case OM_NEW: {
         Object *obj = (Object *)DoSuperMethodA(cl, o, msg);
+        if (obj && GetTagData(DTA_SourceType, DTST_FILE, ((struct opSet *)msg)->ops_AttrList) == DTST_RAM)
+            return (ULONG)obj;         /* no source: a picture to write into, and save */
         if (obj && !loadTGA(cl, obj)) {
             LONG err = IoErr();
             CoerceMethod(cl, obj, OM_DISPOSE);

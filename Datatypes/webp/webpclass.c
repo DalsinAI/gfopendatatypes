@@ -3,6 +3,14 @@
  * mode) subclass built on libwebp. Lossy, lossless and alpha pictures load
  * as 32-bit ARGB; an animated WebP shows its first frame.
  *
+ * DTM_WRITE in raw mode (47.2) writes the picture as a lossless WebP
+ * (webpencode.c, libwebp's own lossless encoder), so a picture saved and
+ * opened again is the same, pixel for pixel. OIA_Compression in
+ * dtw_AttrList (datatypes/gfopenimage.h) sets the effort: 0 the fastest, 9
+ * the smallest file, -1 or none a middle one. IFF mode is picture.datatype's
+ * ILBM. An object made with no source (DTST_RAM) is a picture to write into
+ * and save: a converter's target.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team. libwebp is Google's, under its
  * BSD licence (upstream/libwebp/COPYING).
  */
@@ -16,17 +24,21 @@
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <proto/datatypes.h>
+#include <proto/utility.h>
 #include <clib/alib_protos.h>
+#include <datatypes/gfopenimage.h>
 
 #include "dtlib.h"
 #include "webp/decode.h"
 #include "webp/demux.h"
+#include "webpencode.h"
+#include "dsp/lossless.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.1 (4.10.2026) AmiCradle Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.2 (23.10.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.1 (4.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.2 (23.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -37,6 +49,7 @@ BOOL dt_init(void)
     /* libwebp picks its DSP functions on first use; doing it here, while
        the library loads, keeps that out of concurrent decodes. */
     WebPDecoderConfig config;
+    VP8LEncDspInit();                  /* and the lossless encoder's, for DTM_WRITE */
     return WebPInitDecoderConfig(&config) ? TRUE : FALSE;
 }
 
@@ -120,11 +133,65 @@ static BOOL loadWebP(Class *cl, Object *o)
     return ok;
 }
 
+static LONG put_fh(void *h, const UBYTE *p, ULONG n)
+{
+    if (Write((BPTR)h, (APTR)p, n) != (LONG)n)
+        return IoErr() ? IoErr() : ERROR_DISK_FULL;
+    return 0;
+}
+
+/* DTM_WRITE, DTWM_RAW: the picture as a lossless WebP. 0, or an IoErr() code. */
+static LONG writeWebP(Class *cl, Object *o, struct dtWrite *w)
+{
+    struct BitMapHeader *bmh = NULL;
+    ULONG width, height, *px;
+    LONG err;
+
+    if (!w->dtw_FileHandle)
+        return ERROR_REQUIRED_ARG_MISSING;
+    if (GetDTAttrs(o, PDTA_BitMapHeader, (ULONG)&bmh, TAG_DONE) < 1 || !bmh
+        || !bmh->bmh_Width || !bmh->bmh_Height)
+        return ERROR_OBJECT_WRONG_TYPE;
+    width = bmh->bmh_Width;
+    height = bmh->bmh_Height;
+    if (!(px = AllocVec(width * height * 4, MEMF_FAST)) && !(px = AllocVec(width * height * 4, MEMF_ANY)))
+        return ERROR_NO_FREE_STORE;
+    if (!DoSuperMethod(cl, o, PDTM_READPIXELARRAY, (ULONG)px, PBPAFMT_ARGB, width * 4, 0, 0, width, height)) {
+        FreeVec(px);
+        return ERROR_OBJECT_WRONG_TYPE;
+    }
+    {
+        ULONG alpha = TRUE;            /* a picture without alpha: every pixel opaque */
+        if (GetDTAttrs(o, PDTA_AlphaChannel, (ULONG)&alpha, TAG_DONE) == 1 && !alpha) {
+            ULONG i;
+            for (i = 0; i < width * height; i++)
+                px[i] |= 0xFF000000UL;
+        }
+    }
+    err = webp_encode_lossless(px, width, height, width, (LONG)GetTagData(OIA_Compression, (ULONG)-1, w->dtw_AttrList),
+                               put_fh, (void *)w->dtw_FileHandle);
+    FreeVec(px);
+    return err;
+}
+
 ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
 {
     switch (msg->MethodID) {
+    case DTM_WRITE: {
+        struct dtWrite *w = (struct dtWrite *)msg;
+        LONG err;
+        if (w->dtw_Mode != DTWM_RAW)
+            return DoSuperMethodA(cl, o, msg);   /* IFF: picture.datatype's ILBM */
+        if ((err = writeWebP(cl, o, w))) {
+            SetIoErr(err);
+            return FALSE;
+        }
+        return TRUE;
+    }
     case OM_NEW: {
         Object *obj = (Object *)DoSuperMethodA(cl, o, msg);
+        if (obj && GetTagData(DTA_SourceType, DTST_FILE, ((struct opSet *)msg)->ops_AttrList) == DTST_RAM)
+            return (ULONG)obj;         /* no source: a picture to write into, and save */
         if (obj && !loadWebP(cl, obj)) {
             LONG err = IoErr();
             CoerceMethod(cl, obj, OM_DISPOSE);

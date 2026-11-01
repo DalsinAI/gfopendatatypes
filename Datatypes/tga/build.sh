@@ -21,12 +21,12 @@ SOFT="-specs=$HERE/../build/m68k-soft-m68040.specs"
 CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer -fno-delete-null-pointer-checks -DNDEBUG -Wall -Wno-pointer-sign"
 rm -rf "$WORK"
 mkdir -p "$WORK" "$OUT/Classes/DataTypes" "$OUT/Devs/DataTypes"
-for f in common/dtstart.c common/dtlib.c tga/tgadecode.c tga/tgaclass.c; do
-    (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/tga" -c "$f" -o "$WORK/$(basename "$f" .c).o")
+for f in common/dtstart.c common/dtlib.c tga/tgadecode.c tga/tgaencode.c tga/tgaclass.c; do
+    (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/include" -I"$HERE/tga" -c "$f" -o "$WORK/$(basename "$f" .c).o")
 done
 # dtstart.o first, so the library's first code is a safe return.
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopentga.datatype" \
-    "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/tgadecode.o" "$WORK/tgaclass.o" -lamiga \
+    "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/tgadecode.o" "$WORK/tgaencode.o" "$WORK/tgaclass.o" -lamiga \
     -Wl,-Map="$WORK/gfopentga.datatype.map"
 echo "gfopentga.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopentga.datatype") bytes"
 # A TGA file starts with no signature (its first bytes are lengths and

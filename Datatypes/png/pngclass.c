@@ -18,7 +18,8 @@
  * PNG out (47.4): OIM_ENCODEPNG (datatypes/gfopenimage.h) encodes ARGB pixels,
  * the program's or the object's own, to a PNG file in memory, and DTM_WRITE
  * with DTWM_RAW writes the picture as PNG to a file (pngencode.c, deflate
- * by z.library, opened for each call). An object made with no source
+ * by z.library, opened for each call); OIA_Compression in its dtw_AttrList
+ * (47.5) sets the deflate level, 0 to store. An object made with no source
  * (DTST_RAM) loads nothing, so a program can make one just to encode with.
  *
  * DEVS:DataTypes/GFOpenPNG (build.sh) matches the PNG signature and the IHDR
@@ -49,10 +50,10 @@
 #include "zlibrary.h"
 
 const char LibName[] = "gfopenpng.datatype";
-const char LibIdString[] = "gfopenpng.datatype 47.4 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "gfopenpng.datatype 47.5 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 4;
-static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.4 (23.10.2026)";
+const UWORD LibRevision = 5;
+static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.5 (23.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -219,7 +220,7 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         m.oiep_Pixels = NULL;
         m.oiep_Width = m.oiep_Height = m.oiep_Stride = 0;
         m.oiep_Flags = 0;
-        m.oiep_Level = -1;
+        m.oiep_Level = (LONG)GetTagData(OIA_Compression, (ULONG)-1, w->dtw_AttrList);
         {
             ULONG alpha = TRUE;        /* a picture without alpha is written as RGB */
             if (GetDTAttrs(o, PDTA_AlphaChannel, (ULONG)&alpha, TAG_DONE) == 1 && !alpha)

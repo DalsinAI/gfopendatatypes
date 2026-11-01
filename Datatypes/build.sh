@@ -83,10 +83,11 @@ compile() {
 # --- webp.datatype ------------------------------------------------------------
 unpack libwebp libwebp-1.6.0.tar.gz e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 W="$WORK/libwebp/libwebp-1.6.0"
-# No floating point in the decoder (see the patch), and no null read in
-# the demuxer's chunk iterator (see the patch).
+# No floating point in the decoder or the lossless encoder (see the
+# patches), and no null read in the demuxer's chunk iterator (see the patch).
 (cd "$W" && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-no-float.patch" \
-    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-demux-null-chunk.patch")
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-demux-null-chunk.patch" \
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch")
 # The decoder, the demuxer (animated and extended files) and the shared code.
 # The SSE, NEON and MIPS files compile to nothing on 68k and are left out.
 XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \
@@ -97,13 +98,25 @@ XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \
     src/dsp/lossless.c src/dsp/rescaler.c src/dsp/upsampling.c src/dsp/yuv.c \
     src/utils/bit_reader_utils.c src/utils/color_cache_utils.c src/utils/filters_utils.c \
     src/utils/huffman_utils.c src/utils/palette.c src/utils/quant_levels_dec_utils.c \
-    src/utils/random_utils.c src/utils/rescaler_utils.c src/utils/thread_utils.c src/utils/utils.c
+    src/utils/random_utils.c src/utils/rescaler_utils.c src/utils/thread_utils.c src/utils/utils.c \
+    src/enc/vp8l_enc.c src/enc/histogram_enc.c src/enc/backward_references_enc.c \
+    src/enc/backward_references_cost_enc.c src/enc/predictor_enc.c src/enc/near_lossless_enc.c \
+    src/dsp/lossless_enc.c src/utils/bit_writer_utils.c src/utils/huffman_encode_utils.c
+# The lossless encoder above, for DTM_WRITE (webp/webpencode.c, which has the
+# three picture calls it needs: libwebp's picture files would bring the lossy
+# encoder). No floating point in any of it: the link map is checked below.
 # dtstart.c is linked first, so the library's first code is a safe return.
-XFLAGS="-I$HERE/common -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" common/dtstart.c common/dtlib.c webp/webpclass.c
+XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/webp.datatype" \
-    "$WORK"/obj-webp/common_dtstart.o "$WORK"/obj-webp/common_dtlib.o "$WORK"/obj-webp/webp_webpclass.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
+    "$WORK"/obj-webp/common_dtstart.o "$WORK"/obj-webp/common_dtlib.o "$WORK"/obj-webp/webp_webpclass.o \
+    "$WORK"/obj-webp/webp_webpencode.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/webp.datatype.map"
 echo "webp.datatype: $(wc -c < "$OUT/Classes/DataTypes/webp.datatype") bytes"
+# No soft-float helpers and no maths library linked in: they would open the ROM
+# math libraries in the calling program's task (openmodule/DESIGN.md, section 2).
+fp=$(grep -oE '\b(___?((add|sub|mul|div|neg|cmp|eq|ne|lt|le|gt|ge|unord)[sdx]f[23]|(fix|fixuns)[sdx]f[sd]i|float(un)?[sd]i[sdx]f|extendsfdf2|truncdfsf2)|__?(log|exp|pow|sqrt))\b' \
+    "$WORK/webp.datatype.map" | sort -u | tr '\n' ' ')
+[ -z "$fp" ] || { echo "webp.datatype: floating point linked in: $fp" >&2; exit 1; }
 # RIFF, any length, WEBP.
 python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/WebP" WebP webp pict webp "#?" \
     '$VER: WebP 47.1 (4.10.2026)' "'R'" "'I'" "'F'" "'F'" ANY ANY ANY ANY "'W'" "'E'" "'B'" "'P'"

@@ -46,4 +46,12 @@ void gz_free(struct gz_state *s);
 /* "gzip", "zlib", "deflate", or NULL until known. */
 const char *gz_format(const struct gz_state *s);
 
+/* The other way, for DTM_WRITE with SDTA_WriteCoded: len bytes deflated by
+ * z.library in the wrapper given (GZ_GZIP, GZ_ZLIB or GZ_RAW) at level (-1
+ * the default, 0 stored, 1 to 9), handed to put() a piece at a time through
+ * work (room bytes; 4 KB or more is plenty). 0, an SDT_ERR_ code, or what
+ * put() returned when it was not 0. */
+LONG gz_encode(struct Library *zbase, LONG kind, LONG level, const UBYTE *in, ULONG len,
+               LONG (*put)(void *h, const UBYTE *p, ULONG n), void *h, UBYTE *work, ULONG room);
+
 #endif

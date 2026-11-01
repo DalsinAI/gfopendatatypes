@@ -28,10 +28,10 @@
 #include "sdtcore.h"
 
 const char LibName[] = "stream.datatype";
-const char LibIdString[] = "stream.datatype 47.1 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "stream.datatype 47.2 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: stream.datatype 47.1 (23.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: stream.datatype 47.2 (23.10.2026)";
 
 const char dt_superclass[] = "datatypesclass";
 const UWORD dt_superversion = 0;
@@ -344,7 +344,8 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         return TRUE;
     case DTM_WRITE: {
         struct dtWrite *w = (struct dtWrite *)msg;
-        if (w->dtw_Mode != DTWM_RAW || !w->dtw_FileHandle) {
+        /* coded output is the subclass's (gzip.datatype); arriving here, there is no encoder */
+        if (w->dtw_Mode != DTWM_RAW || !w->dtw_FileHandle || GetTagData(SDTA_WriteCoded, FALSE, w->dtw_AttrList)) {
             SetIoErr(ERROR_NOT_IMPLEMENTED);
             return FALSE;
         }
