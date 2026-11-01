@@ -1325,23 +1325,41 @@ def expect_nclass(data, ops, truth):
     def can_remap():
         return st["remap"] and st["screen"] and ncol and remap_ok and depth <= 8
 
-    def load(f):
+    kept = []                           # each slot's remapped bitmap, kept from frame to frame
+
+    def load(f, i):
         # first ask with ADTM_LOADNEWFORMATFRAME (anim knows it)
         out.append("allocbm %d %d %d" % (w, h, depth))
         out.append("load 7 %d dur %d -> 1" % (f, duration(info, f)))
         st["newformat"] = 1
         s = dict(frame=f, dur=duration(info, f), remapped=False)
+        while len(kept) <= i:
+            kept.append(False)
         if can_remap():
             st["pens"] = True
-            out.append("allocbm %d %d 4" % (w, h))
+            # the slot's bitmap from an earlier frame is drawn over, after a WaitBlit
+            out.append("waitblit" if kept[i] else "allocbm %d %d 4" % (w, h))
+            kept[i] = True
             s["remapped"] = True
+        elif kept[i]:
+            out.append("freebm")
+            kept[i] = False
         return s
 
     def unload(s):
         out.append("freebm")
         out.append("unload 8 %d" % s["frame"])
-        if s["remapped"]:
-            out.append("freebm")
+
+    def flush():
+        # every frame back to anim, and each slot's remapped bitmap freed
+        for i in range(max(len(st["slots"]), len(kept))):
+            sl = st["slots"][i] if i < len(st["slots"]) else None
+            if sl is not None:
+                unload(sl)
+                st["slots"][i] = None
+            if i < len(kept) and kept[i]:
+                out.append("freebm")
+                kept[i] = False
 
     def cache(frame):
         k = window()
@@ -1361,11 +1379,13 @@ def expect_nclass(data, ops, truth):
                 f -= n
             s = next((s for s in st["slots"] if s is not None and s["frame"] == f), None)
             if s is None:
-                s = load(f)
                 if None in st["slots"]:
-                    st["slots"][st["slots"].index(None)] = s
+                    j = st["slots"].index(None)
                 else:
-                    st["slots"].append(s)
+                    j = len(st["slots"])
+                    st["slots"].append(None)
+                s = load(f, j)
+                st["slots"][j] = s
             if i == 0:
                 shown = s
         return shown
@@ -1497,10 +1517,7 @@ def expect_nclass(data, ops, truth):
                     for i in range(ncol):
                         out.append("releasepen %d" % table[i])
                     st["pens"] = False
-                for i, sl in enumerate(st["slots"]):
-                    if sl is not None:
-                        unload(sl)
-                        st["slots"][i] = None
+                flush()
             st["remap"] = False
             out.append("noremap -> 0")
         elif op == "nopanel":
@@ -1554,9 +1571,7 @@ def expect_nclass(data, ops, truth):
     if player[0]:
         out.append("playerstop")
     sound_off()
-    for s in st["slots"]:
-        if s is not None:
-            unload(s)
+    flush()
     if st["pens"]:
         for i in range(ncol):
             out.append("releasepen %d" % table[i])
@@ -1713,6 +1728,8 @@ def main():
         planes = bytes(rnd.getrandbits(8) for _ in range(bpr_of(w) * sd * h))
         cmd("AREMAP %d %d %d %d %s %s" % (w, h, sd, dd, table.hex(), planes.hex()),
             [remap(w, h, sd, dd, table, planes)])
+    # the remap against the one it replaced, on bitmaps the test makes
+    cmd("AREMAPCMP 2026 3000", ["aremapcmp 3000 cases, 0 differ from the old remap"])
     for _ in range(10):
         l, t, w, h, ys, fr = (rnd.randint(0, 30), rnd.randint(0, 30), rnd.randint(0, 200), rnd.randint(0, 40),
                               rnd.choice([6, 8, 11]), rnd.randint(0, 40))
