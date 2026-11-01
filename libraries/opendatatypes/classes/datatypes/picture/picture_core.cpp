@@ -46,7 +46,14 @@ void copy(void *to, const void *from, u32 n)
 {
     u8 *d = static_cast<u8 *>(to);
     const u8 *s = static_cast<const u8 *>(from);
-    for (u32 i = 0; i < n; i++)
+    u32 i = 0;
+    if (!((reinterpret_cast<u32>(d) | reinterpret_cast<u32>(s)) & 3)) {
+        /* both on a long: four bytes at a time */
+        using u32a = u32 __attribute__((__may_alias__));
+        for (; i + 4 <= n; i += 4)
+            *reinterpret_cast<u32a *>(d + i) = *reinterpret_cast<const u32a *>(s + i);
+    }
+    for (; i < n; i++)
         d[i] = s[i];
 }
 
@@ -259,16 +266,20 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     /* sizes of a BitMap (16 bits each), so dw * dh fits; 4 bytes a pixel
      * of a true colour picture checked before they are multiplied */
     u32 n = dw <= 0xffffUL && dh <= 0xffffUL ? dw * dh : 0;
-    u8 *buf = n && (!truecolour || n <= 0x3fffffffUL)
-                  ? static_cast<u8 *>(env->alloc(env, truecolour ? n * 4 : n)) : nullptr;
-    if (!buf || !x->alloc_bitmap) {
+    bool fits = n && (!truecolour || n <= 0x3fffffffUL);
+    /* ARGB pixels shown at their own size are written as they are: no copy */
+    bool direct = truecolour && p->store == PIC_STORE_ARGB && dw == sw && dh == sh;
+    u8 *buf = fits && !direct ? static_cast<u8 *>(env->alloc(env, truecolour ? n * 4 : n)) : nullptr;
+    if (!fits || (!buf && !direct) || !x->alloc_bitmap) {
         env->free(env, buf);
         set_err(env, DTC_ERROR_NO_FREE_STORE);
         return false;
     }
     u8 *cube = nullptr;
     u32 L = 0;
-    if (truecolour) {
+    if (direct) {
+        /* p->pixels go to write_argb below */
+    } else if (truecolour) {
         u8 *d = buf;
         for (u32 y = 0; y < dh; y++) {
             u32 row = (y * sh / dh) * sw;
@@ -365,7 +376,7 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     }
     if (truecolour) {
         if (x->write_argb)
-            x->write_argb(env, p->destbm, buf, dw, dh, dw * 4);
+            x->write_argb(env, p->destbm, direct ? p->pixels : buf, dw, dh, dw * 4);
         p->flags |= PIC_F_DESTARGB;
     } else if (x->write_lut8) {
         x->write_lut8(env, p->destbm, buf, dw, dh, dw);
@@ -568,8 +579,15 @@ u32 write_pixels(env_t *env, pic_inst *p, pic_pdtBlitPixelArray *m)
     u32 w = min<u32>(m->pbpa_Width, p->pw - l), h = min<u32>(m->pbpa_Height, p->ph - t);
     const u8 *src = static_cast<const u8 *>(m->pbpa_PixelData);
     u32 bpp = fmt == PIC_PBPAFMT_RGB ? 3 : fmt <= PIC_PBPAFMT_ARGB ? 4 : 1;
+    bool same = (p->store == PIC_STORE_ARGB && fmt == PIC_PBPAFMT_ARGB) ||
+                (p->store == PIC_STORE_LUT8 && (fmt == PIC_PBPAFMT_LUT8 || fmt == PIC_PBPAFMT_GREY8));
     for (u32 y = 0; y < h; y++) {
         const u8 *s = src + y * m->pbpa_PixelArrayMod;
+        if (same) {
+            /* the store's own format: the row as it is */
+            copy(p->pixels + ((t + y) * p->pw + l) * bpp, s, w * bpp);
+            continue;
+        }
         for (u32 x = 0; x < w; x++, s += bpp) {
             u32 i = (t + y) * p->pw + l + x;
             u8 a = 0xff, r, g, b;
