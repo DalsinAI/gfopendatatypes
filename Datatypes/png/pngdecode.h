@@ -1,5 +1,5 @@
 /*
- * openpng.datatype's decoder: PNG pictures read on the Amiga itself, written
+ * gfopenpng.datatype's decoder: PNG pictures read on the Amiga itself, written
  * from the PNG specification (ISO/IEC 15948, W3C PNG 3rd edition) and RFC
  * 1950/1951 (zlib's wrapper and inflate). No other library.
  *
@@ -9,7 +9,7 @@
  * or RGB colour) and Adam7 interlacing. The picture comes out as 0xAARRGGBB
  * words, one row after the other; 16-bit samples are taken to 8.
  *
- * Built to run as a job on another core later (openmulticore.library, the
+ * Built to run as a job on another core later (gfopenmulticore.library, the
  * cores board): png_decode() makes no OS calls, writes no static data and
  * touches only the memory it is handed, which the caller allocates from the
  * sizes png_head() works out.

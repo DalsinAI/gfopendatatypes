@@ -1,9 +1,9 @@
-# openmodule.datatype: design
+# gfopenmodule.datatype: design
 
 8 October 2026. Music modules (ProTracker MOD and its relatives, MED and
 OctaMED, Oktalyzer, DigiBooster, FastTracker 2, Scream Tracker 3, Impulse
 Tracker and the rest libxmp reads) played on the Amiga itself, through any
-datatypes program: OpenPlay, MultiView, a game's sound loader.
+datatypes program: GFOpenPlay, MultiView, a game's sound loader.
 
 ## 1. What AmigaOS 3.2 offers
 
@@ -28,15 +28,15 @@ NDK 3.2 autodoc (`sound_dtc.doc`) gives two ways to play something long:
    method, to start, stop playback, etc. but may not support any other
    methods which rely upon the entire sample to reside in memory."
 
-Decoding a whole module into one PCM sample (as `opensound.datatype` does
+Decoding a whole module into one PCM sample (as `gfopensound.datatype` does
 with what the Cradle sends back) costs a long wait before the first note
 and the whole song in RAM: three minutes at 28 kHz in 8-bit stereo is
 about 10 MB, more than most Amigas have.
 
 ## 2. The choice: a streaming subclass with its own player
 
-openmodule.datatype is the second kind. Each object has a **player
-process** of its own (`openmodule player`, priority 2, 64 KB of stack):
+gfopenmodule.datatype is the second kind. Each object has a **player
+process** of its own (`gfopenmodule player`, priority 2, 64 KB of stack):
 
 - At `OM_NEW` the datatype reads the file into memory and starts the
   process, which loads the module with libxmp
@@ -47,7 +47,7 @@ process** of its own (`openmodule player`, priority 2, 64 KB of stack):
   goes: AHI when it is installed, else Paula (section 3).
 - **AHI** (the Team, 8 October 2026: "all mods should open AHI"): the
   player opens `ahi.device` unit 0, the unit AHI prefs sets up for music
-  (on AmigaChrome, ACAHI's Host mix mode), once for the object's life, and
+  (on AmiCradle, ACAHI's Host mix mode), once for the object's life, and
   mixes 16-bit stereo at that unit's own rate (its `AHIU` chunk in
   `ENV:Sys/ahi.prefs`, 44100 Hz here), so AHI does not resample. On
   `STM_PLAY` it sends two `CMD_WRITE` requests of half a second, the
@@ -64,7 +64,7 @@ process** of its own (`openmodule player`, priority 2, 64 KB of stack):
   3.2 with AHI 6.6: a third request linked to one still waiting (not yet
   playing) was never played, so it stays at two of half a second (a
   second queued).
-- Paula, without AHI (or with `ENV:OpenImage/ModuleOutput` set to
+- Paula, without AHI (or with `ENV:GFOpenImage/ModuleOutput` set to
   `paula`): on `STM_PLAY` it allocates one left and one right Paula channel
   (audio.device, allocation map 3, 5, 10, 12), mixes four buffers of an
   eighth of a second each (`xmp_play_buffer`, 8-bit stereo), splits each
@@ -92,7 +92,7 @@ process** of its own (`openmodule player`, priority 2, 64 KB of stack):
   channels are freed, the song rewinds and `SDTA_SignalTask` is
   signalled.
 - `SDTA_SampleLength` and `SDTA_SamplesPerSec` give the song's length in
-  sample frames at the mixing rate (libxmp's scan of the song), so OpenPlay
+  sample frames at the mixing rate (libxmp's scan of the song), so GFOpenPlay
   shows the duration. `SDTA_Sample` stays NULL. `DTA_ObjName` is the
   module's title (the file name when it has none) and `DTA_ObjAnnotation`
   the kind libxmp names ("Protracker M.K.", "OctaMED 3.00 MMD0").
@@ -113,9 +113,9 @@ altogether for that reason).
 ## 3. 16-bit through AHI, 8-bit through Paula
 
 With AHI, libxmp mixes 16-bit stereo (`AHIST_S16S`) and the sound keeps
-its depth: on AmigaChrome ACAHI takes it to the host as it is. Without AHI,
+its depth: on AmiCradle ACAHI takes it to the host as it is. Without AHI,
 sound.datatype 47 has no 16-bit playback either (`SDTA_BitsPerSample`
-converts to 8-bit), so openmodule plays through audio.device itself and
+converts to 8-bit), so gfopenmodule plays through audio.device itself and
 Paula plays 8-bit samples: libxmp mixes in 32 bits and clips once to 8
 bits (`XMP_FORMAT_8BIT`), better than mixing to 16 and dropping the low
 byte later, and Paula's 6-bit volume scales it for free. The status line
@@ -125,11 +125,11 @@ says which ("..., through AHI" or "..., through Paula (no AHI)").
 
 | Setting | Default | Read from |
 | --- | --- | --- |
-| Where it plays | AHI unit 0 when installed, else Paula | `ENV:OpenImage/ModuleOutput`: `paula` |
+| Where it plays | AHI unit 0 when installed, else Paula | `ENV:GFOpenImage/ModuleOutput`: `paula` |
 | Mixing rate, AHI | AHI unit 0's rate (44100 Hz here); 48000 Hz asked of media.decode/1 | `ENV:Sys/ahi.prefs` |
-| Mixing rate, Paula | 28000 Hz on a 68040 or 68060; 16000 Hz on a 68020 or 68030 | `ENV:OpenImage/SoundRate` (shared with opensound.datatype) |
-| Interpolation | linear on a 68040 or 68060; none (nearest) on a 68020 or 68030 | `ENV:OpenImage/ModuleMix`: `nearest`, `linear` or `spline` |
-| Who mixes | the ladder (section 7) | `ENV:OpenImage/ModulePlayer`: `auto`, `cpu`, `cores` or `service` |
+| Mixing rate, Paula | 28000 Hz on a 68040 or 68060; 16000 Hz on a 68020 or 68030 | `ENV:GFOpenImage/SoundRate` (shared with gfopensound.datatype) |
+| Interpolation | linear on a 68040 or 68060; none (nearest) on a 68020 or 68030 | `ENV:GFOpenImage/ModuleMix`: `nearest`, `linear` or `spline` |
+| Who mixes | the ladder (section 7) | `ENV:GFOpenImage/ModulePlayer`: `auto`, `cpu`, `cores` or `service` |
 
 For Paula the rate is turned into a whole Paula period (PAL or NTSC, from the
 E clock) of at least 124, and libxmp mixes at exactly the rate that
@@ -157,7 +157,7 @@ Descriptors (`DEVS:DataTypes`), all group `soun`, priority 0:
 | `MED-2`, `MED-3`, `MED-4` | `MED` and 2, 3 or 4 |
 | `Oktalyzer` | `OKTASONG` |
 | `DigiBooster`, `DigiBooster-Pro` | `DIGI Booster module`, `DBM0` |
-| `Module-XM`, `Module-S3M`, `Module-IT` | opensound's `XM`, `S3M`, `IT` masks and one more byte (any) |
+| `Module-XM`, `Module-S3M`, `Module-IT` | gfopensound's `XM`, `S3M`, `IT` masks and one more byte (any) |
 
 **How AmigaOS 3.2 picks a descriptor.** Measured on AmigaOS 3.2.3
 (datatypes.library 47.3, AddDataTypes 47.2), 8 October 2026, with pairs
@@ -189,13 +189,13 @@ length of the mask can. That decided three things:
   is when its own datatype knows it. libxmp then checks the header; a file
   that is not a module fails to open with "invalid data" (DTERROR 2008),
   where it would otherwise have had no datatype.
-- **XM, S3M and IT are in both** openmodule and opensound (played by
-  libopenmpt on the services card or a paired Cradle). openmodule's masks
+- **XM, S3M and IT are in both** gfopenmodule and gfopensound (played by
+  libopenmpt on the services card or a paired Cradle). gfopenmodule's masks
   are one byte longer (an ANY after the signature; no such module is that
   short), and their names differ (`FastTracker 2 module` against
   `FastTracker module`; datatypes.library keeps one descriptor per name),
-  so with both installed these play on the Amiga, and opensound's stay as
-  the way to play them where openmodule is not installed.
+  so with both installed these play on the Amiga, and gfopensound's stay as
+  the way to play them where gfopenmodule is not installed.
 
 ## 6. CPU
 
@@ -230,7 +230,7 @@ inner loops (`src/mix_all.c`, one function per sample format and
 interpolation) and the 32-to-8-bit downmix (`src/mixer.c`) are each a
 single call over a whole tick's worth of frames with plain arrays in and
 out: the shape the helpers already handle for copies and checksums. A
-`mix_voice` helper, run as host code on AmigaChrome, would leave the 68k
+`mix_voice` helper, run as host code on AmiCradle, would leave the 68k
 only the per-tick player logic. On a real Amiga, the same routines
 hand-written for the 68020 and 68040 (as the helpers' `memcpy` is) would
 gain over GCC's code.
@@ -249,12 +249,12 @@ The Team, 8 October 2026: heavy modules on slow Amigas should go to
 should offload to Cradle / other cores". So every module, light or heavy,
 is mixed by the first of these that is there, chosen when it opens:
 
-1. **A cores board core** (AmigaChrome's AmigaChrome Team $DA15 product 7, up to
+1. **A cores board core** (AmiCradle's AmiCradle Team $DA15 product 7, up to
    eight translated 68040 cores, `cpu.m68k/1`), through
-   `openmulticore.library` (DalsinAI/openamigamulticore) on
-   openservice.device. Each chunk (half a second for AHI, an eighth for
+   `gfopenmulticore.library` (DalsinAI/openamigamulticore) on
+   gfopenservice.device. Each chunk (half a second for AHI, an eighth for
    Paula) is one job: `om_job_mix`, which calls `xmp_play_buffer` on a
-   core, by `OMC_Run68k`. The board's rules (AmigaChrome `CORES_BOARD.md`)
+   core, by `OMC_Run68k`. The board's rules (AmiCradle `CORES_BOARD.md`)
    are that a job calls no OS, touches no Chip RAM and writes only its
    written buffers. libxmp allocates nothing while it mixes, so the player
    loads and starts it with an arena in use (`xmpglue.h`): every
@@ -266,19 +266,19 @@ is mixed by the first of these that is there, chosen when it opens:
    test: if the board refuses it or it faults, the next rung plays; a job
    that fails later stops the song, which plays again on this CPU.
 2. **media.decode/1** on a services card or a paired Cradle (libopenmpt,
-   as opensound.datatype uses), when there is no cores board: `DECODE`
+   as gfopensound.datatype uses), when there is no cores board: `DECODE`
    two seconds at a time from a frame offset (`MEDIA_DECODE.md`: "a long
    sound can come in pieces"), 48000 Hz for AHI (the service's rate for
    Paula). Each call takes 0.1 to 0.5 s, so a second is always queued.
 3. **This CPU**, only when there is neither.
 
-`ENV:OpenImage/ModulePlayer` (`cores`, `service`, `cpu`) forces one; a
+`ENV:GFOpenImage/ModulePlayer` (`cores`, `service`, `cpu`) forces one; a
 forced rung that is not there falls to the next. The status line says
 which rung plays and where the sound goes: `OIA_DecodedBy` ("a cores
 board core, through AHI", "media.decode/1 (the Nursery), through AHI",
 "this Amiga's CPU, through Paula (no AHI)") and `OIA_Stats` (the measured
-load), openamigaimage attributes in `../include/datatypes/openimage.h`.
-OpenPlay shows them.
+load), openamigaimage attributes in `../include/datatypes/gfopenimage.h`.
+GFOpenPlay shows them.
 
 **Measured** on the modlab scratch copy (AmigaOS 3.2.3 on AC090, a 68040,
 with the cores board fitted, `"coresBoard": true`, eight translated
@@ -315,12 +315,12 @@ than translating them (its own log shows them, 35 million every five
 seconds in a loop of them). libxmp's linear interpolation does one per
 sample, which is why linear mixing costs more than spline here (section
 6), on the main core and on the board's cores alike. Translating them is
-the largest gain for this datatype on AmigaChrome.
+the largest gain for this datatype on AmiCradle.
 
-**What it needs:** `openmulticore.library` in `LIBS:`, built with the os32
+**What it needs:** `gfopenmulticore.library` in `LIBS:`, built with the os32
 stove (GCC 6.5) as its own `library/build.sh` does: built with os32-gcc16
 it passes jobs the wrong arguments (OMCTest's first job ran for minutes,
-even on the main CPU). It is not in OpenUp yet, so the first rung is there
+even on the main CPU). It is not in GFOpenUp yet, so the first rung is there
 only where it is installed by hand.
 
 **Not yet:** the job runs the soft-float libxmp, whose floating point goes

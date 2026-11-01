@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenDatatypes' picture and sound classes: the test's files, script and
+"""GFOpenDatatypes' picture and sound classes: the test's files, script and
 expected log (tests/m68k/test_opendatatypes_picsound.sh).
 
 Writes, into OUTDIR, ILBM, PBM and 8SVX files made here (no media of

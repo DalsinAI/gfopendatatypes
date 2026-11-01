@@ -1,4 +1,4 @@
-/* OpenDatatypes' picture and sound classes under qemu-m68k: picture.datatype,
+/* GFOpenDatatypes' picture and sound classes under qemu-m68k: picture.datatype,
  * ilbm.datatype, sound.datatype and 8svx.datatype (the lean C++ cores in
  * libraries/opendatatypes/classes/datatypes/), hosted on a mock BOOPSI with
  * a stand-in datatypesclass (attributes only, as the classes see OS 3.2's),

@@ -1,7 +1,7 @@
 /*
  * gzip.datatype: gzip, zlib-wrapped and raw deflate, a stream.datatype
  * subclass (datatypes/streamclass.h). It answers SDTM_CODEC only; the
- * inflate is z.library's (OpenZlib), opened for each object, so no zlib is
+ * inflate is z.library's (GFOpenZlib), opened for each object, so no zlib is
  * linked in and nothing is kept in globals. SDTA_Wrapper (OM_NEW) names
  * the wrapper; by default it is told from the first bytes (gzcore.c).
  *
@@ -26,7 +26,7 @@
 #include "gzcore.h"
 
 const char LibName[] = "gzip.datatype";
-const char LibIdString[] = "gzip.datatype 47.1 (23.10.2026) AmigaChrome Team";
+const char LibIdString[] = "gzip.datatype 47.1 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
 static const char version[] __attribute__((used)) = "$VER: gzip.datatype 47.1 (23.10.2026)";

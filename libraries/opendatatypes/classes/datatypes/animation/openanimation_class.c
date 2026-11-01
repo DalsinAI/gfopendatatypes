@@ -1,4 +1,4 @@
-/* OpenDatatypes: an open animation.datatype for AmigaOS 3.2, API and ABI
+/* GFOpenDatatypes: an open animation.datatype for AmigaOS 3.2, API and ABI
  * compatible.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
@@ -13,7 +13,7 @@
  * audio.device, the player process).
  *
  * LIBNAME is "animation.datatype" for the replacement and
- * "openanimation.datatype" for the side-by-side build.
+ * "gfopenanimation.datatype" for the side-by-side build.
  */
 #ifndef LIBNAME
 #define LIBNAME "animation.datatype"
@@ -22,7 +22,7 @@
 #define DTC_SUPERLIB "datatypes.library"
 #define DTC_DISPATCH adt_dispatch
 #define DTC_INST_SIZE adt_inst_size
-#define DTC_IDSTRING LIBNAME " 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team\r\n"
+#define DTC_IDSTRING LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team\r\n"
 #define DTC_EXT_INIT anim_ext_init
 #define DTC_EXT_FREE anim_ext_free
 
@@ -34,7 +34,7 @@ static void anim_ext_free(struct DTCBase *base);
 #include "adt_ext_amiga.h"
 
 static const char ver[] __attribute__((used)) =
-    "\0$VER: " LIBNAME " 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team";
+    "\0$VER: " LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team";
 
 /* class_ext: the services, then the one audio channel every object of
  * the class shares (ABI test: OS 3.2's own sharing) */

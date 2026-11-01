@@ -1,4 +1,4 @@
-/* OpenDatatypes: an open anim.datatype for AmigaOS 3.2, API and ABI
+/* GFOpenDatatypes: an open anim.datatype for AmigaOS 3.2, API and ABI
  * compatible.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
@@ -12,22 +12,22 @@
  * "anim.datatype" under animation.datatype, which it keeps open, and the
  * bitmaps its frames go in.
  *
- * LIBNAME is "anim.datatype" for the replacement and "openanim.datatype"
- * (under "openanimation.datatype") for the side-by-side build.
+ * LIBNAME is "anim.datatype" for the replacement and "gfopenanim.datatype"
+ * (under "gfopenanimation.datatype") for the side-by-side build.
  */
 #ifndef LIBNAME
 #define LIBNAME "anim.datatype"
 #endif
 #ifdef DTC_SIDE_BY_SIDE
-#define DTC_SUPERCLASS "openanimation.datatype"
-#define DTC_SUPERLIB "datatypes/openanimation.datatype"
+#define DTC_SUPERCLASS "gfopenanimation.datatype"
+#define DTC_SUPERLIB "datatypes/gfopenanimation.datatype"
 #else
 #define DTC_SUPERCLASS "animation.datatype"
 #define DTC_SUPERLIB "datatypes/animation.datatype"
 #endif
 #define DTC_DISPATCH anm_dispatch
 #define DTC_INST_SIZE anm_inst_size
-#define DTC_IDSTRING LIBNAME " 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team\r\n"
+#define DTC_IDSTRING LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team\r\n"
 #define DTC_EXT_INIT anim_ext_init
 #define ADT_EXT_BITMAPS_ONLY
 
@@ -38,7 +38,7 @@ static int anim_ext_init(struct DTCBase *base);
 #include "../animation/adt_ext_amiga.h"
 
 static const char ver[] __attribute__((used)) =
-    "\0$VER: " LIBNAME " 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team";
+    "\0$VER: " LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team";
 
 /* a subclass only makes and frees its frames' bitmaps */
 static const struct adt_ext anim_ext = { .alloc_bitmap = ax_alloc_bitmap, .free_bitmap = ax_free_bitmap };

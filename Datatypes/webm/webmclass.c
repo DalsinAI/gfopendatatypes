@@ -6,7 +6,7 @@
  * Frames are decoded on demand; going back, or skipping ahead past a key
  * frame, starts again from the nearest key frame. The sound (Vorbis or
  * Opus) comes from the media.decode/1 service on the services card or a
- * paired Cradle, as openvideo.datatype's does: the file goes up in parts
+ * paired Cradle, as gfopenvideo.datatype's does: the file goes up in parts
  * and is kept open there, and each frame's 8-bit mono is asked for as the
  * frame loads; without the service the video plays silent.
  *
@@ -41,7 +41,7 @@
 #include "vpx/vp8dx.h"
 
 const char LibName[] = "webm.datatype";
-const char LibIdString[] = "webm.datatype 47.1 (4.10.2026) AmigaChrome Team, libvpx 1.17.0";
+const char LibIdString[] = "webm.datatype 47.1 (4.10.2026) AmiCradle Team, libvpx 1.17.0";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
 static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.1 (4.10.2026)";
@@ -56,7 +56,7 @@ const UWORD dt_superversion = 40;
 #define MD_VUPLOAD 8
 #define MD_KIND_ANIMATION 2
 #define MD_FLAG_SOUND 2
-/* The file goes to the service in parts this big (as openvideo.datatype's),
+/* The file goes to the service in parts this big (as gfopenvideo.datatype's),
  * so it is never all in memory here. */
 #define UPLOAD_PART (256UL * 1024)
 /* The service keeps an upload of up to 1 GB. */
@@ -187,7 +187,7 @@ static ULONG decodeRequest(APTR arg)
 }
 
 /* The decoded frame in a bitmap: "into" when animation.datatype hands one
- * back to be used again (see openvideo's ADTM_LOADFRAME), else a new one. */
+ * back to be used again (see gfopenvideo's ADTM_LOADFRAME), else a new one. */
 static struct BitMap *frameBitMap(WebMData *d, struct BitMap *into)
 {
     struct BitMap *bm = into ? into : AllocBitMap(d->info.width, d->info.height, 8, BMF_CLEAR, NULL);
@@ -327,7 +327,7 @@ static LONG uploadFile(WebMData *d, struct dt_service *svc, ULONG size, ULONG *u
     return st;
 }
 
-/* The clip's sound from media.decode/1, as openvideo.datatype gets a
+/* The clip's sound from media.decode/1, as gfopenvideo.datatype gets a
  * video's: the file is uploaded in parts and opened (VOPEN) on the
  * service, which keeps it, and each frame's sound is asked for as it loads
  * (fetchSound). Only for a clip with an audio track; FALSE (silent) when
@@ -503,7 +503,7 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         return (ULONG)obj;
     }
     case OM_DISPOSE: {
-        /* The superclass stops its loader and player first (see openvideo);
+        /* The superclass stops its loader and player first (see gfopenvideo);
          * the decoder, the sound and the key frame are freed after it. */
         WebMData keep = *(WebMData *)INST_DATA(cl, o);
         ULONG rc = DoSuperMethodA(cl, o, msg);

@@ -1,4 +1,4 @@
-/* OpenDatatypes text.datatype core.
+/* GFOpenDatatypes text.datatype core.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  * Clean-room; see text_core.h for what this is written from.
  */

@@ -1,5 +1,5 @@
 #!/bin/sh
-# opentga.datatype's decoder on x86 or ARM64 cores: makes the test pictures
+# gfopentga.datatype's decoder on x86 or ARM64 cores: makes the test pictures
 # (tests/make-tga.py; with Pillow installed it also checks Pillow reads them
 # the same way), decodes each with tga/tgadecode.c built for this computer
 # (tests/tgatest.c) and compares every picture with what make-tga.py says it

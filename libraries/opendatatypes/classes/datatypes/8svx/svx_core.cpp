@@ -1,4 +1,4 @@
-/* Open8SVX: 8svx.datatype's class, lean C++ with no Amiga headers.
+/* GFOpen8SVX: 8svx.datatype's class, lean C++ with no Amiga headers.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
  * Clean-room, from the IFF 8SVX specification (EA, public), the sound_dtc

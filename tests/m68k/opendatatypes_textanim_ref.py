@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenDatatypes text, ascii, animation and anim: the test's script and the
+"""GFOpenDatatypes text, ascii, animation and anim: the test's script and the
 log the cores must print for it, from python's own models.
 
     opendatatypes_textanim_ref.py <dir> <script> <expected> [seed]

@@ -1,4 +1,4 @@
-/* PictureDTClassABITest: OS 3.2's picture.datatype and OpenPicture side by
+/* PictureDTClassABITest: OS 3.2's picture.datatype and GFOpenPicture side by
  * side.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *

@@ -1,4 +1,4 @@
-/* OpenDatatypes text, ascii, animation and anim class cores under qemu-m68k:
+/* GFOpenDatatypes text, ascii, animation and anim class cores under qemu-m68k:
  * runs the script tests/m68k/opendatatypes_textanim_ref.py writes and logs
  * every answer and every call the cores make through their env, for the
  * test to compare with the log python's own models expect.

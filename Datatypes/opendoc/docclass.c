@@ -1,12 +1,12 @@
 /*
- * opendoc.datatype: documents (DOCX, XLSX, PPTX, ODT, ODS, ODP, DOC, XLS,
+ * gfopendoc.datatype: documents (DOCX, XLSX, PPTX, ODT, ODS, ODP, DOC, XLS,
  * PPT, RTF, WordPerfect, PostScript, EPS, EPUB, Markdown, CSV) for AmigaOS
  * 3.x, shown as a picture of their pages, one under the other, like a PDF
  * viewer's continuous view. The pages are laid out by LibreOffice (or
  * Ghostscript, or pandoc then LibreOffice) through the doc.render/1 service
  * (DalsinAI/openamigaservice docs/DOC_RENDER.md) on the services card or a
- * paired Cradle, at ENV:OpenImage/DocWidth pixels wide (default 800), the
- * first ENV:OpenImage/DocPages pages (default 8).
+ * paired Cradle, at ENV:GFOpenImage/DocWidth pixels wide (default 800), the
+ * first ENV:GFOpenImage/DocPages pages (default 8).
  *
  * With neither a card nor a Cradle the document does not open yet (a text
  * view laid out on the 68k comes later).
@@ -30,11 +30,11 @@
 #include "dtlib.h"
 #include "dtservice.h"
 
-const char LibName[] = "opendoc.datatype";
-const char LibIdString[] = "opendoc.datatype 47.1 (5.10.2026) AmigaChrome Team, laid out by doc.render/1";
+const char LibName[] = "gfopendoc.datatype";
+const char LibIdString[] = "gfopendoc.datatype 47.1 (5.10.2026) AmiCradle Team, laid out by doc.render/1";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: opendoc.datatype 47.1 (5.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopendoc.datatype 47.1 (5.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -113,7 +113,7 @@ static BOOL loadDoc(Class *cl, Object *o)
     }
 
     memset(buf, 0, sizeof buf);
-    extra[0] = envNumber("OpenImage/DocWidth", 800, 100);
+    extra[0] = envNumber("GFOpenImage/DocWidth", 800, 100);
     extra[1] = extra[3] = 0;
     extra[2] = dt_name_hint(name);             /* CSV, Markdown: no signature */
     buf[0].ob_Data = data;
@@ -124,7 +124,7 @@ static BOOL loadDoc(Class *cl, Object *o)
         goto out;
     w = get32(info + 16);
     h = get32(info + 20);
-    shown = pages < envNumber("OpenImage/DocPages", 8, 1) ? pages : envNumber("OpenImage/DocPages", 8, 1);
+    shown = pages < envNumber("GFOpenImage/DocPages", 8, 1) ? pages : envNumber("GFOpenImage/DocPages", 8, 1);
     if (!w || !h || !shown || w > 32767)
         goto out;
     while (shown > 1 && shown * (h + GAP) - GAP > 32767)   /* a bitmap's height limit */

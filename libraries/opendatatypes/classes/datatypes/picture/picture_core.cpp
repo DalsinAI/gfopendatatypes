@@ -1,4 +1,4 @@
-/* OpenPicture: picture.datatype's class, lean C++ with no Amiga headers.
+/* GFOpenPicture: picture.datatype's class, lean C++ with no Amiga headers.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
  * Clean-room, from the picture_dtc autodoc, datatypes/pictureclass.h's

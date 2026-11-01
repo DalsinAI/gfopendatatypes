@@ -5,7 +5,7 @@
  *
  * A test defines its set as  static void run_set(const char *cls)  where
  * cls is the public class name to make objects of ("ilbm.datatype" or
- * "openilbm.datatype"), and DTC_TEST_CLASS (the class's file name), then
+ * "gfopenilbm.datatype"), and DTC_TEST_CLASS (the class's file name), then
  * calls dtc_main(argc, argv). Inside the set: out("fmt", ...) writes a
  * line; probe("fmt", ...) writes one that answers an "ABI test" corner
  * of the autodocs, marked so PROBE's listing is the measured answers.

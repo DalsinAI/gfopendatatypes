@@ -1,4 +1,4 @@
-/* OpenDatatypes animation.datatype core, in plain C with no Amiga headers.
+/* GFOpenDatatypes animation.datatype core, in plain C with no Amiga headers.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *
  * Clean-room, from the animation_dtc autodoc, NDK 3.2's

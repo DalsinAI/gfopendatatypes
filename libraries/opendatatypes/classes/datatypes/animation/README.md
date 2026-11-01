@@ -2,8 +2,8 @@
 
 Open versions of OS 3.2's `animation.datatype` (a subclass of
 datatypesclass) and `anim.datatype` (IFF ANIM, its subclass). Version
-47.100; the side-by-side builds are `openanimation.datatype` and
-`openanim.datatype`. Written from the NDK 3.2 headers, the autodocs, the
+47.100; the side-by-side builds are `gfopenanimation.datatype` and
+`gfopenanim.datatype`. Written from the NDK 3.2 headers, the autodocs, the
 IFF ANIM specs (ANIM-5, ANIM-7/8) and measured behaviour only.
 
 | File | What |
@@ -14,7 +14,7 @@ IFF ANIM specs (ANIM-5, ANIM-7/8) and measured behaviour only.
 | `../anim/anim_core.c/.h` | anim.datatype: ANIM scan, ANHD, DLTA ops 0, 5, 7, 8, ByteRun1 BODY, CAMG, EHB |
 | `../anim/openanim_class.c` | anim.datatype's shell |
 | `build-amiga.sh` | Builds both classes and the ABI test (stove) |
-| `tests/AnimationClassABITest.c` | OS 3.2's anim.datatype next to openanim.datatype |
+| `tests/AnimationClassABITest.c` | OS 3.2's anim.datatype next to gfopenanim.datatype |
 
 The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 

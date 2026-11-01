@@ -1,5 +1,5 @@
 /*
- * openmodule.datatype: music modules for AmigaOS 3.x, played on the Amiga
+ * gfopenmodule.datatype: music modules for AmigaOS 3.x, played on the Amiga
  * itself: ProTracker, NoiseTracker and SoundTracker MODs, MED and OctaMED,
  * Oktalyzer, DigiBooster, FastTracker 2, Scream Tracker 3 and Impulse
  * Tracker, and the other formats libxmp reads. A sound.datatype subclass.
@@ -19,10 +19,10 @@
  * that process's FPU state.
  *
  * Who mixes is a ladder (DESIGN.md section 7), the Team's order: a cores
- * board core, one job a chunk, through openmulticore.library; else
+ * board core, one job a chunk, through gfopenmulticore.library; else
  * media.decode/1 on a services card or a paired Cradle, through
- * openservice.device; else this CPU.
- * OIA_DecodedBy and OIA_Stats (include/datatypes/openimage.h) say which.
+ * gfopenservice.device; else this CPU.
+ * OIA_DecodedBy and OIA_Stats (include/datatypes/gfopenimage.h) say which.
  *
  * MIT, Copyright (c) 2026 AmigaChrome Team. libxmp keeps its MIT licence.
  */
@@ -48,9 +48,9 @@
 #include <proto/utility.h>
 #include <proto/datatypes.h>
 #include <proto/timer.h>
-#include <proto/openmulticore.h>
+#include <proto/gfopenmulticore.h>
 #include <clib/alib_protos.h>
-#include <datatypes/openimage.h>
+#include <datatypes/gfopenimage.h>
 
 #include <xmp.h>
 
@@ -59,11 +59,11 @@
 #include "xmpglue.h"
 #include "ahidev.h"
 
-const char LibName[] = "openmodule.datatype";
-const char LibIdString[] = "openmodule.datatype 47.3 (8.10.2026) AmigaChrome Team, played by libxmp 4.7.3";
+const char LibName[] = "gfopenmodule.datatype";
+const char LibIdString[] = "gfopenmodule.datatype 47.3 (8.10.2026) AmiCradle Team, played by libxmp 4.7.3";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 3;
-static const char version[] __attribute__((used)) = "$VER: openmodule.datatype 47.3 (8.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopenmodule.datatype 47.3 (8.10.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -72,9 +72,9 @@ const UWORD dt_superversion = 39;
 #include <stdarg.h>
 int vsnprintf(char *buffer, unsigned long size, const char *format, va_list ap);
 /* A trace (build with -DOM_DEBUG, and -DOM_DEBUG_LOG=\"file\" for another
- * place than T:openmodule.log); from processes only. */
+ * place than T:gfopenmodule.log); from processes only. */
 #ifndef OM_DEBUG_LOG
-#define OM_DEBUG_LOG "T:openmodule.log"
+#define OM_DEBUG_LOG "T:gfopenmodule.log"
 #endif
 static void dlog(const char *fmt, ...)
 {
@@ -202,11 +202,11 @@ static ULONG envNumber(const char *name)
     return v;
 }
 
-/* ENV:OpenImage/ModuleMix: nearest, linear or spline. */
+/* ENV:GFOpenImage/ModuleMix: nearest, linear or spline. */
 static LONG envInterp(void)
 {
     char buf[16];
-    LONG n = GetVar((CONST_STRPTR)"OpenImage/ModuleMix", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
+    LONG n = GetVar((CONST_STRPTR)"GFOpenImage/ModuleMix", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
     if (n > 0) {
         if (buf[0] == 'n' || buf[0] == 'N' || buf[0] == '0')
             return XMP_INTERP_NEAREST;
@@ -232,7 +232,7 @@ extern struct Library *MathIeeeDoubBasBase, *MathIeeeDoubTransBase, *MathIeeeSin
 /* timer.device's E clock, to time the mixing (each player opens it). */
 struct Device *TimerBase;
 
-/* openmulticore.library, for rung 2 (each player opens it). */
+/* gfopenmulticore.library, for rung 2 (each player opens it). */
 struct Library *OpenMulticoreBase;
 
 /* Where the sound goes: AHI's unit 0 (16-bit stereo at the unit's rate,
@@ -415,7 +415,7 @@ static void audioClose(struct Audio *a)
 /* --- the three rungs ------------------------------------------------------------ */
 
 /* The cores board's job, run on another core: no OS, its arguments and
- * the arena only (OpenMulticore's rules). libxmp allocates nothing while
+ * the arena only (GFOpenMulticore's rules). libxmp allocates nothing while
  * it mixes, and the arena holds all it writes. */
 __attribute__((noinline)) LONG om_job_mix(xmp_context ctx, void *out, LONG bytes, LONG loop)
 {
@@ -770,11 +770,11 @@ static void describeRung(struct Player *p, struct Audio *a)
     Permit();
 }
 
-/* ENV:OpenImage/ModulePlayer: auto (the default), cpu, cores or service. */
+/* ENV:GFOpenImage/ModulePlayer: auto (the default), cpu, cores or service. */
 static int envPlayer(void)
 {
     char buf[16];
-    LONG n = GetVar((CONST_STRPTR)"OpenImage/ModulePlayer", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
+    LONG n = GetVar((CONST_STRPTR)"GFOpenImage/ModulePlayer", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
     if (n > 0) {
         if (buf[0] == 'c' && buf[1] == 'p')
             return RUNG_CPU;
@@ -786,11 +786,11 @@ static int envPlayer(void)
     return 0;
 }
 
-/* ENV:OpenImage/ModuleOutput: paula plays through Paula even with AHI. */
+/* ENV:GFOpenImage/ModuleOutput: paula plays through Paula even with AHI. */
 static BOOL envPaula(void)
 {
     char buf[16];
-    LONG n = GetVar((CONST_STRPTR)"OpenImage/ModuleOutput", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
+    LONG n = GetVar((CONST_STRPTR)"GFOpenImage/ModuleOutput", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
     return n > 0 && (buf[0] == 'p' || buf[0] == 'P');
 }
 
@@ -892,7 +892,7 @@ static void serviceStop(struct Player *p)
 /* Who mixes (DESIGN.md section 7), the Team's order: another core first,
  * for every module (when the cores board takes the first job); else
  * media.decode/1 on a services card or a paired Cradle; else this CPU.
- * ENV:OpenImage/ModulePlayer forces one (falling to the next when it is
+ * ENV:GFOpenImage/ModulePlayer forces one (falling to the next when it is
  * not there). */
 static void chooseRung(struct Player *p, struct Audio *a, BOOL cores)
 {
@@ -1272,7 +1272,7 @@ static BOOL loadModule(Class *cl, Object *o)
     ULONG rate;
 
     mi->interp = envInterp();
-    rate = envNumber("OpenImage/SoundRate");
+    rate = envNumber("GFOpenImage/SoundRate");
     if (rate < 4000)
         rate = fastCpu ? 28000 : 16000;
     /* Paula: the period is whole colour clocks, 124 at the least. */

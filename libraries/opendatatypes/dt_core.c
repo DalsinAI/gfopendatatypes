@@ -1,4 +1,4 @@
-/* OpenDatatypes core: descriptors, recognition, method tables, tools and
+/* GFOpenDatatypes core: descriptors, recognition, method tables, tools and
  * strings. See dt_core.h.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *

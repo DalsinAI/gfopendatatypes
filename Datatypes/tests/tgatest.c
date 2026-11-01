@@ -1,5 +1,5 @@
 /*
- * opentga.datatype's decoder (tga/tgadecode.c) on x86 or ARM64 cores: reads
+ * gfopentga.datatype's decoder (tga/tgadecode.c) on x86 or ARM64 cores: reads
  * each file named and prints what tests/dtpic.c prints on the Amiga, with
  * an FNV-1a hash of every byte of the picture after it, for
  * tests/test-tga.sh to compare with tests/make-tga.py's expected-host.txt:

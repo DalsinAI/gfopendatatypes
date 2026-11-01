@@ -1,5 +1,5 @@
 /*
- * openmodule.datatype: libxmp without stb_vorbis. An XM whose samples are
+ * gfopenmodule.datatype: libxmp without stb_vorbis. An XM whose samples are
  * Ogg Vorbis (OggMod, rare) does not load; the decoder is large and all
  * floating point, slow on a 68k without an FPU.
  *

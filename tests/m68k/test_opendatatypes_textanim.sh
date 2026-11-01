@@ -1,5 +1,5 @@
 #!/bin/sh
-# OpenDatatypes' text.datatype, ascii.datatype, animation.datatype and
+# GFOpenDatatypes' text.datatype, ascii.datatype, animation.datatype and
 # anim.datatype (libraries/opendatatypes/classes/datatypes/): each core
 # is plain C with no Amiga headers, built with an m68k cross GCC at -O0
 # and -O2 for the 68040; checked with nm to call nothing

@@ -1,15 +1,15 @@
 # Copyright (c) 2026 AmigaChrome Team. MIT licence.
 # The datatypes' decoder cores on the host (x86), under AddressSanitizer and
-# UBSan: opentga.datatype's (Datatypes/tests/test-tga.sh) and cdxl.datatype's
+# UBSan: gfopentga.datatype's (Datatypes/tests/test-tga.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),
 # webm.datatype's picture sizes against crafted headers
 # (Datatypes/tests/test-webm.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
-# (Datatypes/tests/test-stream.sh), and openpng.datatype's PNG writer
+# (Datatypes/tests/test-stream.sh), and gfopenpng.datatype's PNG writer
 # (Datatypes/tests/test-pngenc.sh); and the datatypes' RomTag versions
 # (Datatypes/tests/test-romtag.py); and webm.datatype's reader through its
 # read cache (Datatypes/tests/test-webm-read.sh).
-# OpenDatatypes' cores (datatypes.library and its eight class datatypes) under
+# GFOpenDatatypes' cores (datatypes.library and its eight class datatypes) under
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
 # (tests/m68k/test_opendatatypes_class.sh) needs an amigachrome-guest
 # checkout (GUEST=) and runs in amigachrome-guest's own CI.
@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q ffmpeg python3-pil
-      - name: opentga.datatype decoder
+      - name: gfopentga.datatype decoder
         run: sh Datatypes/tests/test-tga.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
@@ -44,7 +44,7 @@ jobs:
         run: sh Datatypes/tests/test-stream.sh
       - name: webm.datatype's reader through its read cache
         run: sh Datatypes/tests/test-webm-read.sh
-      - name: openpng.datatype's PNG writer
+      - name: gfopenpng.datatype's PNG writer
         run: sh Datatypes/tests/test-pngenc.sh
       - name: the datatypes' RomTags carry their version
         run: python3 Datatypes/tests/test-romtag.py
@@ -56,9 +56,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: m68k cross GCC, G++ and qemu-m68k
         run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user
-      - name: OpenDatatypes (datatypes.library) core
+      - name: GFOpenDatatypes (datatypes.library) core
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh
-      - name: OpenDatatypes picture, ilbm, sound and 8svx datatype cores
+      - name: GFOpenDatatypes picture, ilbm, sound and 8svx datatype cores
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh
-      - name: OpenDatatypes text, ascii, animation and anim classes
+      - name: GFOpenDatatypes text, ascii, animation and anim classes
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh

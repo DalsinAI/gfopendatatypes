@@ -29,7 +29,7 @@
 
 #ifdef OAI_AC_HELPERS
 /* Big copies and clears through AC090's native helpers (build.sh, AC_HELPERS):
- * host code on AmigaChrome, 68k code written for the 68020 and 68040
+ * host code on AmiCradle, 68k code written for the 68020 and 68040
  * elsewhere; under 64 bytes, the C library's as before. */
 #include "ac_helpers.h"
 #else
@@ -226,7 +226,7 @@ const struct Resident dt_romtag __attribute__((used)) = {
 
 /* --- task-safe memory for the decoders ------------------------------------ */
 
-/* A datatype with an allocator of its own (openmodule's arenas) builds this
+/* A datatype with an allocator of its own (gfopenmodule's arenas) builds this
  * file with DT_OWN_MALLOC and supplies malloc, calloc, free and realloc. */
 #ifndef DT_OWN_MALLOC
 

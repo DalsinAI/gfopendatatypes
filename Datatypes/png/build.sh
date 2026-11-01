@@ -1,17 +1,17 @@
 #!/bin/sh
-# openpng.datatype and its descriptor, DEVS:DataTypes/OpenPNG, for AmigaOS 3.x
+# gfopenpng.datatype and its descriptor, DEVS:DataTypes/GFOpenPNG, for AmigaOS 3.x
 # (pngclass.c). Our own code only: no upstream tarballs. PNG out
-# (pngencode.c) deflates through z.library (OpenZlib) at run time. Built with the
+# (pngencode.c) deflates through z.library (GFOpenZlib) at run time. Built with the
 # os32-gcc16 compiler, as the other datatypes (../build.sh runs this too).
 # MIT, Copyright (c) 2026 AmigaChrome Team.
 #
-#   OS32_GCC16   compiler root holding prefix/ (default ~/AmigaChrome/stoves/os32-gcc16)
+#   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
 #   PREFIX       where Classes/ and Devs/ go (default ../out)
 #
 # usage: sh png/build.sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-S=${OS32_GCC16:-"$HOME/AmigaChrome/stoves/os32-gcc16"}
+S=${OS32_GCC16:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 CC="$S/prefix/bin/m68k-amigaos-gcc"
 OUT=${PREFIX:-"$HERE/out"}
 WORK="$HERE/work/obj-openpng"
@@ -26,14 +26,14 @@ for f in common/dtstart.c common/dtlib.c common/zlibrary.c png/pngdecode.c png/p
     (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/include" -I"$HERE/png" -c "$f" -o "$WORK/$(basename "$f" .c).o")
 done
 # dtstart.o first, so the library's first code is a safe return.
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/openpng.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpng.datatype" \
     "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/zlibrary.o" "$WORK/pngdecode.o" "$WORK/pngencode.o" \
     "$WORK/pngclass.o" -lamiga \
-    -Wl,-Map="$WORK/openpng.datatype.map"
-echo "openpng.datatype: $(wc -c < "$OUT/Classes/DataTypes/openpng.datatype") bytes"
+    -Wl,-Map="$WORK/gfopenpng.datatype.map"
+echo "gfopenpng.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpng.datatype") bytes"
 # The signature and the IHDR chunk that must come next (length 13): sixteen
 # bytes, longer than the system's PNG descriptor, so it is tried first.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/OpenPNG" OpenPNG openpng pict png "#?" \
-    '$VER: OpenPNG 47.3 (11.10.2026)' 0x89 "'P'" "'N'" "'G'" 0x0d 0x0a 0x1a 0x0a 0x00 0x00 0x00 0x0d \
+python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenPNG" GFOpenPNG gfopenpng pict png "#?" \
+    '$VER: GFOpenPNG 47.3 (11.10.2026)' 0x89 "'P'" "'N'" "'G'" 0x0d 0x0a 0x1a 0x0a 0x00 0x00 0x00 0x0d \
     "'I'" "'H'" "'D'" "'R'"
-echo "Devs/DataTypes/OpenPNG: $(wc -c < "$OUT/Devs/DataTypes/OpenPNG") bytes"
+echo "Devs/DataTypes/GFOpenPNG: $(wc -c < "$OUT/Devs/DataTypes/GFOpenPNG") bytes"

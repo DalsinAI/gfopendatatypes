@@ -1,4 +1,4 @@
-/* OpenDatatypes: datatypesclass, the numbers, messages and layouts every
+/* GFOpenDatatypes: datatypesclass, the numbers, messages and layouts every
  * datatype class shares, and struct odt_cenv, what a class core asks of
  * the system. Plain C with no Amiga headers, so the C shells, the qemu
  * tests and lean C++ class cores all include it.

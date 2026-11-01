@@ -1,4 +1,4 @@
-/* Open8SVX: 8svx.datatype's class (a sound.datatype subclass) as a core
+/* GFOpen8SVX: 8svx.datatype's class (a sound.datatype subclass) as a core
  * with no Amiga headers, over struct odt_cenv.
  * Copyright (c) 2026 AmigaChrome Team. MIT.
  *

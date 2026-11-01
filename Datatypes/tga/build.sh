@@ -1,16 +1,16 @@
 #!/bin/sh
-# opentga.datatype and its descriptor, DEVS:DataTypes/OpenTGA, for AmigaOS 3.x
+# gfopentga.datatype and its descriptor, DEVS:DataTypes/GFOpenTGA, for AmigaOS 3.x
 # (tgaclass.c). Our own code only: no upstream tarballs. Built with the
 # os32-gcc16 compiler, as the other datatypes (../build.sh runs this too).
 # MIT, Copyright (c) 2026 AmigaChrome Team.
 #
-#   OS32_GCC16   compiler root holding prefix/ (default ~/AmigaChrome/stoves/os32-gcc16)
+#   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
 #   PREFIX       where Classes/ and Devs/ go (default ../out)
 #
 # usage: sh tga/build.sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-S=${OS32_GCC16:-"$HOME/AmigaChrome/stoves/os32-gcc16"}
+S=${OS32_GCC16:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 CC="$S/prefix/bin/m68k-amigaos-gcc"
 OUT=${PREFIX:-"$HERE/out"}
 WORK="$HERE/work/obj-opentga"
@@ -25,13 +25,13 @@ for f in common/dtstart.c common/dtlib.c tga/tgadecode.c tga/tgaclass.c; do
     (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/tga" -c "$f" -o "$WORK/$(basename "$f" .c).o")
 done
 # dtstart.o first, so the library's first code is a safe return.
-$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/opentga.datatype" \
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopentga.datatype" \
     "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/tgadecode.o" "$WORK/tgaclass.o" -lamiga \
-    -Wl,-Map="$WORK/opentga.datatype.map"
-echo "opentga.datatype: $(wc -c < "$OUT/Classes/DataTypes/opentga.datatype") bytes"
+    -Wl,-Map="$WORK/gfopentga.datatype.map"
+echo "gfopentga.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopentga.datatype") bytes"
 # A TGA file starts with no signature (its first bytes are lengths and
 # kinds), so the name tells it: Truevision's .tga, and .targa, .icb, .vda
 # and .vst. With no mask it is tried after every descriptor that has one.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/OpenTGA" "Targa picture" opentga pict tga \
-    "#?.(tga|targa|icb|vda|vst)" '$VER: OpenTGA 47.1 (12.10.2026)'
-echo "Devs/DataTypes/OpenTGA: $(wc -c < "$OUT/Devs/DataTypes/OpenTGA") bytes"
+python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenTGA" "Targa picture" gfopentga pict tga \
+    "#?.(tga|targa|icb|vda|vst)" '$VER: GFOpenTGA 47.1 (12.10.2026)'
+echo "Devs/DataTypes/GFOpenTGA: $(wc -c < "$OUT/Devs/DataTypes/GFOpenTGA") bytes"

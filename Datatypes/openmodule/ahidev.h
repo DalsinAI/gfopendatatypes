@@ -1,5 +1,5 @@
 /*
- * openmodule.datatype: the little of ahi.device's interface it uses (AHI 4
+ * gfopenmodule.datatype: the little of ahi.device's interface it uses (AHI 4
  * and later, the device interface: CMD_WRITE with double buffering through
  * ahir_Link), written out from AHI's documented ABI so the build needs no
  * AHI SDK. The NDK 3.2 has no AHI headers.

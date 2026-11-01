@@ -1,8 +1,8 @@
 /*
- * openmodule.datatype: the arena allocator (xmpglue.c). A player that may
+ * gfopenmodule.datatype: the arena allocator (xmpglue.c). A player that may
  * hand its mixing to a cores board core loads the module and starts libxmp
  * with an arena in use, so all of libxmp's state lies in one block of Fast
- * RAM: the one buffer the core's job writes (OpenMulticore's rule: a job
+ * RAM: the one buffer the core's job writes (GFOpenMulticore's rule: a job
  * writes only its written buffers). libxmp allocates nothing while it
  * mixes, only when it loads and starts.
  *
