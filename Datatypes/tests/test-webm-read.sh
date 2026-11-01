@@ -6,6 +6,13 @@
 # through the cache, whole, cut short and with bytes changed, must give the
 # same frames; the cache must call the source about once for each 4 KB;
 # and the audio track count must be right.
+# Then webm.datatype's sound (tests/webmsoundtest.c): webm/webmclass.c
+# itself, with the Amiga's names from tests/webmclass-host.h (each Amiga
+# header the class includes is made here, pointing at it) and a fake
+# media.decode/1 that keeps a record: the file goes up in parts of at most
+# 256 KB (VUPLOAD), once, and each frame's sound is asked for as it loads
+# (VSOUND, scaled when the service counts at another rate); without the
+# service or VUPLOAD the clip plays silent.
 # MIT, Copyright (c) 2026 AmigaChrome Team.
 #
 #   CC     the host compiler (default cc)
@@ -31,3 +38,17 @@ else
     echo "no ffmpeg: tests/t.webm only"
 fi
 "$OUT/webmreadtest" "$@"
+
+INC="$OUT/host-class"
+for h in exec/types.h exec/memory.h exec/semaphores.h exec/ports.h exec/io.h dos/dos.h \
+         graphics/gfx.h graphics/rastport.h graphics/view.h intuition/classes.h intuition/classusr.h \
+         datatypes/datatypes.h datatypes/datatypesclass.h datatypes/pictureclass.h datatypes/animationclass.h \
+         proto/exec.h proto/dos.h proto/graphics.h proto/intuition.h proto/datatypes.h clib/alib_protos.h \
+         vpx/vpx_decoder.h vpx/vp8dx.h vpx/vpx_image.h; do
+    mkdir -p "$INC/$(dirname "$h")"
+    echo '#include "webmclass-host.h"' > "$INC/$h"
+done
+# shellcheck disable=SC2086
+$CC -std=gnu99 -O1 -g -Wall -Wextra -Werror $SAN -I"$INC" -I"$HERE/tests" -I"$HERE/common" -I"$HERE/include" \
+    -I"$HERE/webm" -o "$OUT/webmsoundtest" "$HERE/tests/webmsoundtest.c" "$HERE/webm/webm_demux.c"
+"$OUT/webmsoundtest" "$@"

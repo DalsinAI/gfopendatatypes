@@ -6,8 +6,9 @@
  * Frames are decoded on demand; going back, or skipping ahead past a key
  * frame, starts again from the nearest key frame. The sound (Vorbis or
  * Opus) comes from the media.decode/1 service on the services card or a
- * paired Cradle, as 8-bit mono handed out with each frame; without one the
- * video plays silent.
+ * paired Cradle, as openvideo.datatype's does: the file goes up in parts
+ * and is kept open there, and each frame's 8-bit mono is asked for as the
+ * frame loads; without the service the video plays silent.
  *
  * MIT, Copyright (c) 2026 AmigaChrome Team. libvpx is the WebM Project's,
  * under its BSD licence (upstream/libvpx/LICENSE).
@@ -49,11 +50,25 @@ const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
 
 /* media.decode/1 (openamigaservice docs/MEDIA_DECODE.md) */
-#define MD_PROBE  1
-#define MD_DECODE 2
-#define MD_KIND_SOUND 3
-/* Files larger than this are not sent for their sound. */
-#define SOUND_FILE_MAX (64UL * 1024 * 1024)
+#define MD_VOPEN   3
+#define MD_VCLOSE  5
+#define MD_VSOUND  7
+#define MD_VUPLOAD 8
+#define MD_KIND_ANIMATION 2
+#define MD_FLAG_SOUND 2
+/* The file goes to the service in parts this big (as openvideo.datatype's),
+ * so it is never all in memory here. */
+#define UPLOAD_PART (256UL * 1024)
+/* The service keeps an upload of up to 1 GB. */
+#define SOUND_FILE_MAX (1024UL * 1024 * 1024)
+/* Each frame's sound is asked for at about this rate: exactly the rate
+ * its Paula period plays. */
+#define SOUND_RATE 22050
+/* Frames whose sound is kept at once in chip RAM: animation.datatype loads
+ * a few ahead, never this many. */
+#define SOUND_RING 64
+/* VSOUND's steady frames for one of ours, at most. */
+#define SOUND_SPAN_MAX 64
 /* The PAL colour clock, for periods. */
 #define PAL_CLOCK 3546895UL
 
@@ -71,9 +86,12 @@ typedef struct {
     UBYTE *frameData;
     ULONG frameDataSize;
     struct BitMap *keyFrame;
-    BYTE *sound;                   /* 8-bit mono for the whole clip, or NULL */
-    ULONG soundLength;             /* samples in sound */
-    ULONG soundPerFrame;           /* samples handed out with each frame */
+    ULONG fps;                     /* frames a second, as played */
+    ULONG soundHandle;             /* the service's open video, for VSOUND; 0 when silent */
+    ULONG hostFps1000;             /* the steady frames a second VSOUND counts in, x 1000 */
+    ULONG soundRate;               /* asked of VSOUND: the rate period plays */
+    BYTE *ring;                    /* SOUND_RING slots of soundSlot bytes in chip RAM, by frame */
+    ULONG soundSlot;
     ULONG period;                  /* Paula period for the sound, handed out with every frame */
 } WebMData;
 
@@ -225,6 +243,24 @@ static void setPalette(Object *o)
     }
 }
 
+/* Closes the service's video (VCLOSE) and frees the ring of sound. */
+static void closeSound(WebMData *d)
+{
+    struct dt_service svc;
+    struct OSBuffer buf[4];
+    ULONG extra[4] = { 0, 0, 0, 0 };
+
+    if (d->soundHandle && dt_service_open(&svc, "media.decode/1")) {
+        memset(buf, 0, sizeof buf);
+        dt_service_call(&svc, MD_VCLOSE, d->soundHandle, 0, buf, extra, NULL, NULL);
+        dt_service_close(&svc);
+    }
+    d->soundHandle = 0;
+    if (d->ring)
+        FreeVec(d->ring);
+    d->ring = NULL;
+}
+
 static void freeData(WebMData *d)
 {
     if (d->codecReady)
@@ -239,9 +275,7 @@ static void freeData(WebMData *d)
         WaitBlit();
         FreeBitMap(d->keyFrame);
     }
-    if (d->sound)
-        FreeVec(d->sound);
-    d->sound = NULL;
+    closeSound(d);
     d->chunky = d->frameData = NULL;
     d->keyFrame = NULL;
 }
@@ -251,57 +285,130 @@ static ULONG get32(const UBYTE *p)
     return (ULONG)p[0] << 24 | (ULONG)p[1] << 16 | (ULONG)p[2] << 8 | p[3];
 }
 
-/* The clip's sound from media.decode/1, as 8-bit mono at no more than
- * 28 kHz; returns the rate, or 0 (silent) when no service has it. The
- * service takes the whole file, so the file is read into memory only for a
- * clip with an audio track and once the service is open. */
-static ULONG loadSound(WebMData *d, ULONG size)
+/* VSOUND's steady frame at the start of our frame index: the same frame
+ * when the clip plays at the rate VSOUND counts in, else index scaled by
+ * hostFps1000 / (fps x 1000). */
+static ULONG hostFrame(const WebMData *d, ULONG index)
+{
+    if (d->hostFps1000 == d->fps * 1000)
+        return index;
+    return (ULONG)((unsigned long long)index * d->hostFps1000 / ((unsigned long long)d->fps * 1000));
+}
+
+/* Sends the file to the service in parts of UPLOAD_PART (VUPLOAD); the
+ * service's status, with the upload in *upload. */
+static LONG uploadFile(WebMData *d, struct dt_service *svc, ULONG size, ULONG *upload)
+{
+    struct OSBuffer buf[4];
+    ULONG part[4] = { 0, 0, 0, 0 }, sent = 0;
+    UBYTE *data;
+    LONG n, st = OSERR_OK;
+
+    *upload = 0;
+    if (!(data = AllocVec(UPLOAD_PART, MEMF_ANY)))
+        return OSERR_BADREQUEST;
+    memset(buf, 0, sizeof buf);
+    while (st == OSERR_OK && sent < size) {
+        n = readAt((void *)d->file, sent, data, size - sent < UPLOAD_PART ? size - sent : UPLOAD_PART);
+        if (n <= 0) {
+            st = OSERR_BADREQUEST;
+            break;
+        }
+        sent += n;
+        part[0] = sent >= size ? 1 : 0;   /* the last part */
+        buf[0].ob_Data = data;
+        buf[0].ob_Length = n;
+        st = dt_service_call(svc, MD_VUPLOAD, *upload, 0, buf, part, upload, NULL);
+        if (st == OSERR_OK && !*upload)
+            st = OSERR_HOST;
+    }
+    FreeVec(data);
+    return st;
+}
+
+/* The clip's sound from media.decode/1, as openvideo.datatype gets a
+ * video's: the file is uploaded in parts and opened (VOPEN) on the
+ * service, which keeps it, and each frame's sound is asked for as it loads
+ * (fetchSound). Only for a clip with an audio track; FALSE (silent) when
+ * the service, its VUPLOAD or the chip RAM for the ring is missing. */
+static BOOL loadSound(WebMData *d, ULONG size)
 {
     struct dt_service svc;
     struct OSBuffer buf[4];
-    ULONG extra[4] = { 1, 28000, 0, 0 }, frames, rate = 0, got = 0, i;
-    UBYTE info[24], *file, *pcm = NULL;
+    ULONG extra[4] = { 0, 0, 0, 0 }, upload, handle = 0, fps1000 = 0, span, slot;
+    UBYTE info[24];
 
-    if (!d->info.audioTracks || size > SOUND_FILE_MAX || !dt_service_open(&svc, "media.decode/1"))
-        return 0;
-    if (!(file = AllocVec(size, MEMF_ANY))) {
+    if (!d->info.audioTracks || size > SOUND_FILE_MAX || !d->fps || d->fps > 1000
+        || !dt_service_open(&svc, "media.decode/1"))
+        return FALSE;
+    if (uploadFile(d, &svc, size, &upload) != OSERR_OK) {
         dt_service_close(&svc);
-        return 0;
-    }
-    if (readAt((void *)d->file, 0, file, size) != (long)size) {
-        dt_service_close(&svc);
-        FreeVec(file);
-        return 0;
+        return FALSE;
     }
     memset(buf, 0, sizeof buf);
-    buf[0].ob_Data = file;
-    buf[0].ob_Length = size;
     buf[1].ob_Data = info;
     buf[1].ob_Length = sizeof info;
-    if (dt_service_call(&svc, MD_PROBE, 0, 2, buf, extra, NULL, NULL) == OSERR_OK && get32(info) == MD_KIND_SOUND
-        && (frames = get32(info + 12)) && frames < 0x40000000UL && get32(info + 20) == 1
-        && (pcm = AllocVec(frames * 2, MEMF_ANY))) {
-        buf[1].ob_Data = pcm;
-        buf[1].ob_Length = frames * 2;
-        if (dt_service_call(&svc, MD_DECODE, 0, 2, buf, extra, &got, NULL) == OSERR_OK && got
-            && (d->sound = AllocVec(got, MEMF_CHIP)) != NULL) {
-            for (i = 0; i < got; i++)                 /* the high byte of each 16-bit sample, in chip RAM */
-                d->sound[i] = pcm[i * 2];
-            d->soundLength = got;
-            rate = get32(info + 16);
-        }
-    }
-    if (pcm)
-        FreeVec(pcm);
+    extra[0] = extra[1] = 16;              /* only the sound is asked for: the smallest picture will do */
+    extra[2] = upload;
+    if (dt_service_call(&svc, MD_VOPEN, 0, 2, buf, extra, &handle, &fps1000) != OSERR_OK)
+        handle = 0;
     dt_service_close(&svc);
-    FreeVec(file);
-    return rate;
+    d->soundHandle = handle;
+    /* VSOUND counts in steady frames (a variable-rate clip's shortest, at
+     * most 50 a second): up to span of them for each of ours. */
+    span = fps1000 ? (fps1000 + d->fps * 1000 - 1) / (d->fps * 1000) : 0;
+    if (!handle || get32(info) != MD_KIND_ANIMATION || !(get32(info + 8) & MD_FLAG_SOUND)
+        || fps1000 > 1000000 || !span || span > SOUND_SPAN_MAX) {
+        closeSound(d);
+        return FALSE;
+    }
+    d->hostFps1000 = fps1000;
+    d->period = PAL_CLOCK / SOUND_RATE;
+    d->soundRate = PAL_CLOCK / d->period;
+    /* A slot holds span steady frames' sound, each at most rate / fps
+     * rounded up, and a little more for the service's own rounding. */
+    slot = span * (d->soundRate * 1000 / fps1000 + 1) + 2;
+    d->soundSlot = (slot + 1) & ~1UL;
+    if (!(d->ring = AllocVec(SOUND_RING * d->soundSlot, MEMF_CHIP | MEMF_CLEAR))) {
+        closeSound(d);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* Frame index's sound into its slot in the chip RAM ring (VSOUND): the
+ * steady frames from where it starts to where the next one starts; its
+ * length, or 0. Opens the service itself: animation.datatype loads frames
+ * from its own process. */
+static ULONG fetchSound(WebMData *d, ULONG index, BYTE **at)
+{
+    struct dt_service svc;
+    struct OSBuffer buf[4];
+    ULONG extra[4] = { 0, 0, 0, 0 }, n, end, got, filled = 0;
+
+    if (!d->soundHandle || !d->ring || !dt_service_open(&svc, "media.decode/1"))
+        return 0;
+    *at = d->ring + (index % SOUND_RING) * d->soundSlot;
+    memset(buf, 0, sizeof buf);
+    extra[1] = d->soundRate;
+    for (n = hostFrame(d, index), end = hostFrame(d, index + 1); n < end && filled < d->soundSlot; n++) {
+        got = 0;
+        extra[0] = n;
+        buf[1].ob_Data = *at + filled;
+        buf[1].ob_Length = d->soundSlot - filled;
+        if (dt_service_call(&svc, MD_VSOUND, d->soundHandle, 2, buf, extra, &got, NULL) != OSERR_OK
+            || got > d->soundSlot - filled)
+            break;
+        filled += got;
+    }
+    dt_service_close(&svc);
+    return filled;
 }
 
 static BOOL loadWebM(Class *cl, Object *o)
 {
     WebMData *d = INST_DATA(cl, o);
-    ULONG sourceType = DTST_FILE, fps, size, rate;
+    ULONG sourceType = DTST_FILE, fps, size;
     STRPTR name = NULL;
     BPTR file = 0;
     int rc;
@@ -354,11 +461,9 @@ static BOOL loadWebM(Class *cl, Object *o)
     if (!fps)
         fps = 1;
 
-    if ((rate = loadSound(d, size)) != 0) {
-        d->soundPerFrame = rate / fps;
-        d->period = PAL_CLOCK / rate;
+    d->fps = fps;
+    if (loadSound(d, size))
         SetDTAttrs(o, NULL, NULL, ADTA_Period, d->period, ADTA_Volume, 64, ADTA_Cycles, 1, TAG_DONE);
-    }
 
     setPalette(o);
     SetDTAttrs(o, NULL, NULL,
@@ -400,7 +505,8 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         WebMData *d = INST_DATA(cl, o);
         struct adtFrame *alf = (struct adtFrame *)msg;
         struct BitMap *bm = NULL, *given = alf->alf_BitMap;
-        ULONG index = alf->alf_TimeStamp;
+        ULONG index = alf->alf_TimeStamp, n;
+        BYTE *sample = NULL;
         if (index >= d->info.frameCount)
             index = d->info.frameCount - 1;
         ObtainSemaphore(&d->lock);
@@ -413,11 +519,8 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         alf->alf_CMap = NULL;
         alf->alf_Sample = NULL;
         alf->alf_SampleLength = 0;
-        if (d->sound && d->soundPerFrame && index * d->soundPerFrame < d->soundLength) {
-            ULONG at = index * d->soundPerFrame, n = d->soundPerFrame;
-            if (at + n > d->soundLength)
-                n = d->soundLength - at;
-            alf->alf_Sample = d->sound + at;   /* ours: freed with the object */
+        if ((n = fetchSound(d, index, &sample)) != 0) {
+            alf->alf_Sample = sample;          /* ours, in the ring: freed with the object */
             alf->alf_SampleLength = n;
             alf->alf_Period = d->period;   /* animation.datatype 47 plays each frame's sound at this */
         }
