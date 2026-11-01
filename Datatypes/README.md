@@ -408,9 +408,12 @@ test file is make-tga.py's), 8-bit screens, and the speed on a real 68k.
   is asked for at half the size (down to 160 wide), and running out says
   "not enough memory" rather than nothing.
 - `webm.datatype`: sound (Vorbis or Opus) only through a services card or a
-  paired Cradle, as 8-bit mono, for files up to 64 MB (the service takes the
-  whole file, so it is read into memory, but only when the clip has an
-  audio track and the service is there); 256 colours only
+  paired Cradle whose media.decode/1 has VUPLOAD and VSOUND (openamigaservice,
+  20 October 2026), as 8-bit mono, for files up to 1 GB: as openvideo.datatype,
+  a clip with an audio track goes up in 256 KB parts when it opens and is
+  kept open there, and each frame's sound comes as the frame loads, into a
+  ring of 64 frames in chip RAM (`tests/test-webm-read.sh`); an older
+  service plays it silent; 256 colours only
   (VP9 in 4:2:0, 4:4:4 or RGB; 8-bit only); VP9 decoded in software is slow on a real 68k;
   files over 4 GB and laced video blocks are not supported.
 
