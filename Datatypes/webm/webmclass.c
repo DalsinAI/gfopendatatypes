@@ -35,6 +35,7 @@
 #include "dtservice.h"
 #include "webm_demux.h"
 #include "webm_dither.h"
+#include "webm_readcache.h"
 #include "vpx/vpx_decoder.h"
 #include "vpx/vp8dx.h"
 
@@ -251,7 +252,9 @@ static ULONG get32(const UBYTE *p)
 }
 
 /* The clip's sound from media.decode/1, as 8-bit mono at no more than
- * 28 kHz; returns the rate, or 0 (silent) when no service has it. */
+ * 28 kHz; returns the rate, or 0 (silent) when no service has it. The
+ * service takes the whole file, so the file is read into memory only for a
+ * clip with an audio track and once the service is open. */
 static ULONG loadSound(WebMData *d, ULONG size)
 {
     struct dt_service svc;
@@ -259,9 +262,14 @@ static ULONG loadSound(WebMData *d, ULONG size)
     ULONG extra[4] = { 1, 28000, 0, 0 }, frames, rate = 0, got = 0, i;
     UBYTE info[24], *file, *pcm = NULL;
 
-    if (size > SOUND_FILE_MAX || !(file = AllocVec(size, MEMF_ANY)))
+    if (!d->info.audioTracks || size > SOUND_FILE_MAX || !dt_service_open(&svc, "media.decode/1"))
         return 0;
-    if (readAt((void *)d->file, 0, file, size) != (long)size || !dt_service_open(&svc, "media.decode/1")) {
+    if (!(file = AllocVec(size, MEMF_ANY))) {
+        dt_service_close(&svc);
+        return 0;
+    }
+    if (readAt((void *)d->file, 0, file, size) != (long)size) {
+        dt_service_close(&svc);
         FreeVec(file);
         return 0;
     }
@@ -312,7 +320,17 @@ static BOOL loadWebM(Class *cl, Object *o)
         return FALSE;
     }
     size = Seek(file, 0, OFFSET_BEGINNING);
-    rc = webm_parse(readAt, (void *)file, size, &d->info);
+    {
+        /* The reader's small reads come from a cache of the file (one Read
+         * for many elements), or straight from the file without memory */
+        WebMReadCache *cache = AllocVec(sizeof *cache, MEMF_ANY);
+        if (cache) {
+            webm_cache_init(cache, readAt, (void *)file);
+            rc = webm_parse(webm_cache_read, cache, size, &d->info);
+            FreeVec(cache);
+        } else
+            rc = webm_parse(readAt, (void *)file, size, &d->info);
+    }
     if (rc) {
         SetIoErr(rc == -3 ? ERROR_NO_FREE_STORE : DTERROR_INVALID_DATA);
         return FALSE;

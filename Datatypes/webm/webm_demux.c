@@ -59,6 +59,7 @@ typedef struct {
     uint32_t videoTrack;
     int codec;
     uint32_t width, height, defaultDuration;
+    uint32_t audioTracks;
 } Parser;
 
 static int readBytes(Source *s, uint32_t pos, void *buffer, uint32_t length)
@@ -289,6 +290,8 @@ static void parseTrackEntry(Source *s, Parser *p, uint32_t pos, uint32_t end)
         }
         pos += size;
     }
+    if (type == 2 && number && p->audioTracks < 0xffffffffu)
+        p->audioTracks++;
     if (p->videoTrack || type != 1 || !number || !width || !height)
         return;
     if (!strcmp(codecId, "V_VP8"))
@@ -399,6 +402,7 @@ int webm_parse(WebMReadFn read, void *handle, uint32_t fileSize, WebMInfo *info)
     info->height = p.height;
     info->frameDurationNs = p.defaultDuration;
     info->durationMs = info->frames[n - 1].timeMs;
+    info->audioTracks = p.audioTracks;
     free(p.blocks);
     return 0;
 
