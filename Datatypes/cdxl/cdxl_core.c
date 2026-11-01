@@ -4,6 +4,7 @@
  * MIT, Copyright (c) 2026 AmigaChrome Team.
  */
 #include "cdxl_core.h"
+#include "../../common/include/odt_planar.h"
 
 static uint32_t get32(const uint8_t *p)
 {
@@ -85,17 +86,15 @@ uint32_t cdxl_plane_row(const struct cdxl_frame *f, unsigned p, unsigned y)
 
 void cdxl_to_chunky(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *out)
 {
-    const uint8_t *img = frame + cdxl_image_at(f);
-    unsigned x, y, p;
+    const uint8_t *img = frame + cdxl_image_at(f), *rows[8];
+    unsigned y, p;
 
-    for (y = 0; y < f->height; y++)
-        for (x = 0; x < f->width; x++) {
-            unsigned v = 0;
-            for (p = 0; p < f->planes; p++)
-                if (img[cdxl_plane_row(f, p, y) + (x >> 3)] & (0x80 >> (x & 7)))
-                    v |= 1u << p;
-            *out++ = (uint8_t)v;
-        }
+    /* 8 pixels at a time; a pixel is a byte, so planes past 8 never showed */
+    for (y = 0; y < f->height; y++, out += f->width) {
+        for (p = 0; p < f->planes && p < 8; p++)
+            rows[p] = img + cdxl_plane_row(f, p, y);
+        odt_planar_row(rows, p, f->width, out, 1);
+    }
 }
 
 void cdxl_palette(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb)

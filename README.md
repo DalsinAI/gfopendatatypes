@@ -37,7 +37,9 @@ It came here from DalsinAI/amigachrome-guest on 23 October 2026 with its
 history, at the same paths. `common/include/oa_protos_begin.h`,
 `oa_protos_end.h`, `libraries/common/open_arith.c` and `check_fd.py` are
 copies of amigachrome-guest's, at the same paths, so the library builds to
-the same bytes.
+the same bytes. `common/include/odt_planar.h` is our own: bitplanes to
+one byte a pixel, eight pixels at a time, shared by ilbm.datatype's BODY,
+picture.datatype's V42 bitmaps and cdxl.datatype.
 
 ## Picture, sound and media datatypes
 
@@ -71,11 +73,16 @@ amigachrome-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 
 - `sh Datatypes/tests/test-tga.sh` and `sh Datatypes/tests/test-cdxl.sh`:
   the decoders on the host under AddressSanitizer and UBSan (CI runs both).
+- `sh Datatypes/tests/test-webm.sh`: webm.datatype's reader and dither
+  against crafted picture sizes, under the same sanitizers.
 - `sh Datatypes/tests/test-webm-read.sh`: webm.datatype's reader through its
   read cache gives the same frames as straight reads, under the same
   sanitizers.
 - `sh tests/achelpers/test_achelpers.sh`: the AC090 helpers and dtlib.c's
   memory functions under qemu-m68k.
+- `sh Datatypes/tests/test-planar.sh`: `common/include/odt_planar.h`
+  against the bit-at-a-time loop it replaced, under AddressSanitizer and
+  UBSan (and as 68040 code with `QEMU_M68K=qemu-m68k`).
 - `Datatypes/tests/dtpic.c`, `dtsound.c`, `dtanim.c`: the Amiga-side checks.
 
 ## Licence

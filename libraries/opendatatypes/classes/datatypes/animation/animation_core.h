@@ -164,6 +164,8 @@ struct adt_ext {
      * each time until stopped */
     void *(*player_start)(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 fps);
     void (*player_stop)(const struct odt_cenv *env, void *player);
+    /* WaitBlit, before the CPU writes into a bitmap a blit may still read */
+    void (*wait_blit)(const struct odt_cenv *env);
 };
 
 /* ---- playing: frames against time -------------------------------------------- */
@@ -198,8 +200,8 @@ odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps
 /* ---- remapping ---------------------------------------------------------------- */
 
 /* Each pixel of src (w x h) through table into dst (planes as BitMaps
- * have them); pixels past src's depth read as 0, dst planes past 8 are
- * left alone. */
+ * have them), eight pixels at a time; pixels past src's depth read as 0,
+ * dst planes past 8 and dst's bits past w are left alone. */
 void adt_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst);
 
 /* ---- the control panel -------------------------------------------------------- */
@@ -226,9 +228,10 @@ odt_s32 adt_knob_x(const struct adt_panel *p, odt_u32 frame, odt_u32 frames);
 
 struct adt_slot {
     struct adt_Frame msg;               /* as the subclass filled it */
-    struct adt_BitMap *remapped;        /* ours, on the screen's pens */
+    struct adt_BitMap *remapped;        /* ours, on the screen's pens; kept for the slot's next frame */
     odt_u8 used;
-    odt_u8 pad[3];
+    odt_u8 pad;
+    odt_u16 remapped_w;                 /* the width remapped was made for */
 };
 
 struct adt_inst {

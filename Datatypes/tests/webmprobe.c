@@ -77,7 +77,8 @@ int main(int argc, char **argv)
                 unsigned long p;
                 if (!chunky)
                     chunky = calloc(info.width, info.height);
-                webm_dither(&tables, img, chunky, info.width, info.height, info.width);
+                webm_dither(&tables, img, chunky, (unsigned long)info.width * info.height, info.width, info.height,
+                    info.width);
                 for (p = 0; p < (unsigned long)info.width * info.height; p++)
                     sum = (sum * 31 + chunky[p]) & 0xffffffffUL;
                 shown++;

@@ -70,6 +70,7 @@ static int anim_ext_init(struct DTCBase *base)
     a->x.clock = ax_clock;
     a->x.player_start = ax_player_start;
     a->x.player_stop = ax_player_stop;
+    a->x.wait_blit = ax_wait_blit;
     base->ext = a;
     base->env.class_ext = a;
     return 1;
