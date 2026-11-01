@@ -20,6 +20,7 @@
  * ABI test's PROBE line records OS 3.2's answer.
  */
 #include "picture_core.h"
+#include "../../../../../common/include/odt_planar.h"
 
 namespace {
 
@@ -727,16 +728,12 @@ u32 frame_box(pic_inst *p, odt_dtFrameBox *m)
 extern "C" void pic_planar_to_chunky(const odt_BitMap *bm, odt_u32 w, odt_u32 h, odt_u8 *out)
 {
     u32 depth = min<u32>(bm->Depth, 8);
-    for (u32 y = 0; y < h; y++)
-        for (u32 x = 0; x < w; x++) {
-            u32 v = 0;
-            for (u32 d = 0; d < depth; d++) {
-                const u8 *pl = bm->Planes[d];
-                if (pl && (pl[y * bm->BytesPerRow + (x >> 3)] & (0x80 >> (x & 7))))
-                    v |= 1U << d;
-            }
-            out[y * w + x] = static_cast<u8>(v);
-        }
+    const u8 *rows[8];
+    for (u32 y = 0; y < h; y++) {
+        for (u32 d = 0; d < depth; d++)
+            rows[d] = bm->Planes[d] ? bm->Planes[d] + y * bm->BytesPerRow : nullptr;
+        odt_planar_row(rows, depth, w, out + y * w, 1);  /* 8 pixels at a time */
+    }
 }
 
 extern "C" void pic_chunky_to_planar(const odt_u8 *in, odt_u32 w, odt_u32 h, odt_u32 depth, odt_u8 *const *planes,

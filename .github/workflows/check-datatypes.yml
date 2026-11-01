@@ -11,6 +11,9 @@
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
 # (tests/m68k/test_opendatatypes_class.sh) needs an amigachrome-guest
 # checkout (GUEST=) and runs in amigachrome-guest's own CI.
+# The bitplanes-to-pixels helper ilbm, picture and cdxl share
+# (common/include/odt_planar.h) against the loop it replaced, on the host
+# (Datatypes/tests/test-planar.sh).
 # The Amiga builds need the os32-gcc16 stove and are made on the build PC.
 name: Datatypes
 on:
@@ -41,6 +44,8 @@ jobs:
         run: sh Datatypes/tests/test-pngenc.sh
       - name: the datatypes' RomTags carry their version
         run: python3 Datatypes/tests/test-romtag.py
+      - name: bitplanes to pixels (common/include/odt_planar.h)
+        run: sh Datatypes/tests/test-planar.sh
   m68k:
     runs-on: ubuntu-latest
     steps:
