@@ -46,6 +46,12 @@ static void ax_free_bitmap(const struct odt_cenv *e, struct adt_BitMap *bm)
 
 #ifndef ADT_EXT_BITMAPS_ONLY
 
+static void ax_wait_blit(const struct odt_cenv *e)
+{
+    (void)e;
+    WaitBlit();
+}
+
 static odt_s32 ax_obtain_pen(const struct odt_cenv *e, void *scr, odt_u32 r, odt_u32 g, odt_u32 b)
 {
     struct TagItem t[2];
