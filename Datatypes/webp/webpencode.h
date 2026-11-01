@@ -8,7 +8,7 @@
  * with libwebp-1.6.0-encoder-no-float.patch, so neither it nor the encoder
  * uses floating point (no FPU, no ROM math libraries), as the decoder.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team (this file; libwebp keeps its
+ * MIT, Copyright (c) 2026 AmiCradle Team (this file; libwebp keeps its
  * licence).
  * SPDX-License-Identifier: MIT
  */

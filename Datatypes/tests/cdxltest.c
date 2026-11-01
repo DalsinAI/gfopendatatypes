@@ -4,7 +4,7 @@
  * (NAME.got.rgb) and its sound as 8-bit mono (NAME.got.pcm), with one line
  * a film: NAME width height frames fps rate. A film cut short or with a bad
  * header plays the frames before it, as the datatype does.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <stdlib.h>

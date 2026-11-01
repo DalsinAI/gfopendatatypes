@@ -1,11 +1,11 @@
-/* OpenDatatypes' picture and sound classes under qemu-m68k: picture.datatype,
+/* GFOpenDatatypes' picture and sound classes under qemu-m68k: picture.datatype,
  * ilbm.datatype, sound.datatype and 8svx.datatype (the lean C++ cores in
  * libraries/opendatatypes/classes/datatypes/), hosted on a mock BOOPSI with
  * a stand-in datatypesclass (attributes only, as the classes see OS 3.2's),
  * a mock iffparse over files python3 wrote, mock graphics (planar bitmaps,
  * a screen whose pens are shared as ObtainBestPen shares them) and a mock
  * audio player that logs the plan it is given.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * It runs a script opendatatypes_picsound_ref.py writes, one command a
  * line, and prints a log; test_opendatatypes_picsound.sh compares it with

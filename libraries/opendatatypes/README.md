@@ -1,4 +1,4 @@
-# OpenDatatypes: an open datatypes.library
+# GFOpenDatatypes: an open datatypes.library
 
 datatypes.library 47.100 for AmigaOS 3.2, API and ABI compatible, clean-room
 (written from the autodocs, the NDK 3.2 headers' layouts and OS 3.2's
@@ -12,11 +12,11 @@ plan is [`../OPEN_LIBRARIES.md`](../OPEN_LIBRARIES.md).
 | --- | --- | --- |
 | D1 | The descriptor database (DEVS:DataTypes), recognition (ObtainDataTypeA by file and memory; ReleaseDataType), recognition code (DTCD), the V45 method tables, GetDTString, GetDTTriggerMethodDataFlags | written, waiting on OS 3.2's probe |
 | D2 | datatypesclass and the object calls: NewDTObjectA, DisposeDTObject, Set/GetDTAttrsA, Add/RemoveDTObject, RefreshDTObjectA, DoDTMethodA, DoAsyncLayout (with its layout process), Obtain/ReleaseDTDrawInfo and DrawDTObjectA (-120 to -132), StartDragSelect, SaveDTObjectA, PrintDTObjectA (with its process); DTST_CLIPBOARD; the datatypes.library replacement | written: core tested under qemu, shell built only on the stove, waiting on OS 3.2's OBJ probe |
-| D3 | LockDataType, FindToolNodeA, LaunchToolA (-144 to -156), sys/datatypes.catalog (`catalogs/datatypes.cd`), the private call our AddDataTypes makes (the command is OpenBench's, `commands/adddatatypes`) | written, as D2 |
+| D3 | LockDataType, FindToolNodeA, LaunchToolA (-144 to -156), sys/datatypes.catalog (`catalogs/datatypes.cd`), the private call our AddDataTypes makes (the command is GFOpenBench's, `commands/adddatatypes`) | written, as D2 |
 | D4 | The class libraries (picture, ilbm, sound, 8svx, text, ascii, animation, anim) | the class helpers, in `classes/datatypes/` |
 
 `datatypes.library` is the replacement; it makes the public class
-"datatypesclass". The same code builds as `opendatatypes.library`, the
+"datatypesclass". The same code builds as `gfopendatatypes.library`, the
 side-by-side twin `tests/DatatypesABITest` opens next to OS 3.2's own,
 whose class is "opendatatypesclass" so it doesn't take OS 3.2's name.
 Class libraries the twin opens subclass OS 3.2's datatypesclass, so for
@@ -32,8 +32,8 @@ PrintDTObjectA and StartDragSelect answer 0.
 | `datatypes.lvo` | The jump table, LVO by LVO, as NDK 3.2's fd has it: -120 to -132 and -144 to -252 private (the comments say what ours keep there), the V45 calls from -258. `../common/check_fd.py` compares it with the NDK's `datatypes_lib.fd`. |
 | `ndk_check.c` | Every constant and layout `dt_core.h` and `dtclass_env.h` carry, checked against the NDK 3.2 headers when it compiles. |
 | `catalogs/datatypes.cd` | sys/datatypes.catalog's descriptor: every id GetDTString has, with the built-in English. |
-| `build-amiga.sh` | With the os32-gcc16 stove: the LVO and NDK checks, then `datatypes.library`, `opendatatypes.library`, `AddDataTypes` (OpenBench's, built by `commands/build-amiga.sh`) and `DatatypesABITest`. |
-| `tests/DatatypesABITest.c` | Runs the calls through OS 3.2's datatypes.library and `opendatatypes.library` and prints each line that differs; PROBE prints OS 3.2's answers. DESC adds descriptors made to ask one question each (lab Amigas only), OBJ the object calls (objects from a text, an ILBM, bytes, memory, the clipboard and DTST_RAM), SCAN=dir recognises a directory's files, LIST dumps OS 3.2's own list. |
+| `build-amiga.sh` | With the os32-gcc16 stove: the LVO and NDK checks, then `datatypes.library`, `gfopendatatypes.library`, `AddDataTypes` (GFOpenBench's, built by `commands/build-amiga.sh`) and `DatatypesABITest`. |
+| `tests/DatatypesABITest.c` | Runs the calls through OS 3.2's datatypes.library and `gfopendatatypes.library` and prints each line that differs; PROBE prints OS 3.2's answers. DESC adds descriptors made to ask one question each (lab Amigas only), OBJ the object calls (objects from a text, an ILBM, bytes, memory, the clipboard and DTST_RAM), SCAN=dir recognises a directory's files, LIST dumps OS 3.2's own list. |
 
 ## What the autodocs leave open
 
@@ -138,7 +138,7 @@ or open ("ABI test": `DatatypesABITest OBJ` has the PROBE line).
 | -120 to -132 | ObtainDTDrawInfoA, DrawDTObjectA, ReleaseDTDrawInfo (V44 places) | ABI test: the OBJ slots line |
 | -144 to -156 | LockDataType, FindToolNodeA, LaunchToolA (V45 places) | ABI test: the OBJ slots line |
 | -252 | our AddDataTypes call | ours (OS 3.2: ABI test) |
-| LaunchToolA | TF_SHELL: `program "project"` (AmigaDOS quoting) asynchronously on NIL:; TF_RX: `RX program "project"`; TF_WORKBENCH: OpenWorkbenchObjectA with the project's lock and name; attrs ignored | ABI test |
+| LaunchToolA | TF_SHELL: `program "project"` (AmigaDOS quoting) asynchronously on NIL:; TF_RX: `RX program "project"` (for both, a project whose name has a control character, a line feed say, is refused: 0); TF_WORKBENCH: OpenWorkbenchObjectA with the project's lock and name; attrs ignored | ABI test |
 | FindToolNodeA on dtn_ToolList | finds nothing: OS 3.2 leaves the list empty (D1, measured) | measured |
 | GetDTString with sys/datatypes.catalog | the catalog's string, the built-in when it has none; "" (id 0) never translated | documented |
 
@@ -150,7 +150,7 @@ or open ("ABI test": `DatatypesABITest OBJ` has the PROBE line).
 - The private slots' places (-120 to -156) and the -252 call wait on the
   OBJ probe; if OS 3.2 keeps something else there, they move. OS 3.2.3's
   own AddDataTypes calls no slot at all (`obtrace`, `commands/tests/WAVE3.md`),
-  so -252 stays ours: OpenBench's AddDataTypes works with this library
+  so -252 stays ours: GFOpenBench's AddDataTypes works with this library
   only.
 - OS 3.2's own C:AddDataTypes doesn't work with ours (it uses the library's
   private list, whose layout isn't measured); ours doesn't work with OS 3.2's
@@ -164,7 +164,7 @@ or open ("ABI test": `DatatypesABITest OBJ` has the PROBE line).
 - `sh tests/m68k/test_opendatatypes.sh` (from the repository root): the
   descriptor core at -O0 and -O2 for the 68000 and 68040 under qemu-m68k.
 - `sh tests/m68k/test_opendatatypes_class.sh`: datatypesclass's core at
-  -O0 and -O2 for the 68000, 68020 and 68040, hosted on OpenIntuition's
+  -O0 and -O2 for the 68000, 68020 and 68040, hosted on GFOpenIntuition's
   BOOPSI core with a probe subclass, against `opendatatypes_class_ref.py`'s
   own model (random scripts: sources, layouts with and without processes,
   scrolls, drag scrolls, drag selects, printing; LaunchToolA's command

@@ -9,7 +9,7 @@
  * The C library pieces a decoder needs (malloc and friends) are task-safe
  * here: several programs may decode pictures at the same time.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
 #include <exec/resident.h>
@@ -29,7 +29,7 @@
 
 #ifdef OAI_AC_HELPERS
 /* Big copies and clears through AC090's native helpers (build.sh, AC_HELPERS):
- * host code on AmigaChrome, 68k code written for the 68020 and 68040
+ * host code on AmiCradle, 68k code written for the 68020 and 68040
  * elsewhere; under 64 bytes, the C library's as before. */
 #include "ac_helpers.h"
 #else
@@ -200,12 +200,23 @@ static const ULONG initTable[] = {
     (ULONG)libInit
 };
 
+/* rt_Version is the class's version: ramlib, dos and the packed ROM's files
+ * on demand weigh a copy by it and the revision in its ID string, and the
+ * newer one runs (amigachrome-guest's common/include/okvr.h). With 0 every
+ * class compared as 0.0, older than any copy on a disk. LibVersion is
+ * another file's constant, so the RomTag takes DT_VERSION, every class's
+ * version; tests/test-romtag.py checks each class's LibVersion, LibRevision
+ * and ID string against it. */
+#ifndef DT_VERSION
+#define DT_VERSION 47
+#endif
+
 const struct Resident dt_romtag __attribute__((used)) = {
     RTC_MATCHWORD,
     (struct Resident *)&dt_romtag,
     (APTR)(&dt_romtag + 1),
     RTF_AUTOINIT,
-    0,
+    DT_VERSION,
     NT_LIBRARY,
     0,
     (char *)LibName,
@@ -215,7 +226,7 @@ const struct Resident dt_romtag __attribute__((used)) = {
 
 /* --- task-safe memory for the decoders ------------------------------------ */
 
-/* A datatype with an allocator of its own (openmodule's arenas) builds this
+/* A datatype with an allocator of its own (gfopenmodule's arenas) builds this
  * file with DT_OWN_MALLOC and supplies malloc, calloc, free and realloc. */
 #ifndef DT_OWN_MALLOC
 

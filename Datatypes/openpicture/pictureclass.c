@@ -1,10 +1,10 @@
 /*
- * openpicture.datatype: modern pictures for AmigaOS 3.x, a picture.datatype
+ * gfopenpicture.datatype: modern pictures for AmigaOS 3.x, a picture.datatype
  * (V43 mode) subclass: AVIF, HEIC/HEIF, JPEG XL, camera RAW, PSD, XCF,
  * OpenEXR, Radiance HDR, QOI, DDS and JPEG 2000. The pictures are decoded
  * by the media.decode/1 service (DalsinAI/openamigaservice
  * docs/MEDIA_DECODE.md) on the services card or a paired Cradle, which
- * sends back 32-bit ARGB, scaled down to fit ENV:OpenImage/MaxSide (default
+ * sends back 32-bit ARGB, scaled down to fit ENV:GFOpenImage/MaxSide (default
  * 4096). The file's extension goes with it as a hint (camera RAW is TIFF
  * inside). A sequence shows its first picture.
  *
@@ -12,7 +12,7 @@
  * AV1, HEIC needs HEVC and RAW needs demosaicing, too slow for a 68k at
  * these sizes.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>
@@ -30,11 +30,11 @@
 #include "dtlib.h"
 #include "dtservice.h"
 
-const char LibName[] = "openpicture.datatype";
-const char LibIdString[] = "openpicture.datatype 47.1 (5.10.2026) AmigaChrome Team, decoded by media.decode/1";
+const char LibName[] = "gfopenpicture.datatype";
+const char LibIdString[] = "gfopenpicture.datatype 47.1 (5.10.2026) AmiCradle Team, decoded by media.decode/1";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: openpicture.datatype 47.1 (5.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopenpicture.datatype 47.1 (5.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;

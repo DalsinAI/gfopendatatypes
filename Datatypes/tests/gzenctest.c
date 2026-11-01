@@ -1,7 +1,7 @@
 /*
  * gzip.datatype's encoder (gz_encode() in gzip/gzcore.c) on x86 or ARM64
  * cores, over the same z.library calls as on the Amiga (tests/zlhost.c:
- * OpenZlib's core, or the host's zlib standing in). Each input is encoded
+ * GFOpenZlib's core, or the host's zlib standing in). Each input is encoded
  * with each wrapper (gzip, zlib, raw deflate) at levels -1, 0, 1 and 9,
  * through a small work buffer so the output comes in many pieces, and
  * written to OUTDIR as NAME.KIND.LLEVEL with the input beside it (NAME.in),
@@ -9,7 +9,7 @@
  *
  *     gzenctest OUTDIR
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>

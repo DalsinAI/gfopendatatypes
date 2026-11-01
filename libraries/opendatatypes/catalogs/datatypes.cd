@@ -1,5 +1,5 @@
 ; sys/datatypes.catalog: the strings GetDTString gives, by their ids.
-; OpenDatatypes (datatypes.library 47.100). Copyright (c) 2026 AmigaChrome Team. MIT.
+; OpenDatatypes (datatypes.library 47.100). Copyright (c) 2026 AmiCradle Team. MIT.
 ; The English strings are the library's built-in ones (dt_core.c); a
 ; translation is a .ct of this file, built with any catalog compiler and
 ; put in LOCALE:Catalogs/<language>/sys/datatypes.catalog.

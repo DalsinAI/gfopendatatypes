@@ -6,7 +6,7 @@
  * preserve (d2, d3, a2, a3), so nothing is read from the old stack while
  * the new one is in use, and several tasks may use it at once.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
 #include <exec/tasks.h>

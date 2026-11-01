@@ -1,6 +1,6 @@
 /*
  * z.library's calls (common/zlibrary.h) on x86 or ARM64 cores, for the
- * tests: over OpenZlib's own core (amigachrome-guest
+ * tests: over GFOpenZlib's own core (amigachrome-guest
  * libraries/openzlib/zlib_core.cpp, built for the host by
  * tests/test-stream.sh), so the tests run the same inflate and deflate as
  * z.library. With ZLHOST_SYSTEM the host's zlib stands in instead, for a
@@ -9,7 +9,7 @@
  * Each zl_stream carries its host stream in its state pointer: the fields
  * the datatypes use are copied in before each call and out after it.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdlib.h>

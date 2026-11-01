@@ -9,12 +9,12 @@
 # AddressSanitizer and UBSan: nothing read or written outside the buffers.
 # Last, the cores are compiled as C99 with -Wall -Wextra -Werror at -Os,
 # and must hold no writable data (they run inside a library).
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 # SPDX-License-Identifier: MIT
 #
-#   CC                 the host compiler (default cc); CXX for OpenZlib's core (default c++)
+#   CC                 the host compiler (default cc); CXX for GFOpenZlib's core (default c++)
 #   SAN                sanitizer flags (default -fsanitize=address,undefined; SAN= for none)
-#   AMIGACHROME_GUEST  checkout of amigachrome-guest, for OpenZlib's core (z.library's
+#   AMIGACHROME_GUEST  checkout of amigachrome-guest, for GFOpenZlib's core (z.library's
 #                      inflate); default amigachrome-guest or guest beside this
 #                      repository. Without it the host's zlib stands in, and the
 #                      test says so.
@@ -31,7 +31,7 @@ CXX=${CXX:-c++}
 SAN=${SAN--fsanitize=address,undefined -fno-sanitize-recover=all}
 mkdir -p "$OUT"
 
-# z.library's inflate: OpenZlib's core, or the host's zlib in its place
+# z.library's inflate: GFOpenZlib's core, or the host's zlib in its place
 G=${AMIGACHROME_GUEST:-}
 for g in "$HERE/../../amigachrome-guest" "$HERE/../../guest"; do
     [ -n "$G" ] || { [ -f "$g/libraries/openzlib/zlib_core.cpp" ] && G=$g; } || true
@@ -41,7 +41,7 @@ if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
     # shellcheck disable=SC2086
     $CXX -std=gnu++23 -fno-exceptions -fno-rtti -O1 -g $SAN -c "$OZ/zlib_core.cpp" -o "$OUT/zlib_core.o"
     ZL="-I$OZ $OUT/zlib_core.o -lstdc++"
-    echo "inflate: OpenZlib's core (z.library), $OZ"
+    echo "inflate: GFOpenZlib's core (z.library), $OZ"
 else
     ZL="-DZLHOST_SYSTEM -lz"
     echo "inflate: the host's zlib, standing in for z.library (no amigachrome-guest checkout)"

@@ -1,14 +1,14 @@
 #!/bin/sh
-# openpng.datatype's encoder (png/pngencode.c) on x86 or ARM64 cores: encodes
+# gfopenpng.datatype's encoder (png/pngencode.c) on x86 or ARM64 cores: encodes
 # the pictures tests/pngenctest.c makes (opaque and with alpha, premultiplied,
 # noise, flat, sizes from 1x1 to 1023 wide and 700 high, padded rows, levels
-# 0, 1, 6 and 9) through z.library's deflate, reads each back with openpng's
+# 0, 1, 6 and 9) through z.library's deflate, reads each back with gfopenpng's
 # own decoder there and then with Python: its zlib module and a reading of
 # the chunks written here from the PNG specification (every CRC, IHDR, the
 # filters), and Pillow too when it is installed. Every pixel must come back.
 # Under AddressSanitizer and UBSan; then the encoder as C99 -Wall -Wextra
 # -Werror -pedantic at -Os, with no writable data.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 # SPDX-License-Identifier: MIT
 #
 #   CC, CXX, SAN, AMIGACHROME_GUEST   as tests/test-stream.sh
@@ -31,7 +31,7 @@ if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
     # shellcheck disable=SC2086
     $CXX -std=gnu++23 -fno-exceptions -fno-rtti -O1 -g $SAN -c "$OZ/zlib_core.cpp" -o "$OUT/zlib_core.o"
     ZL="-I$OZ $OUT/zlib_core.o -lstdc++"
-    echo "deflate: OpenZlib's core (z.library), $OZ"
+    echo "deflate: GFOpenZlib's core (z.library), $OZ"
 else
     ZL="-DZLHOST_SYSTEM -lz"
     echo "deflate: the host's zlib, standing in for z.library (no amigachrome-guest checkout)"
@@ -41,7 +41,7 @@ $CC -std=c99 -O1 -g -Wall -Wextra -Werror $SAN -I"$HERE/tests/host" -I"$HERE/com
     -o "$OUT/pngenctest" "$HERE/tests/pngenctest.c" "$HERE/png/pngencode.c" "$HERE/png/pngdecode.c" \
     "$HERE/tests/zlhost.c" $ZL
 "$OUT/pngenctest" "$OUT" > "$OUT/list.txt" || { cat "$OUT/list.txt"; echo "pngenctest: failed"; exit 1; }
-echo "pngenctest: $(wc -l < "$OUT/list.txt") pictures encoded, and read back the same by openpng's decoder"
+echo "pngenctest: $(wc -l < "$OUT/list.txt") pictures encoded, and read back the same by gfopenpng's decoder"
 
 python3 - "$OUT" <<'PY'
 import os, struct, sys, zlib

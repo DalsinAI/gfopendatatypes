@@ -1,4 +1,4 @@
-# OpenPicture: an open picture.datatype
+# GFOpenPicture: an open picture.datatype
 
 picture.datatype 47.100 for AmigaOS 3.2, API and ABI compatible, clean-room
 (written from the picture_dtc autodoc, `datatypes/pictureclass.h`'s
@@ -18,7 +18,7 @@ or AROS code, nor any third-party datatype). Step D4 of
 | `dtc_shell.h` | The C around every core of the family: RomTag, vectors (Open, Close, Expunge, Null, ObtainEngine at -30), MakeClass and AddClass under the superclass, the env from exec, dos, intuition, graphics, iffparse and audio.device (the player process). |
 | `openpicture_dtclass.c`, `picture.lvo` | This class's shell and its one call. |
 | `ndk_check.c` | Every number and layout the family's cores carry, against the NDK 3.2 headers (compiled by `build-class.sh`). |
-| `build-class.sh`, `build-amiga.sh` | With the os32-gcc16 stove: the NDK check, `picture.datatype`, `openpicture.datatype` (side by side, its subclasses' superclass there too) and the ABI test. |
+| `build-class.sh`, `build-amiga.sh` | With the os32-gcc16 stove: the NDK check, `picture.datatype`, `gfopenpicture.datatype` (side by side, its subclasses' superclass there too) and the ABI test. |
 | `tests/PictureDTClassABITest.c`, `tests/dtc_abitest.h` | OS 3.2's class and ours side by side, and the family's harness; PROBE prints OS 3.2's answers. |
 
 ## What it does

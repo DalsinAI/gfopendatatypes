@@ -1,9 +1,9 @@
-/* ILBMDTClassABITest: OS 3.2's ilbm.datatype and OpenILBM side by side.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+/* ILBMDTClassABITest: OS 3.2's ilbm.datatype and GFOpenILBM side by side.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Writes ILBM and PBM files made here (no media of anyone's) to DIR= (T:)
  * and loads each through OS 3.2's ilbm.datatype and through
- * openilbm.datatype (with openpicture.datatype under it), printing what
+ * gfopenilbm.datatype (with gfopenpicture.datatype under it), printing what
  * each answers: the error, the BitMapHeader, ModeID, colours, and pixels
  * read back as ARGB. The PROBE lines are the corners the ILBM
  * specification leaves open, which ilbm_core.cpp marks "ABI test".

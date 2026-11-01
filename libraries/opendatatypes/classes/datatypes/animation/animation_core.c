@@ -1,5 +1,5 @@
-/* OpenDatatypes animation.datatype core.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+/* GFOpenDatatypes animation.datatype core.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  * Clean-room; see animation_core.h for what this is written from.
  */
 #include "animation_core.h"
@@ -88,25 +88,85 @@ odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps
 
 /* ---- remapping ----------------------------------------------------------------- */
 
+/* An 8 x 8 matrix of bits turned over. hi holds rows 0 to 3 (row 0 in its
+ * top byte), lo rows 4 to 7; a row's top bit is column 0. Afterwards row j
+ * holds what column j held, row 0's bit at the top. Eight plane bytes in
+ * (plane 7 first) give eight pixels out, and eight pixels give the planes. */
+static inline void adt_turn8(odt_u32 *hi, odt_u32 *lo)
+{
+    odt_u32 x = *hi, y = *lo, t;
+    t = (x ^ (x >> 7)) & 0x00aa00aaUL;
+    x ^= t ^ (t << 7);
+    t = (y ^ (y >> 7)) & 0x00aa00aaUL;
+    y ^= t ^ (t << 7);
+    t = (x ^ (x >> 14)) & 0x0000ccccUL;
+    x ^= t ^ (t << 14);
+    t = (y ^ (y >> 14)) & 0x0000ccccUL;
+    y ^= t ^ (t << 14);
+    t = (x & 0xf0f0f0f0UL) | ((y >> 4) & 0x0f0f0f0fUL);
+    *lo = ((x << 4) & 0xf0f0f0f0UL) | (y & 0x0f0f0f0fUL);
+    *hi = t;
+}
+
+/* Four pixels (a byte each) through the pen table */
+static inline odt_u32 adt_pens4(const odt_u8 *table, odt_u32 v)
+{
+    return (odt_u32)table[v >> 24] << 24 | (odt_u32)table[(v >> 16) & 255] << 16 | (odt_u32)table[(v >> 8) & 255] << 8 |
+           table[v & 255];
+}
+
 void adt_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst)
 {
-    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth;
+    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth, nd = 0;
+    odt_u32 mask[2] = { 0, 0 }, any = 8, at[8];
     if (w > (odt_u32)src->BytesPerRow * 8) w = (odt_u32)src->BytesPerRow * 8;
     if (w > (odt_u32)dst->BytesPerRow * 8) w = (odt_u32)dst->BytesPerRow * 8;
     if (h > src->Rows) h = src->Rows;
     if (h > dst->Rows) h = dst->Rows;
+    /* a missing source plane reads another plane's row and is masked off
+     * (none at all reads as 0); missing destination planes are skipped */
+    for (p = 0; p < sd; p++)
+        if (src->Planes[p]) {
+            if (any == 8) any = p;
+            mask[p >> 2] |= 0xffUL << (8 * (p & 3));
+        }
+    if (any == 8) sd = 0;
+    for (p = 0; p < dd; p++)
+        if (dst->Planes[p]) at[nd++] = p;
     for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            odt_u32 byte = x >> 3, bit = 0x80 >> (x & 7), pix = 0, out;
-            for (p = 0; p < sd; p++)
-                if (src->Planes[p] && (src->Planes[p][y * src->BytesPerRow + byte] & bit)) pix |= 1u << p;
-            out = table ? table[pix] : pix;
-            for (p = 0; p < dd; p++) {
-                odt_u8 *b;
-                if (!dst->Planes[p]) continue;
-                b = &dst->Planes[p][y * dst->BytesPerRow + byte];
-                if (out & (1u << p)) *b |= (odt_u8)bit;
-                else *b &= (odt_u8)~bit;
+        const odt_u8 *s[8];
+        odt_u8 *d[8];
+        for (p = 0; p < sd; p++)
+            s[p] = (src->Planes[p] ? src->Planes[p] : src->Planes[any]) + y * src->BytesPerRow;
+        for (p = 0; p < nd; p++)
+            d[p] = dst->Planes[at[p]] + y * dst->BytesPerRow;
+        /* a byte of each plane at a time: its 8 pixels out of the planes,
+         * through the table and back into them */
+        for (x = 0; x < w; x += 8) {
+            odt_u32 byte = x >> 3, v[2] = { 0, 0 };
+            odt_u8 keep = (odt_u8)(w - x >= 8 ? 0 : 0xff >> (w - x)); /* bits past w stay as they are */
+            switch (sd) {
+            case 8: v[1] |= (odt_u32)s[7][byte] << 24; /* fall through */
+            case 7: v[1] |= (odt_u32)s[6][byte] << 16; /* fall through */
+            case 6: v[1] |= (odt_u32)s[5][byte] << 8;  /* fall through */
+            case 5: v[1] |= s[4][byte];                /* fall through */
+            case 4: v[0] |= (odt_u32)s[3][byte] << 24; /* fall through */
+            case 3: v[0] |= (odt_u32)s[2][byte] << 16; /* fall through */
+            case 2: v[0] |= (odt_u32)s[1][byte] << 8;  /* fall through */
+            case 1: v[0] |= s[0][byte];                /* fall through */
+            default: break;
+            }
+            v[0] &= mask[0];
+            v[1] &= mask[1];
+            adt_turn8(&v[1], &v[0]);    /* v[1]: pixels 0-3, v[0]: pixels 4-7 */
+            if (table) {
+                v[0] = adt_pens4(table, v[0]);
+                v[1] = adt_pens4(table, v[1]);
+            }
+            adt_turn8(&v[1], &v[0]);    /* v[0]: planes 3-0, v[1]: planes 7-4 */
+            for (p = 0; p < nd; p++) {
+                odt_u8 b = (odt_u8)(v[at[p] >> 2] >> (8 * (at[p] & 3)));
+                d[p][byte] = (odt_u8)((d[p][byte] & keep) | (b & ~keep));
             }
         }
     }
@@ -180,13 +240,19 @@ void adt_panel_draw(const struct odt_cenv *env, const struct adt_ext *x, void *r
 #define NF_NEW     1
 #define NF_OLD     2
 
+/* The frame goes back to the subclass; the slot keeps its remapped bitmap
+ * for the next frame loaded into it (remap_slot) */
 static void unload(const struct odt_cenv *env, struct adt_inst *in, void *obj, struct adt_slot *s)
 {
     s->msg.MethodID = in->newformat == NF_NEW ? ADT_ADTM_UNLOADNEWFORMATFRAME : ADT_ADTM_UNLOADFRAME;
     env->do_method(env, obj, &s->msg);
+    s->used = 0;
+}
+
+static void drop_remapped(const struct odt_cenv *env, struct adt_slot *s)
+{
     if (s->remapped && EXT(env)->free_bitmap) EXT(env)->free_bitmap(env, s->remapped);
     s->remapped = 0;
-    s->used = 0;
 }
 
 static void obtain_pens(const struct odt_cenv *env, struct adt_inst *in)
@@ -226,13 +292,30 @@ static int can_remap(const struct adt_inst *in)
 static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
 {
     const struct adt_ext *x = EXT(env);
+    const struct adt_BitMap *f = s->msg.alf_BitMap;
+    struct adt_BitMap *bm = s->remapped;
     odt_u32 d;
-    if (!can_remap(in) || !s->msg.alf_BitMap || !x->alloc_bitmap) return;
+    if (!can_remap(in) || !f || !x->alloc_bitmap) {
+        drop_remapped(env, s);
+        return;
+    }
     obtain_pens(env, in);
     d = x->screen_depth ? x->screen_depth(env, in->screen) : 8;
     if (d > 8) d = 8;                   /* deeper screens: pens up to 255 */
-    if (!(s->remapped = x->alloc_bitmap(env, in->width, in->height, d, 0))) return;
-    adt_remap(s->msg.alf_BitMap, in->width, in->height, in->color_table, s->remapped);
+    /* the slot's bitmap from an earlier frame is written over when a new
+     * one would be the same (the size, the depth, every pixel remapped) */
+    if (bm && (s->remapped_w != in->width || bm->Rows != in->height || bm->Depth != d || f->Rows < in->height ||
+               (odt_u32)f->BytesPerRow * 8 < in->width)) {
+        drop_remapped(env, s);
+        bm = 0;
+    }
+    if (bm) {
+        if (x->wait_blit) x->wait_blit(env); /* a blit of the earlier frame may still read it */
+    } else if (!(bm = x->alloc_bitmap(env, in->width, in->height, d, 0)))
+        return;
+    s->remapped = bm;
+    s->remapped_w = (odt_u16)in->width;
+    adt_remap(f, in->width, in->height, in->color_table, bm);
 }
 
 static int load(const struct odt_cenv *env, struct adt_inst *in, void *obj, struct adt_slot *s, odt_u32 f)
@@ -258,7 +341,6 @@ static int load(const struct odt_cenv *env, struct adt_inst *in, void *obj, stru
     }
     if (!r && !s->msg.alf_BitMap) return 0;
     s->used = 1;
-    s->remapped = 0;
     remap_slot(env, in, s);
     return 1;
 }
@@ -308,8 +390,10 @@ struct adt_slot *adt_cache(const struct odt_cenv *env, struct adt_inst *in, void
 void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj)
 {
     odt_u32 k;
-    for (k = 0; k < ADT_MAXPRELOAD; k++)
+    for (k = 0; k < ADT_MAXPRELOAD; k++) {
         if (in->slots[k].used) unload(env, in, obj, &in->slots[k]);
+        drop_remapped(env, &in->slots[k]);
+    }
 }
 
 /* ---- the class ---------------------------------------------------------------- */

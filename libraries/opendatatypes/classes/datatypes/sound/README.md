@@ -1,4 +1,4 @@
-# OpenSound: an open sound.datatype
+# GFOpenSound: an open sound.datatype
 
 sound.datatype 47.100 for AmigaOS 3.2, API and ABI compatible, clean-room
 (from the sound_dtc autodoc, `datatypes/soundclass.h`'s layouts in NDK
@@ -10,7 +10,7 @@ The family's shell, env and build are in [`../picture`](../picture/README.md).
 | --- | --- |
 | `sound_core.cpp`, `.h` | The class, lean C++ with no Amiga headers. |
 | `opensound_dtclass.c`, `sound.lvo` | Its shell (`../picture/dtc_shell.h`, with the audio player process) and its one call, ObtainEngine at -30. |
-| `build-amiga.sh` | `sound.datatype`, `opensound.datatype` and the ABI test. |
+| `build-amiga.sh` | `sound.datatype`, `gfopensound.datatype` and the ABI test. |
 | `tests/SoundDTClassABITest.c` | Sounds made in memory, through OS 3.2's class and ours; PLAY plays them. |
 
 ## What it does

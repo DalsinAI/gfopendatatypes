@@ -1,5 +1,5 @@
 /*
- * openmodule.datatype: what libxmp needs from a C library, in a datatype
+ * gfopenmodule.datatype: what libxmp needs from a C library, in a datatype
  * that has no start-up code (../common/dtlib.c, built with DT_OWN_MALLOC,
  * has vsnprintf; the allocator is here).
  *
@@ -17,7 +17,7 @@
  * bases below; each player process opens them for itself
  * (moduleclass.c), so only that process's FPU state is touched.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdarg.h>
 #include <stdio.h>

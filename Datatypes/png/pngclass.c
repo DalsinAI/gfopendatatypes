@@ -1,5 +1,5 @@
 /*
- * openpng.datatype: PNG pictures for AmigaOS 3.x, a picture.datatype (V43
+ * gfopenpng.datatype: PNG pictures for AmigaOS 3.x, a picture.datatype (V43
  * mode) subclass that decodes on the Amiga itself (pngdecode.c, our own
  * inflate; no zlib or libpng). Every PNG colour type, bit depth,
  * transparency and Adam7 interlacing. The pixels go to picture.datatype as
@@ -12,23 +12,23 @@
  * DoDTMethodA puts a GadgetInfo (NULL with no window) in the message's
  * second longword, which for this method is the pixel array, and
  * picture.datatype then writes the picture from address 0 up through Chip
- * RAM. OpenBench 0.1 and a test tool did that on AmigaChrome's Instance-32
+ * RAM. GFOpenBench 0.1 and a test tool did that on AmiCradle's Instance-32
  * (10 and 11 October 2026); this class answers FALSE instead.
  *
- * PNG out (47.4): OIM_ENCODEPNG (datatypes/openimage.h) encodes ARGB pixels,
+ * PNG out (47.4): OIM_ENCODEPNG (datatypes/gfopenimage.h) encodes ARGB pixels,
  * the program's or the object's own, to a PNG file in memory, and DTM_WRITE
  * with DTWM_RAW writes the picture as PNG to a file (pngencode.c, deflate
  * by z.library, opened for each call); OIA_Compression in its dtw_AttrList
  * (47.5) sets the deflate level, 0 to store. An object made with no source
  * (DTST_RAM) loads nothing, so a program can make one just to encode with.
  *
- * DEVS:DataTypes/OpenPNG (build.sh) matches the PNG signature and the IHDR
+ * DEVS:DataTypes/GFOpenPNG (build.sh) matches the PNG signature and the IHDR
  * that must follow it: a longer mask than the system's PNG descriptor, which
  * AmigaOS 3.2.3's datatypes.library tries first, so this class takes PNGs
  * while the system's png.datatype stays installed and untouched. Removing
  * the descriptor gives PNGs back to it.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
 #include <dos/dos.h>
@@ -44,16 +44,16 @@
 #include <clib/alib_protos.h>
 
 #include "dtlib.h"
-#include <datatypes/openimage.h>
+#include <datatypes/gfopenimage.h>
 #include "pngdecode.h"
 #include "pngencode.h"
 #include "zlibrary.h"
 
-const char LibName[] = "openpng.datatype";
-const char LibIdString[] = "openpng.datatype 47.5 (23.10.2026) AmigaChrome Team";
+const char LibName[] = "gfopenpng.datatype";
+const char LibIdString[] = "gfopenpng.datatype 47.5 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 5;
-static const char version[] __attribute__((used)) = "$VER: openpng.datatype 47.5 (23.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.5 (23.10.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;

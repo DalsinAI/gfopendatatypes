@@ -1,6 +1,6 @@
-/* OpenDatatypes: an open datatypes.library for AmigaOS 3.2, API and ABI
+/* GFOpenDatatypes: an open datatypes.library for AmigaOS 3.2, API and ABI
  * compatible.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from datatypes.library's autodocs, the NDK 3.2
  * headers' published layouts and OS 3.2's answers measured by
@@ -22,7 +22,7 @@
  * the private call our AddDataTypes command makes.
  *
  * Built twice: datatypes.library, the replacement, makes the public
- * "datatypesclass"; opendatatypes.library, the side-by-side twin
+ * "datatypesclass"; gfopendatatypes.library, the side-by-side twin
  * tests/DatatypesABITest opens next to OS 3.2's own, makes
  * "opendatatypesclass" so it doesn't take OS 3.2's name. Class libraries
  * opened by the twin subclass OS 3.2's datatypesclass, so for their
@@ -96,10 +96,10 @@
 #define REG(r, decl) register decl __asm(#r)
 
 #ifndef LIBNAME
-#define LIBNAME "opendatatypes.library"
+#define LIBNAME "gfopendatatypes.library"
 #endif
 #define LIB_VERSION  47
-#define LIB_REVISION 100                /* 47.100 and up: OpenDatatypes */
+#define LIB_REVISION 100                /* 47.100 and up: GFOpenDatatypes */
 
 /* How much of the data recognition looks at (measured on OS 3.2: the hook's
  * BufferLength is the size up to 1084, from a file or from memory) */
@@ -133,9 +133,9 @@ int start(void) { return -1; }
 
 static const char lib_name[] = LIBNAME;
 static const char lib_id[] =
-    "datatypes.library 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team\r\n";
+    "datatypes.library 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team\r\n";
 static const char lib_ver[] __attribute__((used)) =
-    "\0$VER: datatypes.library 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team";
+    "\0$VER: datatypes.library 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team";
 static const char dos_name[] = "dos.library";
 static const char utility_name[] = "utility.library";
 static const char iffparse_name[] = "iffparse.library";
@@ -1539,7 +1539,7 @@ static ULONG L_LaunchToolA(REG(a0, struct Tool *tool), REG(a1, STRPTR project), 
 /* ---- D3: AddDataTypes ----------------------------------------------------------------- */
 
 /* The private call our AddDataTypes command makes (it checks the
- * library's id string names OpenDatatypes first): each descriptor file
+ * library's id string names GFOpenDatatypes first): each descriptor file
  * in files added (a type of the same name replaced), DEVS:DataTypes read
  * again with ODT_ADT_REFRESH, and each type given to the hook with
  * ODT_ADT_LIST (CallHookPkt(hook, DataType, NULL)). It answers how many
@@ -1637,7 +1637,7 @@ static const APTR lib_vectors[] = {
     (APTR)L_none,                        /* -234 private */
     (APTR)L_none,                        /* -240 private */
     (APTR)L_none,                        /* -246 private */
-    (APTR)L_AddDataTypesA,               /* -252 private: OpenDatatypes: AddDataTypes */
+    (APTR)L_AddDataTypesA,               /* -252 private: GFOpenDatatypes: AddDataTypes */
     (APTR)L_FindMethod,                  /* -258 */
     (APTR)L_FindTriggerMethod,           /* -264 */
     (APTR)L_CopyDTMethods,               /* -270 */

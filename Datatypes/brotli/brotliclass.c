@@ -7,7 +7,7 @@
  * "brotli", as a browser does from Content-Encoding: br), and
  * DEVS:DataTypes/Brotli (build.sh) takes files by their name, .br.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/memory.h>
@@ -24,7 +24,7 @@
 #include "brdecode.h"
 
 const char LibName[] = "brotli.datatype";
-const char LibIdString[] = "brotli.datatype 47.1 (23.10.2026) AmigaChrome Team";
+const char LibIdString[] = "brotli.datatype 47.1 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
 static const char version[] __attribute__((used)) = "$VER: brotli.datatype 47.1 (23.10.2026)";

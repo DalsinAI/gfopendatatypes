@@ -26,7 +26,7 @@ Brotli comes from three places:
 - VECTORS (tests/brotli-vectors.txt), small streams kept in the repository
   with what they decode to, so the test runs without the module.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 SPDX-License-Identifier: MIT
 """
 import gzip

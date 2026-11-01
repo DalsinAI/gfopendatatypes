@@ -1,17 +1,17 @@
 /*
- * opensound.datatype: FLAC, Ogg Vorbis, Opus, AAC/M4A, ALAC, WMA and MP3
+ * gfopensound.datatype: FLAC, Ogg Vorbis, Opus, AAC/M4A, ALAC, WMA and MP3
  * sounds, MIDI, C64 SID tunes and XM/IT/S3M modules for AmigaOS 3.x, a
  * sound.datatype subclass. MIDI and SID are played on the host into PCM. The sound is decoded
  * by the media.decode/1 service (DalsinAI/openamigaservice
  * docs/MEDIA_DECODE.md) on the services card or a paired Cradle, which
  * sends back 16-bit PCM at a rate Paula plays (at most
- * ENV:OpenImage/SoundRate, default 28000 Hz; 44.1 kHz comes as 22.05 kHz).
+ * ENV:GFOpenImage/SoundRate, default 28000 Hz; 44.1 kHz comes as 22.05 kHz).
  *
  * With sound.datatype V44 or newer the sound is kept in 16-bit stereo;
  * older ones get 8-bit mono. With neither a card nor a Cradle the sound
  * does not open yet (FLAC, Vorbis and Opus decoders on the 68k come next).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>
@@ -30,11 +30,11 @@
 #include "dtlib.h"
 #include "dtservice.h"
 
-const char LibName[] = "opensound.datatype";
-const char LibIdString[] = "opensound.datatype 47.1 (5.10.2026) AmigaChrome Team, decoded by media.decode/1";
+const char LibName[] = "gfopensound.datatype";
+const char LibIdString[] = "gfopensound.datatype 47.1 (5.10.2026) AmiCradle Team, decoded by media.decode/1";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: opensound.datatype 47.1 (5.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.1 (5.10.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -74,7 +74,7 @@ static ULONG get32(const UBYTE *p)
 static ULONG soundRate(void)
 {
     char buf[16];
-    LONG n = GetVar((CONST_STRPTR)"OpenImage/SoundRate", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
+    LONG n = GetVar((CONST_STRPTR)"GFOpenImage/SoundRate", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
     ULONG v = 0;
     LONG i;
 

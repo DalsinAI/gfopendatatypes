@@ -6,7 +6,7 @@
  * small calls the lossless encoder needs from webp_enc.c are here, doing
  * what libwebp's do.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team (this file; libwebp keeps its
+ * MIT, Copyright (c) 2026 AmiCradle Team (this file; libwebp keeps its
  * licence).
  * SPDX-License-Identifier: MIT
  */

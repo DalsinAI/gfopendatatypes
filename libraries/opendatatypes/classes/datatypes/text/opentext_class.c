@@ -1,6 +1,6 @@
-/* OpenDatatypes: an open text.datatype for AmigaOS 3.2, API and ABI
+/* GFOpenDatatypes: an open text.datatype for AmigaOS 3.2, API and ABI
  * compatible.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from the text_dtc autodoc, datatypes/textclass.h
  * (NDK 3.2) and OS 3.2's answers measured by tests/TextClassABITest,
@@ -13,7 +13,7 @@
  * dispatcher's entry, and the text family's services (fonts, drawing,
  * the clip region, DrawInfo pens, DoubleClick).
  *
- * LIBNAME is "text.datatype" for the replacement and "opentext.datatype"
+ * LIBNAME is "text.datatype" for the replacement and "gfopentext.datatype"
  * for the side-by-side build the ABI test opens next to OS 3.2's.
  */
 #ifndef LIBNAME
@@ -23,7 +23,7 @@
 #define DTC_SUPERLIB "datatypes.library"
 #define DTC_DISPATCH tdt_dispatch
 #define DTC_INST_SIZE tdt_inst_size
-#define DTC_IDSTRING LIBNAME " 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team\r\n"
+#define DTC_IDSTRING LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team\r\n"
 #define DTC_EXT_INIT text_ext_init
 
 #include "text_core.h"
@@ -34,7 +34,7 @@ static int text_ext_init(struct DTCBase *base);
 #include <proto/layers.h>
 
 static const char ver[] __attribute__((used)) =
-    "\0$VER: " LIBNAME " 47.100 (13.10.2026) OpenDatatypes, AmigaChrome Team";
+    "\0$VER: " LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team";
 
 /* ---- the text family's services --------------------------------------- */
 

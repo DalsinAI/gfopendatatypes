@@ -1,5 +1,5 @@
 /*
- * opentga.datatype's encoder: 32-bit ARGB pixels to a Targa (TGA) file in
+ * gfopentga.datatype's encoder: 32-bit ARGB pixels to a Targa (TGA) file in
  * memory, written from Truevision's TGA File Format Specification 2.0, as
  * the decoder (tgadecode.c) was.
  *
@@ -14,7 +14,7 @@
  * Built to run as a job on another core later, as tga_decode() is: it makes
  * no OS calls, writes no static data and gets its memory from the caller.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef TGAENCODE_H

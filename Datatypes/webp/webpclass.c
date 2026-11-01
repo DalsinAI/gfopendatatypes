@@ -6,12 +6,12 @@
  * DTM_WRITE in raw mode (47.2) writes the picture as a lossless WebP
  * (webpencode.c, libwebp's own lossless encoder), so a picture saved and
  * opened again is the same, pixel for pixel. OIA_Compression in
- * dtw_AttrList (datatypes/openimage.h) sets the effort: 0 the fastest, 9
+ * dtw_AttrList (datatypes/gfopenimage.h) sets the effort: 0 the fastest, 9
  * the smallest file, -1 or none a middle one. IFF mode is picture.datatype's
  * ILBM. An object made with no source (DTST_RAM) is a picture to write into
  * and save: a converter's target.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team. libwebp is Google's, under its
+ * MIT, Copyright (c) 2026 AmiCradle Team. libwebp is Google's, under its
  * BSD licence (upstream/libwebp/COPYING).
  */
 #include <exec/memory.h>
@@ -26,7 +26,7 @@
 #include <proto/datatypes.h>
 #include <proto/utility.h>
 #include <clib/alib_protos.h>
-#include <datatypes/openimage.h>
+#include <datatypes/gfopenimage.h>
 
 #include "dtlib.h"
 #include "webp/decode.h"
@@ -35,7 +35,7 @@
 #include "dsp/lossless.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.2 (23.10.2026) AmigaChrome Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.2 (23.10.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 2;
 static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.2 (23.10.2026)";

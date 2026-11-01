@@ -1,19 +1,19 @@
 /*
  * gzip.datatype: gzip, zlib-wrapped and raw deflate, a stream.datatype
  * subclass (datatypes/streamclass.h). It answers SDTM_CODEC only; the
- * inflate is z.library's (OpenZlib), opened for each object, so no zlib is
+ * inflate is z.library's (GFOpenZlib), opened for each object, so no zlib is
  * linked in and nothing is kept in globals. SDTA_Wrapper (OM_NEW) names
  * the wrapper; by default it is told from the first bytes (gzcore.c).
  *
  * DTM_WRITE with SDTA_WriteCoded in its dtw_AttrList (47.2) writes the
  * plain bytes deflated again in the wrapper they came in (gzip, zlib or raw
- * deflate), at OIA_Compression's level when given (datatypes/openimage.h);
+ * deflate), at OIA_Compression's level when given (datatypes/gfopenimage.h);
  * without it, stream.datatype writes the plain bytes.
  *
  * DEVS:DataTypes/GZip (build.sh) matches gzip's 1f 8b 08, so any program
  * opens a .gz file through datatypes; HTTP bodies name the class.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/memory.h>
@@ -26,7 +26,7 @@
 #include <clib/alib_protos.h>
 
 #include <datatypes/streamclass.h>
-#include <datatypes/openimage.h>
+#include <datatypes/gfopenimage.h>
 #include <proto/dos.h>
 #include <proto/datatypes.h>
 #include <string.h>
@@ -35,7 +35,7 @@
 #include "gzcore.h"
 
 const char LibName[] = "gzip.datatype";
-const char LibIdString[] = "gzip.datatype 47.2 (23.10.2026) AmigaChrome Team";
+const char LibIdString[] = "gzip.datatype 47.2 (23.10.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 2;
 static const char version[] __attribute__((used)) = "$VER: gzip.datatype 47.2 (23.10.2026)";

@@ -1,11 +1,11 @@
 #!/bin/sh
 # gzip.datatype's encoder (gz_encode() in gzip/gzcore.c, what DTM_WRITE with
 # SDTA_WriteCoded runs) on x86 or ARM64 cores, under AddressSanitizer and
-# UBSan, over OpenZlib's core as z.library (the host's zlib stands in when
+# UBSan, over GFOpenZlib's core as z.library (the host's zlib stands in when
 # there is no amigachrome-guest checkout, as in tests/test-stream.sh).
 # tests/gzenctest.c writes every input in gzip, zlib and raw deflate at four
 # levels; Python's zlib, an outside reader, must inflate each to the input.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC, CXX, SAN, AMIGACHROME_GUEST   as tests/test-stream.sh
 #
@@ -28,7 +28,7 @@ if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
     # shellcheck disable=SC2086
     $CXX -std=gnu++23 -fno-exceptions -fno-rtti -O1 -g $SAN -c "$OZ/zlib_core.cpp" -o "$OUT/zlib_core.o"
     ZL="-I$OZ $OUT/zlib_core.o -lstdc++"
-    echo "deflate: OpenZlib's core (z.library), $OZ"
+    echo "deflate: GFOpenZlib's core (z.library), $OZ"
 else
     ZL="-DZLHOST_SYSTEM -lz"
     echo "deflate: the host's zlib, standing in for z.library (no amigachrome-guest checkout)"

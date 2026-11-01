@@ -1,10 +1,10 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
-# OpenDatatypes' datatypesclass (libraries/opendatatypes/dtclass_core.c,
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
+# GFOpenDatatypes' datatypesclass (libraries/opendatatypes/dtclass_core.c,
 # with dt_core.c): built with an m68k cross GCC at -O0 and -O2 for the
 # 68000, 68020 and 68040; checked with nm to call nothing but libgcc's
 # arithmetic and to keep no state of its own; then hosted on
-# OpenIntuition's BOOPSI core (rootclass and gadgetclass, from
+# GFOpenIntuition's BOOPSI core (rootclass and gadgetclass, from
 # libraries/openintuition as it is on main) with a probe subclass and run
 # under qemu-m68k on a script python3 writes at test time
 # (opendatatypes_class_ref.py), against the log python's own model of the
@@ -17,7 +17,7 @@
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 lib=$here/../../libraries/opendatatypes
-# OpenIntuition's BOOPSI and OpenUtility's hooks are amigachrome-guest's:
+# GFOpenIntuition's BOOPSI and GFOpenUtility's hooks are amigachrome-guest's:
 # GUEST= a checkout (default amigachrome-guest, else guest, beside this
 # repository).
 g=${GUEST:-$here/../../../amigachrome-guest}

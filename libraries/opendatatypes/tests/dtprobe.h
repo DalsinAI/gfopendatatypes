@@ -1,7 +1,7 @@
 /* What the test's recognition code writes down each time it runs: the
  * record is the calling task's tc_UserData, set by DatatypesABITest around
  * each ObtainDataTypeA. The code itself (DatatypesABITest.c, probe_code)
- * fills it at these offsets. Copyright (c) 2026 AmigaChrome Team. MIT. */
+ * fills it at these offsets. Copyright (c) 2026 AmiCradle Team. MIT. */
 #ifndef DTPROBE_H
 #define DTPROBE_H
 #define DTPROBE_MAGIC 0x44545048UL      /* 'DTPH' */

@@ -1,5 +1,5 @@
 #!/bin/sh
-# OpenDatatypes' picture and sound families: builds one datatype class
+# GFOpenDatatypes' picture and sound families: builds one datatype class
 # library with the os32-gcc16 stove. Each class's build-amiga.sh calls it:
 #   build-class.sh <dir> <core> <file name> <ABI test>
 # e.g. build-class.sh .../ilbm ilbm ilbm.datatype ILBMDTClassABITest
@@ -17,7 +17,7 @@ SOFT040="-specs=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../../../../../buil
 
 HERE=$1 CORE=$2 FILE=$3 TEST=$4
 FAMILY=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-STOVE=${STOVE:-"$HOME/AmigaChrome/stoves/os32-gcc16"}
+STOVE=${STOVE:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 P="$STOVE/prefix"
 CC=${CC:-"$P/bin/m68k-amigaos-gcc"}
 CXX=${CXX:-"$P/bin/m68k-amigaos-g++"}

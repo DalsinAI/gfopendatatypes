@@ -51,7 +51,7 @@
  * whole-buffer decode, SDTM_FEED, SDTM_TAKE and SDTM_END, DTM_WRITE and the
  * errors.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef DATATYPES_STREAMCLASS_H
@@ -69,8 +69,8 @@
 
 /* ---- attributes --------------------------------------------------------- */
 
-/* TAG_USER with the AmigaChrome Team's number ($DA15) in the middle, as
- * datatypes/openimage.h; the stream class's are $DA151xx. */
+/* TAG_USER with the AmiCradle Team's number ($DA15) in the middle, as
+ * datatypes/gfopenimage.h; the stream class's are $DA151xx. */
 #define SDTA_StreamDummy   (TAG_USER + 0x0DA15100)
 
 /* (UBYTE *, G) The plain bytes of a whole-buffer object, owned by it.

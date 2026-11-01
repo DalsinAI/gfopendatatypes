@@ -8,7 +8,7 @@
  *
  *     webpenctest OUTDIR
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>

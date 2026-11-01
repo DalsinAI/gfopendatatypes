@@ -1,6 +1,6 @@
 /*
- * openamigaimage datatypes: openservice.device calls (dtservice.h).
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * openamigaimage datatypes: gfopenservice.device calls (dtservice.h).
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/io.h>
@@ -84,7 +84,7 @@ void dt_service_close(struct dt_service *s)
 ULONG dt_max_side(void)
 {
     char buf[16];
-    LONG n = GetVar((CONST_STRPTR)"OpenImage/MaxSide", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
+    LONG n = GetVar((CONST_STRPTR)"GFOpenImage/MaxSide", (STRPTR)buf, sizeof buf, GVF_GLOBAL_ONLY);
     ULONG v = 0;
     LONG i;
 

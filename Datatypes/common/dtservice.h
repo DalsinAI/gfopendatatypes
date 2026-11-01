@@ -1,14 +1,14 @@
 /*
  * openamigaimage datatypes: work handed to a named service ("media.decode/1")
- * through openservice.device, on the services card or a paired Cradle.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * through gfopenservice.device, on the services card or a paired Cradle.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef DTSERVICE_H
 #define DTSERVICE_H
 
 #include <exec/types.h>
 #include <exec/ports.h>
-#include "devices/openservice.h"
+#include "devices/gfopenservice.h"
 
 struct dt_service {
     struct MsgPort *port;
@@ -27,7 +27,7 @@ LONG dt_service_call(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
                      const struct OSBuffer buf[4], const ULONG extra[4], ULONG *result, ULONG *aux);
 void dt_service_close(struct dt_service *s);
 
-/* The largest picture side to ask a service for: ENV:OpenImage/MaxSide, else
+/* The largest picture side to ask a service for: ENV:GFOpenImage/MaxSide, else
  * 4096. Bigger pictures come back scaled down to fit. */
 ULONG dt_max_side(void);
 

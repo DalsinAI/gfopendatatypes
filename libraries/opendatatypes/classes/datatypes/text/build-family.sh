@@ -1,6 +1,6 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
-# OpenDatatypes classes: builds one family of datatype class libraries
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
+# GFOpenDatatypes classes: builds one family of datatype class libraries
 # with the os32-gcc16 stove. text/build-amiga.sh and
 # animation/build-amiga.sh call it:
 #   build-family.sh <classes dir> <ABI test> <class>...
@@ -20,7 +20,7 @@ SOFT040="-specs=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../../../../../buil
 
 DIR=$1 TEST=$2
 shift 2
-STOVE=${STOVE:-"$HOME/AmigaChrome/stoves/os32-gcc16"}
+STOVE=${STOVE:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 P="$STOVE/prefix"
 CC=${CC:-"$P/bin/m68k-amigaos-gcc"}
 NM=${NM:-"$P/bin/m68k-amigaos-nm"}

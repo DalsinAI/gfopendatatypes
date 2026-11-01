@@ -1,5 +1,5 @@
 /*
- * opentga.datatype's encoder (tgaencode.h).
+ * gfopentga.datatype's encoder (tgaencode.h).
  *
  * The header (18 bytes): no image ID, no colour map, image type 2 or 10,
  * origin 0,0, width and height (little-endian, as every TGA number is),
@@ -14,7 +14,7 @@
  * The footer (26 bytes): extension area offset 0, developer directory
  * offset 0, and "TRUEVISION-XFILE." with its NUL.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include "tgaencode.h"

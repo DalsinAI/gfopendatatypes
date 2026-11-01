@@ -1,11 +1,11 @@
 #!/bin/sh
-# opentga.datatype's encoder on x86 or ARM64 cores, under AddressSanitizer
+# gfopentga.datatype's encoder on x86 or ARM64 cores, under AddressSanitizer
 # and UBSan: tests/tgaenctest.c encodes the test pictures four ways and
 # reads each back with our own decoder (tga/tgadecode.c), pixel for pixel;
 # then, with Pillow installed, Pillow reads every file it wrote and must see
 # the same picture (an outside reader: what other programs will make of a
 # TGA saved on the Amiga).
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC     the host compiler (default cc)
 #   SAN    sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

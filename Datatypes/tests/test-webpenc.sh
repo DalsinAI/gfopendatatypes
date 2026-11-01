@@ -4,7 +4,7 @@
 # tests/webpenctest.c encodes the test pictures lossless at three levels and
 # reads each back with libwebp's own decoder, pixel for pixel; Pillow, an
 # outside reader, must see the same picture in every file.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC        the host compiler (default cc)
 #   SAN       sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

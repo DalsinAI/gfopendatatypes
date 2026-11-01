@@ -10,14 +10,14 @@
  * SRC byte for byte: what cdxl.datatype's raw write promises for an intact
  * film, and a writer's own output read and written again.
  *
- *     dtsave SRC DST [AS opentga|openpng|...] [STORE]
+ *     dtsave SRC DST [AS gfopentga|gfopenpng|...] [STORE]
  *     dtsave SRC DST SAMEBYTES
  *
  * Prints "SRC -> DST: SAME w x h alpha=0|1 bytes=N" or what went wrong;
  * returns 0, or 10 when the pictures differ, 20 on an error. Built by
  * tests/build-dtsave.sh.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>
@@ -26,7 +26,7 @@
 #include <datatypes/datatypes.h>
 #include <datatypes/datatypesclass.h>
 #include <datatypes/pictureclass.h>
-#include <datatypes/openimage.h>
+#include <datatypes/gfopenimage.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>

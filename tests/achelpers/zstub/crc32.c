@@ -3,7 +3,7 @@
  * crc32_z a bit at a time, counting its calls; crc32 through it, as zlib's
  * does; and Chromium's copy_with_crc as it reads on a 68k, its SIMD branch
  * compiled out, which achelpers/zlibsums.sh looks for.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include "zlib.h"

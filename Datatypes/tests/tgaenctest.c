@@ -1,5 +1,5 @@
 /*
- * opentga.datatype's encoder (tga/tgaencode.c) on x86 or ARM64 cores,
+ * gfopentga.datatype's encoder (tga/tgaencode.c) on x86 or ARM64 cores,
  * checked against its own decoder (tga/tgadecode.c): each test picture is
  * encoded four ways (run-length or not, alpha kept or not), read back with
  * tga_read_head() and tga_decode(), and compared pixel for pixel. Each file
@@ -9,7 +9,7 @@
  *
  *     tgaenctest OUTDIR
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>
