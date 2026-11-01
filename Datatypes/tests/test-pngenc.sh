@@ -8,7 +8,7 @@
 # filters), and Pillow too when it is installed. Every pixel must come back.
 # Under AddressSanitizer and UBSan; then the encoder as C99 -Wall -Wextra
 # -Werror -pedantic at -Os, with no writable data.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 # SPDX-License-Identifier: MIT
 #
 #   CC, CXX, SAN, AMIGACHROME_GUEST   as tests/test-stream.sh

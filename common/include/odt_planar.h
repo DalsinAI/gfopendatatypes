@@ -1,7 +1,7 @@
 /* odt_planar.h: bitplanes to one byte a pixel, eight pixels at a time, for
  * the datatypes that read planar pictures: ilbm.datatype's BODY,
  * picture.datatype's V42 bitmaps and cdxl.datatype's frames.
- * Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
+ * Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
  *
  * Plain C (and C++), no Amiga headers, no tables, nothing to link: the
  * cores that include it still call nothing and keep no data. Eight plane

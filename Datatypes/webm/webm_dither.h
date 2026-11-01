@@ -2,7 +2,7 @@
  * webm.datatype: a decoded picture (4:2:0, 4:4:4, or VP9's RGB) to 256
  * colours, the 6x6x6 colour cube with 4x4 ordered dithering. Shared by the
  * datatype and its tests, so both make the same pixels. Integer only (BT.601, limited range).
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef WEBM_DITHER_H
 #define WEBM_DITHER_H

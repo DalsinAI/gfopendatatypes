@@ -1,6 +1,6 @@
 /* DatatypesABITest: OS 3.2's datatypes.library and GFOpenDatatypes side by
  * side.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Runs one set of calls through a datatypes.library base and writes every
  * answer as a line of text. With gfopendatatypes.library in LIBS: (or the

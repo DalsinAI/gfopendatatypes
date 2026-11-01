@@ -2,7 +2,7 @@
  * For stream.datatype's subclasses: SDTM_CODEC's message to and from the
  * portable cores' struct sdt_call (sdtcore.h).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef SDTGLUE_H

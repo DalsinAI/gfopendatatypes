@@ -1,7 +1,7 @@
 /*
  * cdxl.datatype's core (cdxl_core.h). Written from the CDXL header layout
  * as cdxl_core.h gives it; no other player's code.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "cdxl_core.h"
 #include "../../common/include/odt_planar.h"

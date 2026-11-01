@@ -5,7 +5,7 @@
 # SOURCES gives no URL for (zlib, from AROS's ports cache) can't be fetched: put it
 # in DIR yourself. Used by build.sh and Datatypes/build.sh when a tarball is missing,
 # so a fresh clone builds with no files from anywhere else.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 file=$1 dir=$2

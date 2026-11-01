@@ -4,7 +4,7 @@
 # it replaced (tests/planartest.c), under AddressSanitizer and UBSan; with
 # QEMU_M68K set (qemu-m68k), also built for the 68040 with
 # m68k-linux-gnu-gcc and run there.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC          the host compiler (default cc)
 #   SAN         sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

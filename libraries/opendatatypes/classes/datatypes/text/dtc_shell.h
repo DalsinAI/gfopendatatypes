@@ -1,7 +1,7 @@
 /* GFOpenDatatypes classes: the C around the text, ascii, animation and anim
  * class cores, shared by their shells (open<name>_class.c). Built only on
  * the os32-gcc16 stove, with the NDK 3.2 headers; the cores never see them.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the autodocs of exec, dos, intuition, graphics,
  * iffparse and datatypes and the NDK 3.2 headers' published layouts;

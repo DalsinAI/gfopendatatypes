@@ -10,7 +10,7 @@
  * Python read every file back. Each is also read back here by gfopenpng's own
  * decoder (png/pngdecode.c), which must give the same pixels.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>

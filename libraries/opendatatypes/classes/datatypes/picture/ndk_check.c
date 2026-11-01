@@ -2,7 +2,7 @@
  * headers: compiled (never run) by build-class.sh on the os32-gcc16 stove;
  * any difference stops the build. Names a 3.2 NDK may not carry (the
  * V43+ picture extras, the sample-type extra) are checked when it does.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  */
 #include <exec/types.h>
 #include <dos/dos.h>

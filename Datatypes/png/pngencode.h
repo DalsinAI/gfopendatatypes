@@ -12,7 +12,7 @@
  * Plain C with no OS calls and no static data: memory comes from the
  * caller's env.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef PNGENCODE_H

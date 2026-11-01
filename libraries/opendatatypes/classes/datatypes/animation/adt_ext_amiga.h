@@ -1,7 +1,7 @@
 /* GFOpenDatatypes: the animation family's services (struct adt_ext) on
  * AmigaOS 3.2, for the animation.datatype and anim.datatype shells.
  * Included after ../text/dtc_shell.h. Built only on the os32-gcc16 stove.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the graphics, audio.device, timer.device and dos
  * autodocs and the NDK 3.2 headers' layouts; never from Kickstart's,

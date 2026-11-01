@@ -6,7 +6,7 @@
 # 8192 x 8192 and smaller are read; every file cut short and with each byte
 # changed reads nothing outside it; and the dither (webm/webm_dither.h)
 # writes nothing outside a buffer smaller than the decoded frame.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC     the host compiler (default cc)
 #   SAN    sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

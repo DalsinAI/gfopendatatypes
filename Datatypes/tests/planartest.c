@@ -6,7 +6,7 @@
  * (NULL), pixels one to four bytes apart, and the bytes around each row
  * left as they were. tests/test-planar.sh runs it under AddressSanitizer
  * and UBSan, and as 68040 code under qemu-m68k.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <stdlib.h>

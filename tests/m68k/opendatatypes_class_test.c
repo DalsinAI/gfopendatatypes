@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root). */
+/* Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root). */
 /* GFOpenDatatypes' datatypesclass under qemu-m68k: libraries/opendatatypes/
  * dtclass_core.c hosted on GFOpenIntuition's BOOPSI core (rootclass and
  * gadgetclass, libraries/openintuition), with a probe subclass
@@ -23,7 +23,7 @@
  *                                (dispose, print, dtdispose, relayout), run quietly; one line
  *   print                        PrintDTObjectA
  *   dispose
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  */
 #include <stdio.h>
 #include <stdlib.h>

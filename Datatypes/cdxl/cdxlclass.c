@@ -10,7 +10,7 @@
  * make CDXL from any film; this plays them, and the CDXL on CDTV and CD32
  * discs.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>

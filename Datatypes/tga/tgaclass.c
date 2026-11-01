@@ -19,7 +19,7 @@
  * kind that happens to be called .tga still opens as what it is when its own
  * datatype knows it, and one that is not a TGA fails as invalid data.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
 #include <dos/dos.h>

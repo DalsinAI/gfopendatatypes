@@ -9,7 +9,7 @@
 # AddressSanitizer and UBSan: nothing read or written outside the buffers.
 # Last, the cores are compiled as C99 with -Wall -Wextra -Werror at -Os,
 # and must hold no writable data (they run inside a library).
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 # SPDX-License-Identifier: MIT
 #
 #   CC                 the host compiler (default cc); CXX for GFOpenZlib's core (default c++)

@@ -4,7 +4,7 @@
  * in D0 upwards, the base in A6. D0, D1, A0 and A1 are the library's to
  * change; the result comes back in D0.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/types.h>

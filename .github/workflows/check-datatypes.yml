@@ -1,4 +1,4 @@
-# Copyright (c) 2026 AmigaChrome Team. MIT licence.
+# Copyright (c) 2026 AmiCradle Team. MIT licence.
 # The datatypes' decoder cores on the host (x86), under AddressSanitizer and
 # UBSan: gfopentga.datatype's (Datatypes/tests/test-tga.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),

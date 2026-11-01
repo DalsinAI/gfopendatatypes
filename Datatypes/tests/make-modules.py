@@ -19,7 +19,7 @@ The formats are as libxmp reads them (src/loaders/*_load.c in libxmp
 4.7.3). Check them on the PC with modbench (modbench.c) built against
 libxmp for the host, which renders each to a WAV file.
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 import math
 import os

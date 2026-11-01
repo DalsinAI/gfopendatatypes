@@ -6,7 +6,7 @@
 # decodes to. Then every file cut short at every length, and with each
 # header byte changed, under AddressSanitizer and UBSan: nothing is read or
 # written outside the file or the picture.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC     the host compiler (default cc)
 #   SAN    sanitizer flags (default -fsanitize=address,undefined; SAN= for none)

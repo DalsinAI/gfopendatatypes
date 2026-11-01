@@ -2,7 +2,7 @@
  * vpx/vpx_image.h for building webm/webm_dither.h on x86 or ARM64 cores
  * without libvpx (tests/webmsizetest.c): only the fields and constants the
  * dither reads, under libvpx's names.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef VPX_VPX_IMAGE_H_
 #define VPX_VPX_IMAGE_H_

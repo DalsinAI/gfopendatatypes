@@ -2,7 +2,7 @@
  * openamigaimage datatypes: the shared library glue. Each datatype is a
  * library with its own ROMTag (common/dtlib.c) whose fifth function,
  * ObtainEngine(), hands datatypes.library the BOOPSI class.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef DTLIB_H
 #define DTLIB_H

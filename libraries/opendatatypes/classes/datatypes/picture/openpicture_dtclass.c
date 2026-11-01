@@ -1,5 +1,5 @@
 /* GFOpenPicture: an open picture.datatype for AmigaOS 3.2, API and ABI compatible.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from the autodocs, the NDK 3.2 headers and the IFF
  * specifications, never from Kickstart's, Hyperion's or AROS's code or

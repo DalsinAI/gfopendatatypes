@@ -47,7 +47,7 @@
  * whole-buffer decode, SDTM_FEED, SDTM_TAKE and SDTM_END, DTM_WRITE and the
  * errors.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #ifndef DATATYPES_STREAMCLASS_H

@@ -22,7 +22,7 @@
  * tga_decode() makes no OS calls, writes no static data and touches only
  * the memory it is handed.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef TGADECODE_H
 #define TGADECODE_H

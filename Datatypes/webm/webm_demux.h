@@ -3,7 +3,7 @@
  * VP9 video track and lists where each of its frames lies in the file, so
  * frames can be read and decoded on demand. No floating point is used.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef WEBM_DEMUX_H
 #define WEBM_DEMUX_H

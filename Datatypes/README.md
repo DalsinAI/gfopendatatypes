@@ -420,7 +420,7 @@ test file is make-tga.py's), 8-bit screens, and the speed on a real 68k.
 ## Licence
 
 The datatype code (`build.sh`, `common/`, `include/`, `webp/`, `webm/`, `openpicture/`, `png/`, `tga/`, `stream/`, `gzip/`, `brotli/`, `opensound/`, `openmodule/`, `opendoc/`, `openvideo/`, `cdxl/`, `tests/`) is
-MIT, Copyright (c) 2026 AmigaChrome Team, as the rest of this repository.
+MIT, Copyright (c) 2026 AmiCradle Team, as the rest of this repository.
 libwebp and libvpx keep their BSD licences and the WebM Project's patent
 grants (`../upstream/libwebp/`, `../upstream/libvpx/`); a patch to their
 source stays under their licence. libxmp, built unchanged into

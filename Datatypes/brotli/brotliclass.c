@@ -7,7 +7,7 @@
  * "brotli", as a browser does from Content-Encoding: br), and
  * DEVS:DataTypes/Brotli (build.sh) takes files by their name, .br.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/memory.h>

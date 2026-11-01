@@ -10,7 +10,7 @@
  *   - webm_dither into buffers smaller than the decoded picture, or than
  *     width x height: nothing is written outside the buffer, and every
  *     pixel that fits is written.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <stdlib.h>

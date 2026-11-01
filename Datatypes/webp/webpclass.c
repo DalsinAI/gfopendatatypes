@@ -3,7 +3,7 @@
  * mode) subclass built on libwebp. Lossy, lossless and alpha pictures load
  * as 32-bit ARGB; an animated WebP shows its first frame.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team. libwebp is Google's, under its
+ * MIT, Copyright (c) 2026 AmiCradle Team. libwebp is Google's, under its
  * BSD licence (upstream/libwebp/COPYING).
  */
 #include <exec/memory.h>

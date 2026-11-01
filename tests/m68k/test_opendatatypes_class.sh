@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (c) 2026 AmigaChrome Team. MIT licence (see LICENSE at the repository root).
+# Copyright (c) 2026 AmiCradle Team. MIT licence (see LICENSE at the repository root).
 # GFOpenDatatypes' datatypesclass (libraries/opendatatypes/dtclass_core.c,
 # with dt_core.c): built with an m68k cross GCC at -O0 and -O2 for the
 # 68000, 68020 and 68040; checked with nm to call nothing but libgcc's

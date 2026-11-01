@@ -10,7 +10,7 @@ frame after frame), OUTDIR/NAME.pcm (the sound as signed 8-bit mono, stereo
 mixed as (left + right) >> 1) and OUTDIR/films.txt (NAME width height
 frames fps rate, one a line).
 
-MIT, Copyright (c) 2026 AmigaChrome Team.
+MIT, Copyright (c) 2026 AmiCradle Team.
 """
 import os
 import random

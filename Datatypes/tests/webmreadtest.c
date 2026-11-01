@@ -14,7 +14,7 @@
  * file N times from a real file descriptor (lseek and read, as Seek and
  * Read on AmigaDOS) both ways and print the time and the calls.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <fcntl.h>
 #include <stdio.h>

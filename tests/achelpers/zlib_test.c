@@ -5,7 +5,7 @@
  * adler32 halves of 65521 and up, NULL buffers, lengths 0 to 300, long
  * buffers and over a megabyte), and each call where it should go: under 32
  * bytes or NULL to zlib's own, else to AC090's helpers.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
 #include <string.h>

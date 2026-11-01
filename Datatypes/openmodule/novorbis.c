@@ -3,7 +3,7 @@
  * Ogg Vorbis (OggMod, rare) does not load; the decoder is large and all
  * floating point, slow on a 68k without an FPU.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 int libxmp_vorbis_decode_memory(const unsigned char *mem, int len, int *channels, int *rate, short **output);
 

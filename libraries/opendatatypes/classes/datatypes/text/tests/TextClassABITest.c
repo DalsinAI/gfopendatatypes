@@ -1,7 +1,7 @@
 /* TextClassABITest: OS 3.2's text.datatype and ascii.datatype next to
  * GFOpenDatatypes' (gfopentext.datatype, gfopenascii.datatype), on the same
  * texts, every answer printed side by side.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  *   TextClassABITest          each line where ours answers otherwise
  *   TextClassABITest PROBE    OS 3.2's answers only, for the README's

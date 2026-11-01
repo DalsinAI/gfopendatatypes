@@ -1,6 +1,6 @@
 /* GFOpenDatatypes: an open anim.datatype for AmigaOS 3.2, API and ABI
  * compatible.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from the IFF ANIM and ILBM specifications (EA's
  * public documents), the animation_dtc autodoc and OS 3.2's answers

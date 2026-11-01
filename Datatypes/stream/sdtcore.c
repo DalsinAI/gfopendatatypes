@@ -5,7 +5,7 @@
  * moves what is left to the front and grows the buffer only when it must,
  * so a program that takes as it feeds keeps it at the size of a piece.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include "sdtcore.h"

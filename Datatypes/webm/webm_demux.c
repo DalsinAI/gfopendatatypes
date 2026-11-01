@@ -6,7 +6,7 @@
  * SimpleBlock and BlockGroup for that track's frames. Clusters of unknown
  * size (live recordings) end at the next top-level element.
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdlib.h>
 #include <string.h>

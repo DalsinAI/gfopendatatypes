@@ -2,7 +2,7 @@
  * runs the script tests/m68k/opendatatypes_textanim_ref.py writes and logs
  * every answer and every call the cores make through their env, for the
  * test to compare with the log python's own models expect.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * The superclass, datatypesclass, is a mock here (domain, source,
  * DTSpecialInfo, OM_NOTIFY logged): the class cores are tested, not it.

@@ -12,7 +12,7 @@
  * source would: the same bytes, and as many of them (fewer at the end of
  * the file, -1 when the source fails).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef WEBM_READCACHE_H
 #define WEBM_READCACHE_H

@@ -1,6 +1,6 @@
 /* GFOpenDatatypes: an open datatypes.library for AmigaOS 3.2, API and ABI
  * compatible.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room: written from datatypes.library's autodocs, the NDK 3.2
  * headers' published layouts and OS 3.2's answers measured by

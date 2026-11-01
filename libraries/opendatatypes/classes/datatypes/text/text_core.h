@@ -1,5 +1,5 @@
 /* GFOpenDatatypes text.datatype core, in plain C with no Amiga headers.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the text_dtc autodoc, NDK 3.2's datatypes/textclass.h
  * and datatypesclass.h, the IFF FTXT specification (EA IFF 85) and OS

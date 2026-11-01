@@ -1,5 +1,5 @@
 /* GFOpenDatatypes ascii.datatype core.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  * Clean-room; see ascii_core.h for what this is written from.
  */
 #include "ascii_core.h"

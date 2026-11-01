@@ -11,7 +11,7 @@
  * older ones get 8-bit mono. With neither a card nor a Cradle the sound
  * does not open yet (FLAC, Vorbis and Opus decoders on the 68k come next).
  *
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
 #include <exec/memory.h>

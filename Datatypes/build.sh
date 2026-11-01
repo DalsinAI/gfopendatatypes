@@ -3,7 +3,7 @@
 # and stream, gzip and brotli.datatype (stream/build.sh)
 # for AmigaOS 3.x, built with the os32-gcc16 compiler (bebbo's amiga-gcc, GCC 16.2,
 # libnix). The datatypes are built for the 68040, soft float (no FPU code).
-# MIT, Copyright (c) 2026 AmigaChrome Team. libwebp and libvpx keep their
+# MIT, Copyright (c) 2026 AmiCradle Team. libwebp and libvpx keep their
 # BSD licences, libxmp its MIT licence.
 #
 #   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)

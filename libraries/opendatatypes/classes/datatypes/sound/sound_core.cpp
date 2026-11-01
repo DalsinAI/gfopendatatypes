@@ -1,5 +1,5 @@
 /* GFOpenSound: sound.datatype's class, lean C++ with no Amiga headers.
- * Copyright (c) 2026 AmigaChrome Team. MIT.
+ * Copyright (c) 2026 AmiCradle Team. MIT.
  *
  * Clean-room, from the sound_dtc autodoc, datatypes/soundclass.h's
  * published layouts (NDK 3.2), the audio.device autodoc and OS 3.2's
