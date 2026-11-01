@@ -19,6 +19,7 @@
  * PROBE line records what OS 3.2's ilbm.datatype does there.
  */
 #include "ilbm_core.h"
+#include "../../../../../common/include/odt_planar.h"
 
 namespace {
 
@@ -204,7 +205,7 @@ u32 load(env_t *env, odt_IClass *cl, void *obj)
     u32 blen = bodylen > 0 ? static_cast<u32>(bodylen) : 0;
     u8 *body = static_cast<u8 *>(env->alloc(env, blen + 1));
     u8 *raw = static_cast<u8 *>(env->alloc(env, rawlen));
-    u8 *row = static_cast<u8 *>(env->alloc(env, w * 4));
+    u8 *row = static_cast<u8 *>(env->alloc(env, w * 5)); /* a row of ARGB, then HAM's pixels */
     u8 *mask = hasmask ? static_cast<u8 *>(env->alloc(env, rb * h)) : nullptr;
     u32 err = 0;
     if (!body || !raw || !row || (hasmask && !mask)) {
@@ -232,22 +233,36 @@ u32 load(env_t *env, odt_IClass *cl, void *obj)
             hg = pal[1];
             hb = pal[2];
         }
-        for (u32 x = 0; x < w; x++) {
-            u32 v = 0;
-            if (pbm) {
-                v = src[x];
-            } else {
-                for (u32 d = 0; d < depth; d++)
-                    if (src[d * rb + (x >> 3)] & (0x80 >> (x & 7)))
-                        v |= 1UL << d;
-            }
+        /* the planes' bits as one byte a pixel, eight pixels at a time: a
+         * deep ILBM's planes 0-7 are red, 8-15 green, 16-23 blue and 24-31
+         * alpha; HAM's pixels go after the ARGB row, the others straight in */
+        const u8 *pix = src;            /* PBM: a byte a pixel already */
+        if (!pbm) {
+            const u8 *planes[8];
             if (deep) {
-                u8 *o = row + x * 4;
-                o[0] = depth == 32 ? static_cast<u8>(v >> 24) : 0xff;
-                o[1] = static_cast<u8>(v);
-                o[2] = static_cast<u8>(v >> 8);
-                o[3] = static_cast<u8>(v >> 16);
-            } else if (ham) {
+                for (u32 g = 0; g < depth / 8; g++) {
+                    for (u32 d = 0; d < 8; d++)
+                        planes[d] = src + (g * 8 + d) * rb;
+                    odt_planar_row(planes, 8, w, row + (g == 3 ? 0 : g + 1), 4);
+                }
+                if (depth == 24)
+                    for (u32 x = 0; x < w; x++)
+                        row[x * 4] = 0xff;
+            } else {
+                u8 *to = ham ? row + w * 4 : row;
+                for (u32 d = 0; d < depth; d++)
+                    planes[d] = src + d * rb;
+                odt_planar_row(planes, depth, w, to, 1);
+                pix = to;
+            }
+        }
+        if (ham || pbm)                 /* never deep: HAM is 6 or 8 planes, PBM 8 */
+            for (u32 x = 0; x < w; x++) {
+                u32 v = pix[x];
+                if (!ham) {
+                    row[x] = static_cast<u8>(v);
+                    continue;
+                }
                 u32 sh = depth - 2, ctl = v >> sh, d = v & ((1U << sh) - 1);
                 if (ctl == 0) {
                     hr = pal[d * 3];
@@ -264,10 +279,7 @@ u32 load(env_t *env, odt_IClass *cl, void *obj)
                 o[1] = hr;
                 o[2] = hg;
                 o[3] = hb;
-            } else {
-                row[x] = static_cast<u8>(v);
             }
-        }
         if (hasmask)
             for (u32 i = 0; i < rb; i++)
                 mask[y * rb + i] = src[depth * rb + i];
