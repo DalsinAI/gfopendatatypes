@@ -1,5 +1,5 @@
 /*
- * (A copy of DalsinAI/openamigaservice include/devices/gfopenservice.h.)
+ * (A copy of DalsinAI/gfopenservice include/devices/gfopenservice.h.)
  * gfopenservice.device: hand work to a named service.
  *
  * A program opens the device, asks for a service by name and version

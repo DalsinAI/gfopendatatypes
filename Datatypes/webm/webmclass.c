@@ -49,7 +49,7 @@ static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.1 (4
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
 
-/* media.decode/1 (openamigaservice docs/MEDIA_DECODE.md) */
+/* media.decode/1 (gfopenservice docs/MEDIA_DECODE.md) */
 #define MD_VOPEN   3
 #define MD_VCLOSE  5
 #define MD_VSOUND  7

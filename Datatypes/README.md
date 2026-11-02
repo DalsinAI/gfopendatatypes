@@ -44,20 +44,20 @@ GFOpenBrowser decodes the pictures in web pages through datatypes, so with
 
 `gfopenpicture.datatype`, `gfopensound.datatype`, `gfopendoc.datatype` and
 `gfopenvideo.datatype` decode nothing themselves. It sends the file to
-`media.decode/1` through `gfopenservice.device` (DalsinAI/openamigaservice):
+`media.decode/1` through `gfopenservice.device` (DalsinAI/gfopenservice):
 the x86 or ARM64 cores do the work on AmiCradle and the Pi appliance, and a paired
 Cradle on the LAN does it for a real Amiga, which we expect to have
 PiStorm-class networking. With neither, the file does not open
 (`not implemented`): AV1 and HEVC are too slow on a 68k at photo sizes, and
 68k decoders for FLAC, Vorbis and Opus come next.
-The services are described in openamigaservice's `docs/MEDIA_DECODE.md`
+The services are described in gfopenservice's `docs/MEDIA_DECODE.md`
 and `docs/DOC_RENDER.md`.
 
 `webm.datatype` reads the WebM container itself (`webm/webm_demux.c`) and
 decodes with libvpx. The reader's small reads come from a 4 KB cache of the
 file (`webm/webm_readcache.h`), one Read for many elements where it took a
 Seek and a Read for each (`tests/test-webm-read.sh`). Once GFOpenMedia's `gfopenmedia.library` exists
-(DalsinAI/openamigamedia), the datatype will hand the frames to it for
+(DalsinAI/gfopenmedia), the datatype will hand the frames to it for
 hardware decoding where a driver offers VP8 or VP9, and keep libvpx as the
 fallback.
 
@@ -91,7 +91,7 @@ Copy the files from `out/` (after building) to the same places on the Amiga:
 | `Devs/DataTypes/CDXL` | `DEVS:DataTypes/` |
 
 `gzip.datatype`, and `gfopenpng.datatype`'s PNG out, need `z.library` in
-`LIBS:` (GFOpenZlib, amigachrome-guest `libraries/openzlib`, or the Aminet
+`LIBS:` (GFOpenZlib, amicradle-guest `libraries/openzlib`, or the Aminet
 z.library 53).
 
 `gfopenpicture.datatype`, `gfopensound.datatype`, `gfopendoc.datatype` and
@@ -102,7 +102,7 @@ GFOpenService part installs it) and a services card or a paired Cradle.
 mixes on this CPU, and plays through Paula without AHI). It plays through
 AHI 6 when `ahi.device` is installed (on AmiCradle with ACAHI's driver,
 `acaudio.audio`). To hand the mixing to AmiCradle's cores board it needs
-`gfopenmulticore.library` in `LIBS:` (DalsinAI/openamigamulticore, built
+`gfopenmulticore.library` in `LIBS:` (DalsinAI/gfopenmulticore, built
 with its own `library/build.sh` and the os32 stove, not os32-gcc16; it is
 not in GFOpenUp yet), and for `media.decode/1`, `gfopenservice.device`.
 
@@ -111,9 +111,9 @@ Then reboot, or run `AddDataTypes REFRESH`.
 ## Building
 
 You need the os32-gcc16 compiler (bebbo's amiga-gcc on GCC 16.2 with libnix;
-see DalsinAI/openamigabrowser `stove/`), Python 3 for the descriptor files,
+see DalsinAI/gfopenbrowser `stove/`), Python 3 for the descriptor files,
 and the libwebp, libvpx and libxmp tarballs listed in `../SOURCES`, in the
-repository's `tarballs/` folder; with `AC_HELPERS=1`, also amigachrome-guest
+repository's `tarballs/` folder; with `AC_HELPERS=1`, also amicradle-guest
 at the commit in `../AMIGACHROME_GUEST_PINNED_COMMIT` (see the main README's
 Building). Then:
 
@@ -134,12 +134,12 @@ How they are made:
   `AllocVec()`, so several programs can decode at once.
 - **The version in the ROMTag.** Its `rt_Version` is `DT_VERSION` (47, every
   datatype's version) and the revision is the one in the ID string, so
-  ramlib and amigachrome-guest's packed ROM weigh a copy on a disk against
+  ramlib and amicradle-guest's packed ROM weigh a copy on a disk against
   the ROM's by number and the newer runs. `tests/test-romtag.py` checks each
   datatype's `LibVersion`, `LibRevision` and ID string against it (and, given
   the built `.datatype` files, their ROMTags).
 - **AC090's native helpers.** `common/dtlib.c`'s `realloc` copies, and its
-  `calloc` clears, through amigachrome-guest's helpers (`../achelpers/`,
+  `calloc` clears, through amicradle-guest's helpers (`../achelpers/`,
   `AC_HELPERS=1`, or `auto`, the default, when the pinned commit is to hand): x86 or ARM64 code on AmiCradle, 68k code written
   for the 68020 and 68040 elsewhere, and for under 64 bytes libnix's
   `memcpy` and `memset` as before. `calloc` then asks `AllocVec()` for
@@ -429,7 +429,7 @@ test file is make-tga.py's), 8-bit screens, and the speed on a real 68k.
   palette) frames are not played.
 - `gfopenvideo.datatype`: not yet run on the bench. HAM8, streams, sound with
   each frame (VSOUND) and files in parts (VUPLOAD) need a Cradle or card
-  whose media.decode/1 has them (openamigaservice, 20 October 2026). A file
+  whose media.decode/1 has them (gfopenservice, 20 October 2026). A file
   up to `VideoChunk` KB is read into memory and sent once. Each
   frame opens the service afresh, because animation.datatype loads frames
   from its own process. MKV is chosen by its name and tried before
@@ -438,7 +438,7 @@ test file is make-tga.py's), 8-bit screens, and the speed on a real 68k.
   is asked for at half the size (down to 160 wide), and running out says
   "not enough memory" rather than nothing.
 - `webm.datatype`: sound (Vorbis or Opus) only through a services card or a
-  paired Cradle whose media.decode/1 has VUPLOAD and VSOUND (openamigaservice,
+  paired Cradle whose media.decode/1 has VUPLOAD and VSOUND (gfopenservice,
   20 October 2026), as 8-bit mono, for files up to 1 GB: as gfopenvideo.datatype,
   a clip with an audio track goes up in 256 KB parts when it opens and is
   kept open there, and each frame's sound comes as the frame loads, into a

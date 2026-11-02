@@ -7,7 +7,7 @@
 #   datatypes.library      the replacement (its class is "datatypesclass")
 #   gfopendatatypes.library  the same under its own name, for the ABI test
 #                          (its class is "opendatatypesclass")
-#   AddDataTypes           GFOpenBench's AddDataTypes (amigachrome-guest's
+#   AddDataTypes           GFOpenBench's AddDataTypes (amicradle-guest's
 #                          commands/adddatatypes, with GUEST=), which talks
 #                          to GFOpenDatatypes' private call
 #   DatatypesABITest       runs the same calls through OS 3.2's library and
@@ -45,10 +45,10 @@ for lib in datatypes opendatatypes; do
     [ -z "$und" ] || { echo "undefined in $lib.library: $und" >&2; exit 1; }
 done
 
-# AddDataTypes is GFOpenBench's command, in amigachrome-guest: GUEST= a checkout
-# (default amigachrome-guest, else guest, beside this repository); without
+# AddDataTypes is GFOpenBench's command, in amicradle-guest: GUEST= a checkout
+# (default amicradle-guest, else guest, beside this repository); without
 # one it is left out.
-G=${GUEST:-"$HERE/../../../amigachrome-guest"}
+G=${GUEST:-"$HERE/../../../amicradle-guest"}
 [ -d "$G" ] || G="$HERE/../../../guest"
 ADT=
 if [ -f "$G/commands/build-amiga.sh" ]; then
@@ -57,7 +57,7 @@ if [ -f "$G/commands/build-amiga.sh" ]; then
     echo "$OUT/c/AddDataTypes ($(wc -c < "$OUT/c/AddDataTypes") bytes)"
     ADT="$OUT/c/AddDataTypes"
 else
-    echo "AddDataTypes: left out (no amigachrome-guest checkout at $G; set GUEST)"
+    echo "AddDataTypes: left out (no amicradle-guest checkout at $G; set GUEST)"
 fi
 
 "$CC" -m68040 -O2 -std=gnu99 -fno-delete-null-pointer-checks -Wall -Wextra -Werror -Wno-pointer-sign -Wno-format \

@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: gfopenservice.device calls (dtservice.h).
+ * gfopenimage datatypes: gfopenservice.device calls (dtservice.h).
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>

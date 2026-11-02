@@ -1,5 +1,5 @@
 /*
- * openamigaimage tests: a stand-in for zlib's adler32.c (test_achelpers.sh).
+ * gfopenimage tests: a stand-in for zlib's adler32.c (test_achelpers.sh).
  * adler32_z a byte at a time on zlib's paths (its results for halves of
  * 65521 and up depend on them), counting its calls; adler32 through it.
  * MIT, Copyright (c) 2026 AmiCradle Team.

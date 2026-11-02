@@ -1,7 +1,7 @@
 /*
  * gfopenvideo.datatype: MP4, MOV, MKV, AVI, WMV and MPEG video (H.264, HEVC,
  * AV1, VP9, MPEG-4, MPEG-1/2, WMV) for AmigaOS 3.x, an animation.datatype
- * subclass. The media.decode/1 service (DalsinAI/openamigaservice
+ * subclass. The media.decode/1 service (DalsinAI/gfopenservice
  * docs/MEDIA_DECODE.md) on the services card or a paired Cradle keeps the
  * video open and sends each frame, scaled to fit ENV:GFOpenImage/VideoWidth x
  * VideoHeight: in 256 colours (webm.datatype's dithered colour cube), or in

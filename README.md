@@ -1,4 +1,4 @@
-# opendatatypes
+# gfopendatatypes
 
 The AmiCradle Team's datatypes for AmigaOS 3.x on 68k, in one place. Every
 decoder is a datatype, so any datatypes program (MultiView, GFOpenBench,
@@ -28,22 +28,22 @@ GFOpenBrowser) opens the formats they read.
 text, ascii, animation and anim. Its README has the steps, the files and
 what OS 3.2's probe measured. Build it with
 `libraries/opendatatypes/build-amiga.sh` (os32-gcc16 stove; `GUEST=` an
-amigachrome-guest checkout adds GFOpenBench's AddDataTypes). Its m68k tests
+amicradle-guest checkout adds GFOpenBench's AddDataTypes). Its m68k tests
 are `tests/m68k/test_opendatatypes*.sh`. The ROM build
-(amigachrome-guest's `tools/openkickrom/trial-1m/build.sh`) takes it from a
+(amicradle-guest's `tools/openkickrom/trial-1m/build.sh`) takes it from a
 checkout of this repository (`DT=`).
 
-It came here from DalsinAI/amigachrome-guest on 23 October 2026 with its
+It came here from DalsinAI/amicradle-guest on 23 October 2026 with its
 history, at the same paths. `common/include/oa_protos_begin.h`,
 `oa_protos_end.h`, `libraries/common/open_arith.c` and `check_fd.py` are
-copies of amigachrome-guest's, at the same paths, so the library builds to
+copies of amicradle-guest's, at the same paths, so the library builds to
 the same bytes. `common/include/odt_planar.h` is our own: bitplanes to
 one byte a pixel, eight pixels at a time, shared by ilbm.datatype's BODY,
 picture.datatype's V42 bitmaps and cdxl.datatype.
 
 ## Picture, sound and media datatypes
 
-They came here from DalsinAI/openamigaimage on 23 October 2026, with their
+They came here from DalsinAI/gfopenimage on 23 October 2026, with their
 history, unchanged: the same files at the same paths, so they build to the
 same bytes. Building, the descriptors and the test results are in
 [Datatypes/README.md](Datatypes/README.md).
@@ -62,12 +62,12 @@ descriptors in `Datatypes/out/Devs/DataTypes` (set `PREFIX` to change that).
 `SOURCES` lists the upstream tarballs (libwebp, libvpx, libxmp) with their
 SHA-256; `tools/fetch-tarball.sh` fetches them. `achelpers/` is AC090's
 native helpers for `Datatypes/common/dtlib.c` (`AC_HELPERS`, see
-`Datatypes/build.sh`), built from amigachrome-guest at the commit in
+`Datatypes/build.sh`), built from amicradle-guest at the commit in
 `AMICRADLE_GUEST_PINNED_COMMIT`.
 
 The ROM's datatypes (gfopenpicture, gfopenpng, gfopentga, gfopensound, gfopendoc in
 ROM:Classes/DataTypes) and datatypes.library are built from a checkout of this repository by
-amigachrome-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
+amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 
 ## Tests
 
@@ -94,7 +94,7 @@ python3 tools/build_pack.py --version 0.1 --lha
 ```
 
 builds everything here (the datatypes, datatypes.library with its system
-classes, and z.library, the Team's GFOpenZlib, from an amigachrome-guest
+classes, and z.library, the Team's GFOpenZlib, from an amicradle-guest
 checkout: `AMICRADLE_GUEST`, else beside this one) and lays it out as
 `build/pack/GFOpenDatatypes`, a drawer to run the Installer from, and
 `GFOpenDatatypes-0.1.lha` (jlha or lha on PATH). `--no-build` takes what the

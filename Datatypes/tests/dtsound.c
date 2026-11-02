@@ -15,7 +15,7 @@
  * recording the machine's sound knows when. With LOAD=1 the waiting is
  * done by counting, at a priority below everything, and the count against
  * one taken with nothing playing says how much of the main CPU playing
- * took. openamigaimage's own attributes (OIA_DecodedBy, OIA_Stats) are
+ * took. gfopenimage's own attributes (OIA_DecodedBy, OIA_Stats) are
  * printed when the datatype has them. Each sound's SDTA_ReplayPeriod is
  * printed too, asked the way sound.datatype answers it: a pointer to the
  * object's own timeval.

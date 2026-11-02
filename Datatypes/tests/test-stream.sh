@@ -14,8 +14,8 @@
 #
 #   CC                 the host compiler (default cc); CXX for GFOpenZlib's core (default c++)
 #   SAN                sanitizer flags (default -fsanitize=address,undefined; SAN= for none)
-#   AMIGACHROME_GUEST  checkout of amigachrome-guest, for GFOpenZlib's core (z.library's
-#                      inflate); default amigachrome-guest or guest beside this
+#   AMIGACHROME_GUEST  checkout of amicradle-guest, for GFOpenZlib's core (z.library's
+#                      inflate); default amicradle-guest or guest beside this
 #                      repository. Without it the host's zlib stands in, and the
 #                      test says so.
 #   BROTLI_RFC         RFC 7932's text (rfc7932.txt) or its dictionary (122,784 bytes);
@@ -33,7 +33,7 @@ mkdir -p "$OUT"
 
 # z.library's inflate: GFOpenZlib's core, or the host's zlib in its place
 G=${AMIGACHROME_GUEST:-}
-for g in "$HERE/../../amigachrome-guest" "$HERE/../../guest"; do
+for g in "$HERE/../../amicradle-guest" "$HERE/../../guest"; do
     [ -n "$G" ] || { [ -f "$g/libraries/openzlib/zlib_core.cpp" ] && G=$g; } || true
 done
 if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
@@ -44,7 +44,7 @@ if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
     echo "inflate: GFOpenZlib's core (z.library), $OZ"
 else
     ZL="-DZLHOST_SYSTEM -lz"
-    echo "inflate: the host's zlib, standing in for z.library (no amigachrome-guest checkout)"
+    echo "inflate: the host's zlib, standing in for z.library (no amicradle-guest checkout)"
 fi
 
 # Brotli's dictionary, from the RFC

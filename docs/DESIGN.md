@@ -1,4 +1,4 @@
-# opendatatypes: the rules every datatype keeps
+# gfopendatatypes: the rules every datatype keeps
 
 Design 0.1, 23 October 2026. The Team's decisions of that morning:
 
@@ -69,9 +69,9 @@ the order they are tried in):
 
 | Place | `OIA_Rung` | Through | What it can do |
 | --- | --- | --- | --- |
-| **A cores board core**: AmiCradle's cores board ($DA15 product 7, up to eight translated 68040 cores) | 2 | `gfopenmulticore.library` jobs (`OMC_Submit`, `OMC_Wait`), DalsinAI/openamigamulticore | 68k compute: decoding and encoding (libwebp, libvpx, our PNG and TGA code), mixing, and pixel work too. A job calls no OS, touches no Chip RAM and writes only its granted buffers |
+| **A cores board core**: AmiCradle's cores board ($DA15 product 7, up to eight translated 68040 cores) | 2 | `gfopenmulticore.library` jobs (`OMC_Submit`, `OMC_Wait`), DalsinAI/gfopenmulticore | 68k compute: decoding and encoding (libwebp, libvpx, our PNG and TGA code), mixing, and pixel work too. A job calls no OS, touches no Chip RAM and writes only its granted buffers |
 | **The GPU** | 4 (new) | `gfopengpu.library` (the one library: GFOpenGPU, GFOpenGfx and SDL 2) | Pixel work: scaling, colour conversion, dithering to 256 colours or HAM8, presenting video frames. Video decode where a driver offers it, through `gfopenmedia.library` once it exists |
-| **A services card or a paired Cradle** | 3 | `gfopenservice.device`: `media.decode/1`, `doc.render/1`, and the encode calls section 4 adds, DalsinAI/openamigaservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
+| **A services card or a paired Cradle** | 3 | `gfopenservice.device`: `media.decode/1`, `doc.render/1`, and the encode calls section 4 adds, DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
 | **This CPU**, a single 68k | 1 | plain calls | Everything that has 68k code, when nothing above is there |
 
 The order, per kind of work:
@@ -162,7 +162,7 @@ legal advice; the "no" rows need the Team's word before anyone writes them.
 4. Core jobs for webp, gfopenpng and gfopentga decoding and encoding; GPU
    dithering for webm, cdxl and gfopenvideo.
 5. The service's encode calls (`media.encode/1`, `doc.convert/1`, in
-   openamigaservice), then raw write for gfopenpicture, gfopensound, gfopendoc,
+   gfopenservice), then raw write for gfopenpicture, gfopensound, gfopendoc,
    gfopenvideo and webm.
 
 Each step: a lab copy of an OS 3.2 instance, the same answer on every rung

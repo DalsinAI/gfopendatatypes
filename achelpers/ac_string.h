@@ -1,8 +1,8 @@
 /*
- * openamigaimage: forced into every compile of zlib, libpng and libjpeg
+ * gfopenimage: forced into every compile of zlib, libpng and libjpeg
  * (-include) when build.sh runs with AC_HELPERS=1. Their memcpy, memmove and
  * memset calls go through the front doors of AC090's native helpers
- * (amigachrome-guest's ac_helpers.h): under 64 bytes, GCC's own code as
+ * (amicradle-guest's ac_helpers.h): under 64 bytes, GCC's own code as
  * before; from 64 bytes, the tagged functions, which run as host code on
  * AmiCradle and as 68k code written for the 68020 and 68040 elsewhere.
  * zlib's zmemcpy and zmemzero, and libjpeg's MEMCOPY and MEMZERO, are

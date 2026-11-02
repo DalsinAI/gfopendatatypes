@@ -1,5 +1,5 @@
 /*
- * openamigaimage: zlib's crc32, crc32_z, adler32 and adler32_z when build.sh
+ * gfopenimage: zlib's crc32, crc32_z, adler32 and adler32_z when build.sh
  * runs with AC_HELPERS=1, in front of zlib's own, which build.sh compiles
  * as oai_zlib_crc32, oai_zlib_crc32_z, oai_zlib_adler32 and
  * oai_zlib_adler32_z. A buffer of AC_SUM_MIN bytes (32) or more goes to

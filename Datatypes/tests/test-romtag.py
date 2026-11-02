@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The datatypes' RomTags carry their version (common/dtlib.c's DT_VERSION).
 
-ramlib, dos and amigachrome-guest's packed ROM weigh a class by its RomTag's
+ramlib, dos and amicradle-guest's packed ROM weigh a class by its RomTag's
 rt_Version and the revision in its ID string (the first "V.R" after a space
 whose V is rt_Version), and the newer copy runs. This checks, from the
 sources, that dt_romtag's rt_Version is DT_VERSION and that every class's

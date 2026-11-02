@@ -1,4 +1,4 @@
-/* (DalsinAI/openamigamulticore at bef8aae, include/, copied for gfopenmodule.datatype.)
+/* (DalsinAI/gfopenmulticore at bef8aae, include/, copied for gfopenmodule.datatype.)
  * gfopenmulticore.library 0.1: run 68k functions on extra cores, or on the
  * main CPU when there are none (DESIGN.md sections 0 and 4).
  * MIT, Copyright (c) 2026 AmiCradle Team. */

@@ -11,7 +11,7 @@
  * byte for byte the same. Never onto the file it plays from. IFF mode is
  * animation.datatype's.
  *
- * media.cdxl/1 (DalsinAI/openamigaservice docs/MEDIA_CDXL.md) and ToCDXL
+ * media.cdxl/1 (DalsinAI/gfopenservice docs/MEDIA_CDXL.md) and ToCDXL
  * make CDXL from any film; this plays them, and the CDXL on CDTV and CD32
  * discs.
  *

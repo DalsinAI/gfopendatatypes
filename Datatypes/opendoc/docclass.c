@@ -4,7 +4,7 @@
  * 3.x, shown as a picture of their pages, one under the other, like a PDF
  * viewer's continuous view. The pages are laid out by LibreOffice (or
  * Ghostscript, or pandoc then LibreOffice) through the doc.render/1 service
- * (DalsinAI/openamigaservice docs/DOC_RENDER.md) on the services card or a
+ * (DalsinAI/gfopenservice docs/DOC_RENDER.md) on the services card or a
  * paired Cradle, at ENV:GFOpenImage/DocWidth pixels wide (default 800), the
  * first ENV:GFOpenImage/DocPages pages (default 8).
  *

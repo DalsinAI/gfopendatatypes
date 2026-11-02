@@ -1,5 +1,5 @@
 /*
- * openamigaimage tests: achelpers/ac_string.h, forced in as build.sh forces
+ * gfopenimage tests: achelpers/ac_string.h, forced in as build.sh forces
  * it into zlib, libpng and libjpeg (test_achelpers.sh). Their ways of
  * calling memcpy, memmove and memset (zlib's zmemcpy and zmemzero, libjpeg's
  * MEMCOPY and MEMZERO, plain calls as libpng's), a later declaration and a

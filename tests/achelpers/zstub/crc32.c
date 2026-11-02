@@ -1,5 +1,5 @@
 /*
- * openamigaimage tests: a stand-in for zlib's crc32.c (test_achelpers.sh).
+ * gfopenimage tests: a stand-in for zlib's crc32.c (test_achelpers.sh).
  * crc32_z a bit at a time, counting its calls; crc32 through it, as zlib's
  * does; and Chromium's copy_with_crc as it reads on a 68k, its SIMD branch
  * compiled out, which achelpers/zlibsums.sh looks for.

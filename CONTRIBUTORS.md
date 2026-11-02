@@ -2,7 +2,7 @@
 
 ## Creator and maintainer
 
-- **SacredTrees** ([@SacredTrees](https://github.com/SacredTrees)): created openamigaimage, designs it and maintains it.
+- **SacredTrees** ([@SacredTrees](https://github.com/SacredTrees)): created gfopenimage, designs it and maintains it.
 
 ## The AmiCradle team
 
@@ -30,8 +30,8 @@ fetched at build time (below).
 
 ## From our other repositories
 
-- `Datatypes/include/devices/gfopenservice.h` is a copy of DalsinAI/openamigaservice's header.
-- With `AC_HELPERS=1` the build reads AC090's native helpers (`common/amiga/ac_helpers*`, `ac_magic.h`) from DalsinAI/amigachrome-guest at the commit in `AMIGACHROME_GUEST_PINNED_COMMIT`.
+- `Datatypes/include/devices/gfopenservice.h` is a copy of DalsinAI/gfopenservice's header.
+- With `AC_HELPERS=1` the build reads AC090's native helpers (`common/amiga/ac_helpers*`, `ac_magic.h`) from DalsinAI/amicradle-guest at the commit in `AMIGACHROME_GUEST_PINNED_COMMIT`.
 
 ## Fetched at build time, not committed
 
