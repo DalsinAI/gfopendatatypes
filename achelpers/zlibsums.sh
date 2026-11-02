@@ -6,7 +6,7 @@
 # (crc32.o, adler32.o, ac_zlib.o). Chromium's copy_with_crc (deflate's gzip
 # path) calls crc32 inside crc32.c, so it moves to ac_zlib.c too when it is
 # the plain copy and crc32 that ac_zlib.c does.
-# MIT, Copyright (c) 2026 AmigaChrome Team.
+# MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC, CFLAGS   the compiler, and zlib's flags with the helpers' -I and
 #                the forced include

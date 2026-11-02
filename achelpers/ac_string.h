@@ -9,7 +9,7 @@
  * memcpy and memset underneath. <string.h> comes first, so including it
  * again changes nothing, and a later declaration of memcpy declares the
  * front door again, which C allows.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #ifndef OAI_AC_STRING_H
 #define OAI_AC_STRING_H

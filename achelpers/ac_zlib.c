@@ -11,7 +11,7 @@
  * move. With OAI_COPY_WITH_CRC (build.sh found Chromium's copy_with_crc,
  * deflate's gzip path, as the plain copy and crc32 below) that moves here
  * too, since inside crc32.c it would call zlib's own crc32.
- * MIT, Copyright (c) 2026 AmigaChrome Team.
+ * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "zlib.h"
 #include "ac_helpers.h"

@@ -4,7 +4,7 @@
  * __udivsi3, __umodsi3, __divsi3 and __modsi3 (in this toolchain they are
  * libnix's). Linked just before -lgcc by the build scripts that need them.
  * Shift and add, shift and subtract: a fixed 32 steps, no tables, no data.
- * Copyright (c) 2026 AmigaChrome Team. MIT. */
+ * Copyright (c) 2026 AmiCradle Team. MIT. */
 unsigned long __mulsi3(unsigned long a, unsigned long b);
 unsigned long __udivsi3(unsigned long a, unsigned long b);
 unsigned long __umodsi3(unsigned long a, unsigned long b);
