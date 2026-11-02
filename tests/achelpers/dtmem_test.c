@@ -1,5 +1,5 @@
 /*
- * openamigaimage tests: Datatypes/common/dtlib.c's calloc and realloc, with
+ * gfopenimage tests: Datatypes/common/dtlib.c's calloc and realloc, with
  * the helpers (OAI_AC_HELPERS) and without (test_achelpers.sh): calloc's
  * memory all 0 whatever AllocVec gave, cleared by exec (MEMF_CLEAR) only
  * without the helpers; realloc keeping the contents; and calls of 64 bytes

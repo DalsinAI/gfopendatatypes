@@ -17,14 +17,14 @@
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 lib=$here/../../libraries/opendatatypes
-# GFOpenIntuition's BOOPSI and GFOpenUtility's hooks are amigachrome-guest's:
-# GUEST= a checkout (default amigachrome-guest, else guest, beside this
+# GFOpenIntuition's BOOPSI and GFOpenUtility's hooks are amicradle-guest's:
+# GUEST= a checkout (default amicradle-guest, else guest, beside this
 # repository).
-g=${GUEST:-$here/../../../amigachrome-guest}
+g=${GUEST:-$here/../../../amicradle-guest}
 [ -d "$g" ] || g=$here/../../../guest
 oi=$g/libraries/openintuition
 ou=$g/libraries/openutility
-[ -d "$oi" ] && [ -d "$ou" ] || { echo "skipped: no amigachrome-guest checkout at $g (set GUEST)"; exit 0; }
+[ -d "$oi" ] && [ -d "$ou" ] || { echo "skipped: no amicradle-guest checkout at $g (set GUEST)"; exit 0; }
 cc=${M68K_CC:-m68k-linux-gnu-gcc}
 prefix=${M68K_PREFIX:-m68k-linux-gnu-}
 qemu=${QEMU_M68K:-qemu-m68k}

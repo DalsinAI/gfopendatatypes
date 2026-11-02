@@ -33,7 +33,7 @@ libxmp 4.7.3 (Datatypes/build.sh, gfopenmodule.datatype)
 # Our own sources the build reads (not tarballs)
 
 AC090's native helpers (MIT, AmiCradle Team), for AC_HELPERS=1
-  from:   DalsinAI/amigachrome-guest, common/amiga/ac_helpers.c, ac_helpers.h,
+  from:   DalsinAI/amicradle-guest, common/amiga/ac_helpers.c, ac_helpers.h,
           ac_helpers.sh and ac_magic.h
   commit: the one in AMIGACHROME_GUEST_PINNED_COMMIT, read from a checkout
-          of amigachrome-guest (AMIGACHROME_GUEST) by achelpers/achelpers.sh
+          of amicradle-guest (AMIGACHROME_GUEST) by achelpers/achelpers.sh

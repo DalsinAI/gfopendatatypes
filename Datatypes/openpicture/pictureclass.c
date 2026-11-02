@@ -2,7 +2,7 @@
  * gfopenpicture.datatype: modern pictures for AmigaOS 3.x, a picture.datatype
  * (V43 mode) subclass: AVIF, HEIC/HEIF, JPEG XL, camera RAW, PSD, XCF,
  * OpenEXR, Radiance HDR, QOI, DDS and JPEG 2000. The pictures are decoded
- * by the media.decode/1 service (DalsinAI/openamigaservice
+ * by the media.decode/1 service (DalsinAI/gfopenservice
  * docs/MEDIA_DECODE.md) on the services card or a paired Cradle, which
  * sends back 32-bit ARGB, scaled down to fit ENV:GFOpenImage/MaxSide (default
  * 4096). The file's extension goes with it as a hint (camera RAW is TIFF

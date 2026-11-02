@@ -225,7 +225,7 @@ nor about a stock 68020, which is many times slower. The 68020 and 68030
 defaults (16 kHz, nearest) are chosen to be safe, not yet measured.
 
 Where AC090's native helpers could take the work later
-(`../../achelpers/`, amigachrome-guest's magic functions): the mixer's
+(`../../achelpers/`, amicradle-guest's magic functions): the mixer's
 inner loops (`src/mix_all.c`, one function per sample format and
 interpolation) and the 32-to-8-bit downmix (`src/mixer.c`) are each a
 single call over a whole tick's worth of frames with plain arrays in and
@@ -251,7 +251,7 @@ is mixed by the first of these that is there, chosen when it opens:
 
 1. **A cores board core** (AmiCradle's AmiCradle Team $DA15 product 7, up to
    eight translated 68040 cores, `cpu.m68k/1`), through
-   `gfopenmulticore.library` (DalsinAI/openamigamulticore) on
+   `gfopenmulticore.library` (DalsinAI/gfopenmulticore) on
    gfopenservice.device. Each chunk (half a second for AHI, an eighth for
    Paula) is one job: `om_job_mix`, which calls `xmp_play_buffer` on a
    core, by `OMC_Run68k`. The board's rules (AmiCradle `CORES_BOARD.md`)
@@ -277,7 +277,7 @@ forced rung that is not there falls to the next. The status line says
 which rung plays and where the sound goes: `OIA_DecodedBy` ("a cores
 board core, through AHI", "media.decode/1 (the Nursery), through AHI",
 "this Amiga's CPU, through Paula (no AHI)") and `OIA_Stats` (the measured
-load), openamigaimage attributes in `../include/datatypes/gfopenimage.h`.
+load), gfopenimage attributes in `../include/datatypes/gfopenimage.h`.
 GFOpenPlay shows them.
 
 **Measured** on the modlab scratch copy (AmigaOS 3.2.3 on AC090, a 68040,

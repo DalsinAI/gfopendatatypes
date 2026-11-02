@@ -1,5 +1,5 @@
 /*
- * openamigaimage tests: what Datatypes/common/dtlib.c's memory functions
+ * gfopenimage tests: what Datatypes/common/dtlib.c's memory functions
  * need from exec, for test_achelpers.sh, which compiles them on their own
  * (renamed dt_malloc, dt_calloc, dt_free and dt_realloc) with this header.
  * MIT, Copyright (c) 2026 AmiCradle Team.

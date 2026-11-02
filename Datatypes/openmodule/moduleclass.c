@@ -106,7 +106,7 @@ static void dlog(const char *fmt, ...)
 #define JOB_TIMEOUT_MS 4000
 #define ARENA_MAX (15UL * 1024 * 1024)
 
-/* Rung 3: media.decode/1 (openamigaservice docs/MEDIA_DECODE.md), asked
+/* Rung 3: media.decode/1 (gfopenservice docs/MEDIA_DECODE.md), asked
  * for SVC_SECONDS of sound at a time. */
 #define MD_PROBE 1
 #define MD_DECODE 2

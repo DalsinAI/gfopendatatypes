@@ -9,7 +9,7 @@
 #   open<file name>    the same code under its own name (and over open
 #                      superclasses), for the ABI test
 #   <ABI test>         runs the same set through both and lists every difference
-# The core is lean C++ (DalsinAI/openamigagcc docs/lean-cxx.md, the
+# The core is lean C++ (DalsinAI/gfopengcc docs/lean-cxx.md, the
 # library profile); the shell, open<name>_dtclass.c, is C. The class
 # libraries have no fd in the NDK: <name>.lvo documents their one call.
 set -eu

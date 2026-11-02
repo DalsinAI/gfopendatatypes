@@ -23,7 +23,7 @@ SAN=${SAN--fsanitize=address,undefined -fno-sanitize-recover=all}
 mkdir -p "$OUT"
 
 G=${AMIGACHROME_GUEST:-}
-for g in "$HERE/../../amigachrome-guest" "$HERE/../../guest"; do
+for g in "$HERE/../../amicradle-guest" "$HERE/../../guest"; do
     [ -n "$G" ] || { [ -f "$g/libraries/openzlib/zlib_core.cpp" ] && G=$g; } || true
 done
 if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
@@ -34,7 +34,7 @@ if [ -n "$G" ] && [ -f "$G/libraries/openzlib/zlib_core.cpp" ]; then
     echo "deflate: GFOpenZlib's core (z.library), $OZ"
 else
     ZL="-DZLHOST_SYSTEM -lz"
-    echo "deflate: the host's zlib, standing in for z.library (no amigachrome-guest checkout)"
+    echo "deflate: the host's zlib, standing in for z.library (no amicradle-guest checkout)"
 fi
 # shellcheck disable=SC2086
 $CC -std=c99 -O1 -g -Wall -Wextra -Werror $SAN -I"$HERE/tests/host" -I"$HERE/common" -I"$HERE/png" \

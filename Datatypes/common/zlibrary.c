@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: z.library's calls (zlibrary.h), through its jump
+ * gfopenimage datatypes: z.library's calls (zlibrary.h), through its jump
  * table as GFOpenZlib's z.lvo lists it: the stream in A0, the other arguments
  * in D0 upwards, the base in A6. D0, D1, A0 and A1 are the library's to
  * change; the result comes back in D0.

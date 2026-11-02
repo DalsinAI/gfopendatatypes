@@ -1,6 +1,6 @@
 /*
- * openamigaimage datatypes: the calls they make to z.library (GFOpenZlib, ours:
- * DalsinAI amigachrome-guest libraries/openzlib, API and ABI those of the
+ * gfopenimage datatypes: the calls they make to z.library (GFOpenZlib, ours:
+ * DalsinAI amicradle-guest libraries/openzlib, API and ABI those of the
  * Aminet z.library). Every inflate and deflate in the datatypes goes
  * through it: no zlib is linked in.
  *

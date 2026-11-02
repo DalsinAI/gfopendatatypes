@@ -14,8 +14,8 @@
 # read cache (Datatypes/tests/test-webm-read.sh).
 # GFOpenDatatypes' cores (datatypes.library and its eight class datatypes) under
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
-# (tests/m68k/test_opendatatypes_class.sh) needs an amigachrome-guest
-# checkout (GUEST=) and runs in amigachrome-guest's own CI.
+# (tests/m68k/test_opendatatypes_class.sh) needs an amicradle-guest
+# checkout (GUEST=) and runs in amicradle-guest's own CI.
 # The bitplanes-to-pixels helper ilbm, picture and cdxl share
 # (common/include/odt_planar.h) against the loop it replaced, on the host
 # (Datatypes/tests/test-planar.sh).

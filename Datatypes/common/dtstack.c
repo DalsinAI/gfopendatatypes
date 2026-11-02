@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: run a function on a stack of the datatype's own.
+ * gfopenimage datatypes: run a function on a stack of the datatype's own.
  * Programs and datatypes.library's helper processes may call a datatype on
  * a few kilobytes of stack, and decoders such as libvpx need more. The
  * swap keeps everything it needs in registers the called function must

@@ -50,4 +50,4 @@ them; a z.library already there is kept and comes back with the uninstaller.
 The datatypes that decode by a Cradle need gfopenservice.device (GFOpenUp's
 GFOpenService part); the Installer says so when it is missing.
 
-Source: https://github.com/DalsinAI/opendatatypes
+Source: https://github.com/DalsinAI/gfopendatatypes

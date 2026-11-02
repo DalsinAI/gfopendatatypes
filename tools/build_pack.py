@@ -26,7 +26,7 @@ what the builds made, so a new datatype needs no change to this file.
   build/pack/GFOpenDatatypes.json       what is in it, for GFOpenUp's GFOpenImage part
   build/pack/GFOpenDatatypes-<version>.lha   with --lha (jlha or lha on PATH)
 
-z.library is the Team's GFOpenZlib (amigachrome-guest libraries/openzlib), built
+z.library is the Team's GFOpenZlib (amicradle-guest libraries/openzlib), built
 from a checkout of it (AMICRADLE_GUEST or GUEST, else beside this one) and
 installed whenever a datatype that opens it is: the user, 23 October 2026,
 "GFOpenZlib as z.library". Without a checkout the pack has none, and the
@@ -112,9 +112,9 @@ def run(cmd: list, env: dict | None = None, cwd: Path | None = None) -> None:
 
 
 def guest_checkout() -> Path | None:
-    """amigachrome-guest, for GFOpenZlib: AMICRADLE_GUEST or GUEST, else beside this repository."""
+    """amicradle-guest, for GFOpenZlib: AMICRADLE_GUEST or GUEST, else beside this repository."""
     for p in (os.environ.get("AMICRADLE_GUEST"), os.environ.get("GUEST"),
-              ROOT.parent / "amigachrome-guest", ROOT.parent / "guest"):
+              ROOT.parent / "amicradle-guest", ROOT.parent / "guest"):
         if p and (Path(p) / "libraries/openzlib/build-amiga.sh").is_file():
             return Path(p)
     return None
@@ -128,12 +128,12 @@ def build(lib_out: Path, zlib_out: Path) -> None:
         run(["sh", LIBDIR / "build-amiga.sh"], env=env)
         for family in SYSTEM_CLASSES:
             run(["sh", LIBDIR / "classes/datatypes" / family / "build-amiga.sh"], env=env)
-    # z.library: GFOpenZlib (amigachrome-guest libraries/openzlib), with its own script and stove, as GFOpenUp builds it
+    # z.library: GFOpenZlib (amicradle-guest libraries/openzlib), with its own script and stove, as GFOpenUp builds it
     g = guest_checkout()
     if g:
         run(["sh", g / "libraries/openzlib/build-amiga.sh"], env=dict(os.environ, OUT=str(zlib_out)))
     else:
-        print("build_pack: no amigachrome-guest checkout (AMICRADLE_GUEST): the pack has no z.library")
+        print("build_pack: no amicradle-guest checkout (AMICRADLE_GUEST): the pack has no z.library")
 
 
 def base_name(descriptor: bytes) -> str:
@@ -468,7 +468,7 @@ def main() -> int:
     ap.add_argument("--library-out", type=Path, default=ROOT / "build" / "library",
                     help="the library's and its classes' build output (their OUT)")
     ap.add_argument("--zlib-out", type=Path, default=ROOT / "build" / "openzlib",
-                    help="GFOpenZlib's build output (its OUT), from an amigachrome-guest checkout")
+                    help="GFOpenZlib's build output (its OUT), from an amicradle-guest checkout")
     ap.add_argument("--no-build", action="store_true", help="use what the builds already made")
     ap.add_argument("--lha", action="store_true", help="also make GFOpenDatatypes-<version>.lha (jlha or lha on PATH)")
     a = ap.parse_args()

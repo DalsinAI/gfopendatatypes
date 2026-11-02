@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: attributes of their own, for players and
+ * gfopenimage datatypes: attributes of their own, for players and
  * viewers that want to say more than the standard ones do. A datatype that
  * doesn't know one answers OM_GET with FALSE, so a program asks and falls
  * back. TAG_USER with the AmiCradle Team's manufacturer number ($DA15) in the middle.

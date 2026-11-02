@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: the shared library glue (see dtlib.h).
+ * gfopenimage datatypes: the shared library glue (see dtlib.h).
  *
  * Each datatype is a plain Amiga library with its own ROMTag: Open, Close,
  * Expunge, the reserved vector and ObtainEngine(), which hands
@@ -202,7 +202,7 @@ static const ULONG initTable[] = {
 
 /* rt_Version is the class's version: ramlib, dos and the packed ROM's files
  * on demand weigh a copy by it and the revision in its ID string, and the
- * newer one runs (amigachrome-guest's common/include/okvr.h). With 0 every
+ * newer one runs (amicradle-guest's common/include/okvr.h). With 0 every
  * class compared as 0.0, older than any copy on a disk. LibVersion is
  * another file's constant, so the RomTag takes DT_VERSION, every class's
  * version; tests/test-romtag.py checks each class's LibVersion, LibRevision

@@ -1,8 +1,8 @@
 #!/bin/sh
-# openamigaimage's use of AC090's native helpers (achelpers/), with an m68k
+# gfopenimage's use of AC090's native helpers (achelpers/), with an m68k
 # cross GCC and qemu-m68k, since the Amiga compiler and the upstream
 # tarballs are on the build PC. At -O0 and -O2 for the 68040:
-# achelpers.sh builds the helpers from amigachrome-guest at the pinned
+# achelpers.sh builds the helpers from amicradle-guest at the pinned
 # commit; zlibsums.sh, run on stand-ins for zlib's crc32.c and adler32.c
 # (zstub/, with the host's zlib.h), gives zlib's results and sends long
 # buffers to the helpers (zlib_test.c); the forced header takes zlib's,

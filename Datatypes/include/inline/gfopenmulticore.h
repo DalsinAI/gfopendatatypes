@@ -1,4 +1,4 @@
-/* gfopenmulticore.library 0.1 (DalsinAI/openamigamulticore at bef8aae, include/), copied for gfopenmodule.datatype.
+/* gfopenmulticore.library 0.1 (DalsinAI/gfopenmulticore at bef8aae, include/), copied for gfopenmodule.datatype.
  * Copyright (c) 2026 AmiCradle Team. OpenMulticore, MIT licence.
  * SPDX-License-Identifier: MIT
  * Inline calls for bebbo's m68k-amigaos-gcc, from library/gfopenmulticore_lib.sfd. */

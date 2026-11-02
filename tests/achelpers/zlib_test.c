@@ -1,5 +1,5 @@
 /*
- * openamigaimage tests: zlib's crc32, crc32_z, adler32, adler32_z and
+ * gfopenimage tests: zlib's crc32, crc32_z, adler32, adler32_z and
  * copy_with_crc as achelpers/zlibsums.sh builds them, over the stand-ins in
  * zstub/ (test_achelpers.sh): zlib's results for every call (running values,
  * adler32 halves of 65521 and up, NULL buffers, lengths 0 to 300, long

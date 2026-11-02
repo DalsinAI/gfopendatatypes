@@ -1,5 +1,5 @@
 /*
- * openamigaimage datatypes: work handed to a named service ("media.decode/1")
+ * gfopenimage datatypes: work handed to a named service ("media.decode/1")
  * through gfopenservice.device, on the services card or a paired Cradle.
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
