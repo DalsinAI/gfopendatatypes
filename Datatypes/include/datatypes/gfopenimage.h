@@ -36,6 +36,45 @@
  * ignores it. */
 #define OIA_Compression (OIA_Dummy + 4)
 
+/* ---- Pictures with more than one frame (gfopengif.datatype) ----------------- */
+
+/* (ULONG, G) How many frames the picture has: 1 for a still. The object's
+ * own picture (what PDTM_READPIXELARRAY gives) is frame 0, or the one
+ * PDTA_WhichPicture named at OM_NEW. PDTA_GetNumPictures answers the same. */
+#define OIA_Frames     (OIA_Dummy + 5)
+
+/* (LONG, G) How many times the frames play: 0 for ever, -1 when the file
+ * says nothing (play them once), else the number the file gives (a GIF's
+ * NETSCAPE2.0 loop count: browsers show that many repeats after the first
+ * time through). */
+#define OIA_LoopCount  (OIA_Dummy + 6)
+
+/* Writes frame oirf_Frame, composited over the frames before it as web
+ * browsers show it, into the program's pixels: the whole picture, four
+ * bytes a pixel, 0xAARRGGBB words (A, R, G, B in memory, WebCore's ARGB32
+ * and PBPAFMT_ARGB), rows oirf_Stride bytes apart. With OIRF_PREMULTIPLIED
+ * the colour comes premultiplied by alpha. Out: the frame's delay in
+ * milliseconds, as the file gives it (a program decides what a delay of 0
+ * means), and whether any pixel is not fully opaque. TRUE, or FALSE with
+ * IoErr() set (a frame out of range is ERROR_OBJECT_NOT_FOUND).
+ *
+ * Going forward from the frame read last is cheap; going back starts again
+ * from frame 0. Send it with DoMethodA(), not DoDTMethodA() (see
+ * PDTM_READPIXELARRAY in gfopenpng.datatype). One task at a time per
+ * object. */
+#define OIM_READFRAME  (TAG_USER + 0x0DA15902)
+struct oiReadFrame {
+    ULONG MethodID;
+    struct GadgetInfo *oirf_GInfo;     /* NULL */
+    ULONG oirf_Frame;
+    UBYTE *oirf_Pixels;
+    ULONG oirf_Stride;                 /* bytes from one row to the next */
+    ULONG oirf_Flags;                  /* OIRF_ */
+    ULONG oirf_Delay;                  /* out: milliseconds */
+    ULONG oirf_HasAlpha;               /* out: TRUE when any pixel is not opaque */
+};
+#define OIRF_PREMULTIPLIED 1UL
+
 /* ---- gfopenpng.datatype: PNG out --------------------------------------------- */
 
 /* Encodes 32-bit ARGB pixels to a PNG file in memory (canvas toDataURL and

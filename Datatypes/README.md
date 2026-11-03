@@ -1,7 +1,7 @@
 # Datatypes
 
 `webp.datatype`, `webm.datatype`, `gfopenpicture.datatype`, `gfopenpng.datatype`,
-`gfopentga.datatype`, `gfopensound.datatype`, `gfopenmodule.datatype`,
+`gfopentga.datatype`, `gfopengif.datatype`, `gfopensound.datatype`, `gfopenmodule.datatype`,
 `gfopendoc.datatype`, `gfopenvideo.datatype`, `cdxl.datatype`, and the data
 class `stream.datatype` with `gzip.datatype` and `brotli.datatype`, for
 AmigaOS 3.x, by the AmiCradle Team. They let any datatypes program (MultiView, GFOpenBrowser, GFOpenPlay, a
@@ -29,6 +29,7 @@ is not yet checked (see Tested).
 | `gfopenpicture.datatype` | picture | the `media.decode/1` service | AVIF and HEIC/HEIF (iPhone photos), JPEG XL, camera RAW (Canon, Nikon, Sony, DNG and more), Photoshop PSD, GIMP XCF, OpenEXR, Radiance HDR, QOI, DDS, JPEG 2000, OpenRaster and Krita (their flattened picture), comic books (CBZ, the first page), SVG (drawn at its own size) and TrueType/OpenType fonts (a sample sheet), decoded on the services card or a paired Cradle and sent back as 32-bit ARGB, scaled down to fit `ENV:GFOpenImage/MaxSide` (default 4096). A sequence shows its first picture. |
 | `gfopenpng.datatype` | picture | our own decoder (`png/pngdecode.c`) | PNG: every colour type and bit depth, transparency and Adam7 interlacing, decoded on the Amiga itself (no zlib, no libpng) and handed to picture.datatype as 32-bit ARGB, so the pixels read back as ARGB are the ones decoded, alpha included. A pixel read or write with no pixel array is refused: that is what `PDTM_READPIXELARRAY` sent with `DoDTMethodA()` instead of `DoMethodA()` arrives as, and picture.datatype would write the picture from address 0. Its descriptor, `GFOpenPNG`, matches the signature and the IHDR after it, a longer mask than the system's `PNG`, so it is tried first while the system's png.datatype stays installed. PNG out too (47.4): `OIM_ENCODEPNG` (`include/datatypes/gfopenimage.h`) encodes ARGB pixels, a program's own (canvas `toDataURL`) or the object's, to a PNG file in memory, and `DTM_WRITE` with `DTWM_RAW` writes the picture as PNG; the deflate and CRCs are z.library's (`png/pngencode.c`). |
 | `gfopentga.datatype` | picture | our own decoder (`tga/tgadecode.c`) | Targa (TGA) pictures, written from Truevision's TGA 2.0 specification: uncompressed and run-length encoded; colour-mapped (8 or 16-bit indexes, 15, 16, 24 or 32-bit colour maps), true-colour of 15, 16, 24 and 32 bits, and greyscale of 8 bits or 16 with alpha; rows from the bottom or the top, and right to left. Decoded on the Amiga itself and handed to picture.datatype as 32-bit ARGB, as gfopenpng.datatype does. Alpha comes from a 32-bit pixel, a 16-bit pixel's top bit or a 16-bit grey's second byte when the header gives alpha bits; a TGA 2.0 extension area that says there is none wins, premultiplied alpha is undone, and an alpha channel that is 0 everywhere counts as none. A TGA has no signature, so its descriptor, `GFOpenTGA`, goes by the name (`.tga`, `.targa`, `.icb`, `.vda`, `.vst`, in any case) and is tried after every descriptor with a mask. Saves too (47.2): `DTM_WRITE` with `DTWM_RAW` writes a TGA 2.0 file from our own encoder (`tga/tgaencode.c`), 32 bits with alpha when the picture has any, else 24, run-length encoded unless `OIA_Compression` is 0. |
+| `gfopengif.datatype` | picture | our own decoder (`gif/gifdecode.c`) | GIF pictures and animations, written from the GIF89a specification: GIF87a and GIF89a, global and local colour tables, interlacing, transparency, frame delays, the NETSCAPE2.0 loop count and the four disposal methods. Decoded on the Amiga itself and handed to picture.datatype as 32-bit ARGB with alpha where the GIF is transparent. Every frame is there, composited as web browsers show them (a transparent screen; "restore to background" clears to transparent): the object's picture is frame 0, or the frame `PDTA_WhichPicture` names at `OM_NEW`; `PDTA_GetNumPictures` and `OIA_Frames` count them, and `OIM_READFRAME` (`datatypes/gfopenimage.h`) writes any frame with its delay into a program's pixels, which is how GFOpenBrowser plays them. Its descriptor, `GFOpenGIF`, masks the signature and the screen size, longer than the system's GIF descriptor, so it is tried first and the system's gif.datatype stays as it was. |
 | `gfopensound.datatype` | sound | the `media.decode/1` service | FLAC, Ogg (Vorbis, Opus), AAC/M4A, ALAC, WMA and MP3; MIDI (played through FluidSynth on the Cradle), C64 SID tunes (the first three minutes, through sidplayfp) and XM, IT and S3M modules (libopenmpt), sent back as 16-bit PCM at a rate Paula plays (`ENV:GFOpenImage/SoundRate`, default 28000 Hz: 44.1 kHz comes as 22.05 kHz). 16-bit stereo with sound.datatype V44 or newer, else 8-bit mono. |
 | `gfopenmodule.datatype` | sound | libxmp 4.7.3 | Music modules, played on the Amiga itself: ProTracker, NoiseTracker and SoundTracker MODs (M.K., M!K!, FLT4, FLT8, 2CHN to 32CH, and 15-instrument SoundTracker by its name), MED and OctaMED (MMD0 to MMD3, MED 2 to 4), Oktalyzer, DigiBooster and DigiBooster Pro, FastTracker 2 XM, Scream Tracker 3 S3M and Impulse Tracker IT (libxmp reads some 60 module formats in all; a descriptor for another is all it takes). Streamed by a player process of its own, so a song starts at once and never sits in memory whole: 16-bit stereo through AHI (`ahi.device` unit 0, at its own rate), else 8-bit stereo on two Paula channels. Mixed on a cores board core (AmiCradle's, through `gfopenmulticore.library`), else by `media.decode/1` on a services card or a paired Cradle, else on this CPU, and the datatype says which (`OIA_DecodedBy`, `include/datatypes/gfopenimage.h`; `openmodule/DESIGN.md` sections 2 and 7). The module's title and length show; play, pause, stop, volume and repeat work as for a sound. |
 | `gfopendoc.datatype` | picture | the `doc.render/1` service | DOCX, XLSX, PPTX, OpenDocument, Word/Excel/PowerPoint 97, RTF, WordPerfect, PostScript and EPS, EPUB e-books, Markdown and CSV, laid out by LibreOffice or Apache OpenOffice (Ghostscript for PostScript) on the Cradle and shown as their pages one under the other, `ENV:GFOpenImage/DocWidth` pixels wide (default 800), the first `ENV:GFOpenImage/DocPages` pages (default 8). |
@@ -77,6 +78,8 @@ Copy the files from `out/` (after building) to the same places on the Amiga:
 | `Devs/DataTypes/GFOpenPNG` | `DEVS:DataTypes/` |
 | `Classes/DataTypes/gfopentga.datatype` | `SYS:Classes/DataTypes/` |
 | `Devs/DataTypes/GFOpenTGA` | `DEVS:DataTypes/` |
+| `Classes/DataTypes/gfopengif.datatype` | `SYS:Classes/DataTypes/` |
+| `Devs/DataTypes/GFOpenGIF` | `DEVS:DataTypes/` |
 | `Classes/DataTypes/gfopensound.datatype` | `SYS:Classes/DataTypes/` |
 | `Devs/DataTypes/FLAC`, `Ogg`, `M4A`, `M4B`, `WMA`, `MP3-ID3`, `AAC`, `MIDI`, `PSID`, `RSID`, `XM`, `IT`, `S3M` | `DEVS:DataTypes/` |
 | `Classes/DataTypes/gfopenmodule.datatype` | `SYS:Classes/DataTypes/` |
@@ -341,6 +344,24 @@ map has no floating-point helper. Not yet run on an Amiga: `tests/dtsave.c`
 opened again pixel for pixel, a conversion through an empty object of
 another class, and SAMEBYTES for a CDXL film.
 
+### gfopengif.datatype
+
+On x86 cores, 3 November 2026: `tests/test-gif.sh` makes 29 files (61
+frames) with its own LZW encoder: stills of 2 to 256 colours, interlaced,
+transparent, local tables, offset and past-the-edge frames, no screen
+size, no trailer, indexes past the table, clear codes mid-stream, and
+animations with each disposal method, a mixed one and an advertisement's
+small first frame. Every frame's screen matches the one `make-gif.py`
+works out, Pillow reads the 16 full-screen one-frame files the same, and
+three files from Pillow's encoder match Pillow's decode. Every file cut at
+every length and with each of its first 64 bytes changed (46,764 files)
+decodes under AddressSanitizer and UBSan without a fault. Animations Pillow
+writes (eight frames, disposal 0, 1 and 2, with and without transparency,
+optimised or not) give Pillow's own frames.
+
+Not yet checked: the Amiga build and a run on AmiCradle (MultiView,
+GFOpenBrowser), GIFs from the wider world, and the speed on a real 68k.
+
 ### gfopentga.datatype
 
 On x86 cores, 12 October 2026: `tests/test-tga.sh` makes 60 files with
@@ -388,7 +409,8 @@ test file is make-tga.py's), 8-bit screens, and the speed on a real 68k.
 - Text formats (SVG, Radiance HDR's header, PostScript, RTF, CSV and
   Markdown) have text descriptors (DTF_ASCII): datatypes.library only tries
   those on a file that reads as text.
-- Pictures in JPEG, PNG and GIF stay with the system's datatypes;
+- Pictures in JPEG stay with the system's datatypes (PNG and GIF have
+  gfopenpng and gfopengif);
   `media.decode/1` decodes them for GFOpenBrowser.
 - AmigaOS 3.2.3's datatypes.library tries a longer mask first and, between
   equal masks, priority 0 before higher ones (`openmodule/DESIGN.md`), so

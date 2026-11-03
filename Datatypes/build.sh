@@ -1,5 +1,5 @@
 #!/bin/sh
-# gfopenimage datatypes: webp, webm, gfopenpicture, gfopensound, gfopenmodule, gfopendoc, cdxl and gfopenvideo.datatype,
+# gfopenimage datatypes: gfopengif, webp, webm, gfopenpicture, gfopensound, gfopenmodule, gfopendoc, cdxl and gfopenvideo.datatype,
 # and stream, gzip and brotli.datatype (stream/build.sh)
 # for AmigaOS 3.x, built with the os32-gcc16 compiler (bebbo's amiga-gcc, GCC 16.2,
 # libnix). The datatypes are built for the 68040, soft float (no FPU code).
@@ -231,6 +231,11 @@ OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/png/build.sh"
 # Targa (TGA) on the Amiga itself, our own decoder (tga/tgaclass.c,
 # tga/build.sh); tests/test-tga.sh checks the decoder on x86 or ARM64 cores.
 OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/tga/build.sh"
+
+# --- gfopengif.datatype ---------------------------------------------------------
+# GIF on the Amiga itself, every frame of an animation (gif/gifclass.c,
+# gif/build.sh); tests/test-gif.sh checks the decoder on x86 or ARM64 cores.
+OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/gif/build.sh"
 
 # --- stream.datatype, gzip.datatype, brotli.datatype --------------------------
 # The "data" class and its first two decoders (stream/build.sh); gzip

@@ -78,6 +78,7 @@ SYSTEM_CLASSES = {
 LABELS = {
     "gfopenpng": "PNG pictures (gfopenpng)",
     "gfopentga": "Targa pictures (gfopentga)",
+    "gfopengif": "GIF pictures and animations (gfopengif)",
     "webp": "WebP pictures (webp)",
     "openpicture": "AVIF, HEIC, JPEG XL, RAW... by a Cradle (openpicture)",
     "opensound": "FLAC, Ogg, MP3, AAC... by a Cradle (opensound)",
@@ -90,7 +91,7 @@ LABELS = {
     "brotli": "Brotli files (brotli)",
 }
 # Shown first, in this order; the rest follow by name.
-ORDER = ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound", "openmodule",
+ORDER = ["gfopenpng", "gfopentga", "gfopengif", "webp", "openpicture", "opensound", "openmodule",
          "webm", "openvideo", "cdxl", "opendoc"]
 PAGE = 9            # the 3.2 Installer shows nine choices a page (GFOpenUp, 8 October 2026)
 # The datatypes that open z.library (Datatypes/README.md): the pack brings the Team's own, GFOpenZlib, and
