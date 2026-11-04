@@ -416,7 +416,11 @@ static void env_init(struct DTCBase *base)
     x->alloc_bitmap = x_alloc_bitmap;
     x->free_bitmap = x_free_bitmap;
     x->write_lut8 = x_write_lut8;
+#ifdef DTC_HAVE_CGX
+    x->write_argb = CyberGfxBase ? x_write_argb : NULL;   /* none: the layout takes pens */
+#else
     x->write_argb = x_write_argb;
+#endif
     x->screen_depth = x_screen_depth;
     x->screen_colormap = x_screen_cm;
     x->screen_bitmap = x_screen_bm;
