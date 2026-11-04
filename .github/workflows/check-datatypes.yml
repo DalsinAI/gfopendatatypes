@@ -1,6 +1,7 @@
 # Copyright (c) 2026 AmiCradle Team. MIT licence.
 # The datatypes' decoder cores on the host (x86), under AddressSanitizer and
-# UBSan: gfopentga.datatype's (Datatypes/tests/test-tga.sh) and cdxl.datatype's
+# UBSan: gfopentga.datatype's (Datatypes/tests/test-tga.sh), gfopengif.datatype's
+# (Datatypes/tests/test-gif.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),
 # webm.datatype's picture sizes against crafted headers
 # (Datatypes/tests/test-webm.sh),
@@ -39,6 +40,8 @@ jobs:
           sudo apt-get install -y -q ffmpeg python3-pil
       - name: gfopentga.datatype decoder
         run: sh Datatypes/tests/test-tga.sh
+      - name: gfopengif.datatype decoder
+        run: sh Datatypes/tests/test-gif.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
       - name: webm.datatype picture sizes

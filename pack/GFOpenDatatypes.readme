@@ -14,6 +14,7 @@ GFOpenBench, GFOpenBrowser, picture viewers, players) opens what they read.
 On the Amiga itself:
   PNG pictures       gfopenpng.datatype, every colour type, with alpha
   Targa pictures     gfopentga.datatype
+  GIF pictures       gfopengif.datatype, every frame of an animation
   WebP pictures      webp.datatype (libwebp)
   WebM films         webm.datatype (libvpx)
   CDXL films         cdxl.datatype
