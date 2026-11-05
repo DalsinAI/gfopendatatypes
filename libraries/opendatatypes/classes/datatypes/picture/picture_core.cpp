@@ -13,7 +13,8 @@
  * layout makes the destination: scaled (PDTM_SCALE, nearest pixel),
  * remapped to the screen's pens (ObtainBestPen, shared, released at the
  * next layout or at dispose), or true colour on a screen deeper than 8
- * planes when PDTA_DestMode is PMODE_V43; and a mask plane when the
+ * planes when PDTA_DestMode is PMODE_V43 and the system can write true
+ * colour pixels (else pens, as PMODE_V42); and a mask plane when the
  * picture has a mask, a transparent colour or alpha.
  *
  * Where the autodocs leave a corner open the code says "ABI test" and the
@@ -257,7 +258,12 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     u32 depth = screen && x->screen_depth ? x->screen_depth(env, screen) : 0;
     void *cm = screen && x->screen_colormap ? x->screen_colormap(env, screen) : nullptr;
     bool remap = (p->flags & PIC_F_REMAP) && screen;
-    bool truecolour = remap ? depth > 8 && p->destmode == PIC_PMODE_V43 : p->store == PIC_STORE_ARGB;
+    /* true colour only where its pixels can be written (the shell's
+     * write_argb is cybergraphics.library's, and only when the stove had
+     * its header): else PMODE_V43 takes pens, as PMODE_V42 does, and is
+     * not left an empty, black bitmap */
+    bool truecolour = remap ? depth > 8 && p->destmode == PIC_PMODE_V43 && x->write_argb
+                            : p->store == PIC_STORE_ARGB;
     /* a true colour destination is the screen's kind of bitmap (RTG): its friend */
     odt_BitMap *friend_bm = ((p->flags & PIC_F_FRIEND) || (remap && truecolour)) && screen && x->screen_bitmap
                                 ? x->screen_bitmap(env, screen) : nullptr;
