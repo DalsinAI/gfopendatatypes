@@ -83,6 +83,37 @@ static void close_gif(struct decoded *d)
     free(d->c.work);
 }
 
+/* gif_frame_lut8() on frame 0, mapped through its table, against
+ * gif_show()'s frame 0 on the screen now (gfopengif.datatype gives
+ * picture.datatype the indexes when it can: no holes, or a transparent
+ * index to fill them with). 1 when they differ. */
+static int lut8_differs(const UBYTE *file, ULONG len, struct decoded *d)
+{
+    const struct gif_frame *f = &d->frame[0];
+    ULONG count = d->g.width * d->g.height, holes, n;
+    UBYTE *pixels = malloc(count ? count : 1), fill = f->transparent ? f->trans : 0;
+    int differs = 0;
+    if (!pixels)
+        return 1;
+    gif_frame_lut8(file, len, &d->g, f, pixels, d->c.work, fill, &holes);
+    if (holes && !f->transparent) {
+        free(pixels);
+        return 0;                      /* not given as indexes: nothing to compare */
+    }
+    for (n = 0; n < count && !differs; n++) {
+        UBYTE i = pixels[n];
+        ULONG want = 0;
+        if (i < f->colours && !(f->transparent && i == f->trans)) {
+            const UBYTE *c = file + f->palette + 3 * i;
+            want = 0xff000000UL | (ULONG)c[0] << 16 | (ULONG)c[1] << 8 | c[2];
+        }
+        if (want != d->c.argb[n])
+            differs = 1;
+    }
+    free(pixels);
+    return differs;
+}
+
 static int run(const char *name, const UBYTE *file, ULONG len, int quiet)
 {
     struct decoded d;
@@ -111,11 +142,15 @@ static int run(const char *name, const UBYTE *file, ULONG len, int quiet)
     gif_show(file, len, &d.g, d.frame, &d.c, 0);
     if (fnv(d.c.argb, count) != hash[0])
         bad = 1;
+    if (lut8_differs(file, len, &d))
+        bad |= 2;
     gif_show(file, len, &d.g, d.frame, &d.c, d.g.frames - 1);
     if (fnv(d.c.argb, count) != hash[d.g.frames - 1])
         bad = 1;
-    if (bad && !quiet)
+    if ((bad & 1) && !quiet)
         printf("%s going back gives other pixels\n", name);
+    if ((bad & 2) && !quiet)
+        printf("%s frame 0 as colour indexes gives other pixels\n", name);
     free(hash);
     close_gif(&d);
     return bad;
