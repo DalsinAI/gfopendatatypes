@@ -192,7 +192,9 @@ static void copy_rect(const struct gif_info *g, const struct gif_frame *f, ULONG
 
 /* Where the pixels go as they come out of the LZW stream. */
 struct out {
-    ULONG *argb;
+    ULONG *argb;                         /* the screen as ARGB, or NULL with lut8 */
+    UBYTE *lut8;                         /* the screen as colour indexes (gif_frame_lut8()) */
+    ULONG written;                       /* pixels given a colour */
     const ULONG *palette;
     ULONG width;                         /* the screen's */
     ULONG fx, fw, fh;                    /* the frame's left, width and height */
@@ -222,16 +224,22 @@ static void next_row(struct out *o)
 static void put(struct out *o, UBYTE index)
 {
     ULONG x = o->fx + o->col, y = o->fy + o->row;
-    if (index < o->colours && (WORD)index != o->trans && x < o->x1 && y < o->y1)
-        o->argb[y * o->width + x] = o->palette[index];
+    if (index < o->colours && (WORD)index != o->trans && x < o->x1 && y < o->y1) {
+        if (o->lut8)
+            o->lut8[y * o->width + x] = index;
+        else
+            o->argb[y * o->width + x] = o->palette[index];
+        o->written++;
+    }
     if (++o->col == o->fw)
         next_row(o);
     o->left--;
 }
 
-/* Decodes frame f's LZW stream onto the screen. */
-static void draw(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *f,
-    ULONG *argb, struct gif_work *w)
+/* Decodes frame f's LZW stream onto the screen: ARGB words, or with lut8
+ * the colour indexes. The number of pixels it gave a colour. */
+static ULONG draw(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *f,
+    ULONG *argb, UBYTE *lut8, struct gif_work *w)
 {
     struct out o;
     ULONG pos = f->data, bits = 0, block = 0, i;
@@ -241,15 +249,17 @@ static void draw(const UBYTE *file, ULONG len, const struct gif_info *g, const s
     int have_old = 0;
 
     if (!f->w || !f->h || !f->colours || pos >= len)
-        return;
+        return 0;
     min = file[pos++];
     if (min < 1 || min > 11)
-        return;
+        return 0;
     for (i = 0; i < f->colours; i++) {
         const UBYTE *c = file + f->palette + 3 * i;
         w->palette[i] = 0xff000000UL | (ULONG)c[0] << 16 | (ULONG)c[1] << 8 | c[2];
     }
     o.argb = argb;
+    o.lut8 = lut8;
+    o.written = 0;
     o.palette = w->palette;
     o.width = g->width;
     o.fx = f->x;
@@ -280,10 +290,10 @@ static void draw(const UBYTE *file, ULONG len, const struct gif_info *g, const s
         while (bits < size) {                           /* the next byte, across sub-blocks */
             if (!block) {
                 if (pos >= len || !(block = file[pos++]))
-                    return;
+                    return o.written;
             }
             if (pos >= len)
-                return;
+                return o.written;
             acc |= (ULONG)file[pos++] << bits;
             bits += 8;
             block--;
@@ -299,10 +309,10 @@ static void draw(const UBYTE *file, ULONG len, const struct gif_info *g, const s
             continue;
         }
         if (code == end)
-            return;
+            return o.written;
         if (!have_old) {
             if (code >= clear)
-                return;                                  /* damaged */
+                return o.written;                                  /* damaged */
             put(&o, (UBYTE)code);
             first = (UBYTE)code;
             oldcode = code;
@@ -316,7 +326,7 @@ static void draw(const UBYTE *file, ULONG len, const struct gif_info *g, const s
             *sp++ = first;                               /* the code being made: old + its first */
             in = oldcode;
         } else
-            return;                                      /* damaged */
+            return o.written;                                      /* damaged */
         while (in >= clear) {
             *sp++ = w->suffix[in];
             in = w->prefix[in];
@@ -336,6 +346,7 @@ static void draw(const UBYTE *file, ULONG len, const struct gif_info *g, const s
         }
         oldcode = code;
     }
+    return o.written;
 }
 
 LONG gif_show(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *frame,
@@ -363,7 +374,7 @@ LONG gif_show(const UBYTE *file, ULONG len, const struct gif_info *g, const stru
         f = frame + c->shown + 1;
         if (f->disposal == 3 && c->saved)
             copy_rect(g, f, c->saved, c->argb);
-        draw(file, len, g, f, c->argb, (struct gif_work *)c->work);
+        draw(file, len, g, f, c->argb, (UBYTE *)0, (struct gif_work *)c->work);
         c->shown++;
     }
     return 0;
@@ -375,5 +386,15 @@ LONG gif_has_alpha(const struct gif_info *g, const struct gif_canvas *c)
     for (n = 0; n < count; n++)
         if (!(c->argb[n] & 0xff000000UL))
             return 1;
+    return 0;
+}
+
+LONG gif_frame_lut8(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *f,
+    UBYTE *pixels, APTR work, UBYTE fill, ULONG *holes)
+{
+    ULONG n, count = g->width * g->height;
+    for (n = 0; n < count; n++)
+        pixels[n] = fill;
+    *holes = count - draw(file, len, g, f, (ULONG *)0, pixels, (struct gif_work *)work);
     return 0;
 }

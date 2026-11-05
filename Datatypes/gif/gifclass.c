@@ -1,15 +1,17 @@
 /*
  * gfopengif.datatype: GIF pictures and animations for AmigaOS 3.x, a
  * picture.datatype (V43 mode) subclass that decodes on the Amiga itself
- * (gifdecode.c, our own LZW; no other library). The picture goes to
- * picture.datatype as 32-bit ARGB (bmh_Depth 32) with alpha where the GIF is
- * transparent, so a program reading it back as ARGB gets it as decoded.
+ * (gifdecode.c, our own LZW; no other library).
  *
  * Every frame of an animation is there, composited as web browsers show
  * them (gifdecode.h):
  *
  * - The object's picture is frame 0, or the frame PDTA_WhichPicture names
- *   at OM_NEW (the V44 way to choose a picture in a file of several);
+ *   at OM_NEW (the V44 way to choose a picture in a file of several).
+ *   Frame 0 goes to picture.datatype as the file's own colour indexes and
+ *   table (8 bits or fewer, bmh_Transparent for its transparent index)
+ *   whenever every pixel has a colour or the frame has a transparent index;
+ *   other frames, and the rare first frame that can't, as 32-bit ARGB;
  *   PDTA_GetNumPictures and OIA_Frames give the number of frames.
  * - OIM_READFRAME (datatypes/gfopenimage.h) writes any frame into a
  *   program's pixels, with its delay; OIA_LoopCount gives the loop count.
@@ -55,10 +57,10 @@
 #endif
 
 const char LibName[] = "gfopengif.datatype";
-const char LibIdString[] = "gfopengif.datatype 47.1 (3.11.2026) AmiCradle Team";
+const char LibIdString[] = "gfopengif.datatype 47.2 (5.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: gfopengif.datatype 47.1 (3.11.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: gfopengif.datatype 47.2 (5.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -104,6 +106,73 @@ static void freeData(struct gifdata *d)
     d->canvas.work = NULL;
 }
 
+/* The first frame as colour indexes with its own table (gif_frame_lut8()):
+ * a GIF has at most 256 colours a frame, so programs on a palette screen
+ * get the file's colours, not 32 bits picture.datatype has to bring down
+ * again, in a quarter of the memory. It can when no pixel is left without
+ * a colour, or the frame has a transparent index to give those (it then
+ * becomes bmh_Transparent). FALSE, with nothing changed, when it can't or
+ * runs out of memory: the 32-bit route is taken. */
+static BOOL writeLUT8(Class *cl, Object *o, struct gifdata *d, struct BitMapHeader *bmh, STRPTR name)
+{
+    const struct gif_frame *f = &d->frame[0];
+    ULONG pixels = d->info.width * d->info.height, holes, colours, i, *cregs = NULL;
+    struct ColorRegister *cmap = NULL;
+    UBYTE *lut8, depth;
+    APTR work;
+    BOOL ok;
+
+    if (!f->colours)
+        return FALSE;
+    if (!(lut8 = big_alloc(pixels)))
+        return FALSE;
+    if (!(work = d->canvas.work ? d->canvas.work : AllocVec(GIF_WORKSIZE, MEMF_ANY))) {
+        FreeVec(lut8);
+        return FALSE;
+    }
+    gif_frame_lut8(d->file, d->size, &d->info, f, lut8, work, f->transparent ? f->trans : 0, &holes);
+    if (work != d->canvas.work)
+        FreeVec(work);
+    if (holes && !f->transparent) {
+        FreeVec(lut8);
+        return FALSE;
+    }
+    colours = f->colours;
+    if (holes && f->trans >= colours)
+        colours = (ULONG)f->trans + 1;   /* the transparent index past the table: black there */
+    for (depth = 1; (1UL << depth) < colours; depth++)
+        ;
+    bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)d->info.width;
+    bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)d->info.height;
+    bmh->bmh_Depth = depth;
+    bmh->bmh_Masking = holes ? mskHasTransparentColor : mskNone;
+    bmh->bmh_Transparent = holes ? f->trans : 0;
+    SetDTAttrs(o, NULL, NULL,
+        DTA_ObjName, (ULONG)(name ? FilePart(name) : (STRPTR)"GIF"),
+        DTA_NominalHoriz, d->info.width,
+        DTA_NominalVert, d->info.height,
+        PDTA_SourceMode, PMODE_V43,
+        PDTA_NumColors, colours,
+        TAG_DONE);
+    if (GetDTAttrs(o, PDTA_ColorRegisters, (ULONG)&cmap, PDTA_CRegs, (ULONG)&cregs, TAG_DONE) < 2 || !cmap || !cregs) {
+        FreeVec(lut8);
+        return FALSE;
+    }
+    for (i = 0; i < colours; i++) {
+        const UBYTE *c = i < f->colours ? d->file + f->palette + 3 * i : (const UBYTE *)"\0\0\0";
+        cmap[i].red = c[0];
+        cmap[i].green = c[1];
+        cmap[i].blue = c[2];
+        cregs[i * 3] = c[0] * 0x01010101UL;
+        cregs[i * 3 + 1] = c[1] * 0x01010101UL;
+        cregs[i * 3 + 2] = c[2] * 0x01010101UL;
+    }
+    ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)lut8, PBPAFMT_LUT8,
+        d->info.width, 0, 0, d->info.width, d->info.height) ? TRUE : FALSE;
+    FreeVec(lut8);
+    return ok;
+}
+
 static BOOL loadGIF(Class *cl, Object *o, struct TagItem *attrs)
 {
     struct gifdata *d = INST_DATA(cl, o);
@@ -111,7 +180,7 @@ static BOOL loadGIF(Class *cl, Object *o, struct TagItem *attrs)
     STRPTR name = NULL;
     ULONG pixels, which;
     LONG n, err = ERROR_NO_FREE_STORE;
-    BOOL ok = FALSE, alpha;
+    BOOL ok = FALSE, alpha, animated;
 
     if (GetDTAttrs(o, PDTA_BitMapHeader, (ULONG)&bmh, DTA_Name, (ULONG)&name, TAG_DONE) < 1 || !bmh) {
         SetIoErr(ERROR_OBJECT_WRONG_TYPE);
@@ -125,16 +194,32 @@ static BOOL loadGIF(Class *cl, Object *o, struct TagItem *attrs)
         return FALSE;
     }
     pixels = d->info.width * d->info.height;
+    animated = n > 1;
     d->canvas.shown = -1;
-    if ((d->frame = AllocVec(sizeof(struct gif_frame) * (ULONG)n, MEMF_ANY))
-        && (d->canvas.argb = big_alloc(pixels * 4))
-        && (!d->info.restores || (d->canvas.saved = big_alloc(pixels * 4)))
-        && (d->canvas.work = AllocVec(GIF_WORKSIZE, MEMF_ANY))) {
-        gif_scan(d->file, d->size, &d->info, d->frame, (ULONG)n);
-        which = GetTagData(PDTA_WhichPicture, 0, attrs);
-        if (which >= d->info.frames)
-            which = d->info.frames - 1;
-        d->first = which;
+    if (!(d->frame = AllocVec(sizeof(struct gif_frame) * (ULONG)n, MEMF_ANY))) {
+        freeData(d);
+        SetIoErr(err);
+        return FALSE;
+    }
+    gif_scan(d->file, d->size, &d->info, d->frame, (ULONG)n);
+    which = GetTagData(PDTA_WhichPicture, 0, attrs);
+    if (which >= d->info.frames)
+        which = d->info.frames - 1;
+    d->first = which;
+    /* An animation keeps an ARGB screen for OIM_READFRAME; a still needs
+     * one only when it can't go as colour indexes. */
+    if (animated && (!(d->canvas.argb = big_alloc(pixels * 4))
+            || (d->info.restores && !(d->canvas.saved = big_alloc(pixels * 4)))
+            || !(d->canvas.work = AllocVec(GIF_WORKSIZE, MEMF_ANY)))) {
+        freeData(d);
+        SetIoErr(err);
+        return FALSE;
+    }
+    if (which == 0 && writeLUT8(cl, o, d, bmh, name))
+        ok = TRUE;
+    else if ((d->canvas.argb || (d->canvas.argb = big_alloc(pixels * 4)))
+        && (d->canvas.work || (d->canvas.work = AllocVec(GIF_WORKSIZE, MEMF_ANY)))
+        && (!d->info.restores || d->canvas.saved || (d->canvas.saved = big_alloc(pixels * 4)))) {
         gif_show(d->file, d->size, &d->info, d->frame, &d->canvas, which);
         alpha = gif_has_alpha(&d->info, &d->canvas) ? TRUE : FALSE;
         bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)d->info.width;
@@ -151,7 +236,7 @@ static BOOL loadGIF(Class *cl, Object *o, struct TagItem *attrs)
         ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)d->canvas.argb, PBPAFMT_ARGB,
             d->info.width * 4, 0, 0, d->info.width, d->info.height) ? TRUE : FALSE;
     }
-    if (!ok || d->info.frames == 1)
+    if (!ok || !animated)
         freeData(d);                  /* a still: nothing more to read */
     if (!ok)
         SetIoErr(err);

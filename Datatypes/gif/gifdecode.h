@@ -75,6 +75,16 @@ LONG gif_scan(const UBYTE *file, ULONG len, struct gif_info *g, struct gif_frame
 LONG gif_show(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *frame,
     struct gif_canvas *c, ULONG index);
 
+/* Frame f by itself, as the colour indexes of its own table (the first
+ * frame of a file shows that way: there is nothing under it). Every pixel
+ * of pixels (width * height bytes) is set to fill, then the frame's pixels
+ * that have a colour are written over it; *holes is the number left
+ * without one (outside the frame, its transparent index, or indexes past
+ * its table): those are transparent in gif_show()'s screen. work is
+ * GIF_WORKSIZE bytes. 0. */
+LONG gif_frame_lut8(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *f,
+    UBYTE *pixels, APTR work, UBYTE fill, ULONG *holes);
+
 /* 1 when any pixel of c's screen is transparent. */
 LONG gif_has_alpha(const struct gif_info *g, const struct gif_canvas *c);
 
