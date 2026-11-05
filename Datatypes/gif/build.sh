@@ -5,14 +5,14 @@
 # MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
-#   PREFIX       where Classes/ and Devs/ go (default ../out)
+#   PREFIX       where Classes/ and Devs/ go (default $OUT, else ../out)
 #
 # usage: sh gif/build.sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 S=${OS32_GCC16:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 CC="$S/prefix/bin/m68k-amigaos-gcc"
-OUT=${PREFIX:-"$HERE/out"}
+OUT=${PREFIX:-${OUT:-"$HERE/out"}}
 WORK="$HERE/work/obj-opengif"
 # Address 0 is memory on an Amiga: keep GCC from dropping null checks (../build.sh).
 # Soft float: -m68040 links libnix's soft libm020, not libm881 (see

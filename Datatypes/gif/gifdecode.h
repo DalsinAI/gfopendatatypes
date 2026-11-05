@@ -85,6 +85,36 @@ LONG gif_show(const UBYTE *file, ULONG len, const struct gif_info *g, const stru
 LONG gif_frame_lut8(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *f,
     UBYTE *pixels, APTR work, UBYTE fill, ULONG *holes);
 
+/* The screen as colour indexes of one table for all frames (an
+ * animation.datatype's frames): each frame's indexes go through its own
+ * 256-byte remap, remap + 256 * table[frame], into that table, and
+ * pixels no frame gave a colour (transparent in gif_show()'s screen) are
+ * back. */
+struct gif_canvas8 {
+    UBYTE *lut8;                         /* width * height bytes */
+    UBYTE *saved;                        /* width * height bytes when info.restores, else NULL */
+    APTR work;                           /* GIF_WORKSIZE bytes, longword aligned */
+    const UBYTE *remap;
+    const UWORD *table;                  /* a remap for each frame */
+    LONG shown;                          /* the frame on the screen now; -1 none (set it so) */
+    UBYTE back;
+    UBYTE pad[3];
+};
+
+/* One colour table for every frame of the file, for a gif_canvas8: the
+ * background colour first (the global table's background entry, else
+ * black; *back is its index), then each frame's colours, each colour once.
+ * Each distinct table (frames that share one, or have the same colours,
+ * share it) gets a 256-byte remap in remaps (256 * g->frames bytes,
+ * cleared), and tables[frame] says which. palette is 768 bytes, RGB. The
+ * number of colours, or -1 when there are more than 256. */
+LONG gif_one_table(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *frame,
+    UBYTE *palette, UBYTE *remaps, UWORD *tables, UBYTE *back);
+
+/* gif_show() onto a gif_canvas8. 0, or -1 for an index out of range. */
+LONG gif_show8(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *frame,
+    struct gif_canvas8 *c, ULONG index);
+
 /* 1 when any pixel of c's screen is transparent. */
 LONG gif_has_alpha(const struct gif_info *g, const struct gif_canvas *c);
 

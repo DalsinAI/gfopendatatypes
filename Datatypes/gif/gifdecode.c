@@ -16,6 +16,7 @@ struct gif_work {
     UWORD prefix[LZW_CODES];             /* 8192 */
     UBYTE suffix[LZW_CODES];             /* 4096 */
     UBYTE stack[LZW_CODES + 4];          /* 4100 */
+    UBYTE remap[256];                    /* the identity, when none is given */
 };
 
 typedef char gif_work_fits[sizeof(struct gif_work) <= GIF_WORKSIZE ? 1 : -1];
@@ -32,6 +33,16 @@ static int same(const UBYTE *a, const char *b, ULONG n)
         if (a[i] != (UBYTE)b[i])
             return 0;
     return 1;
+}
+
+/* 0 when the n bytes at a and b are the same. */
+static int cmp(const UBYTE *a, const UBYTE *b, ULONG n)
+{
+    ULONG i;
+    for (i = 0; i < n; i++)
+        if (a[i] != b[i])
+            return 1;
+    return 0;
 }
 
 /* The offset after the data sub-blocks that start at pos (it may pass len). */
@@ -196,6 +207,7 @@ struct out {
     UBYTE *lut8;                         /* the screen as colour indexes (gif_frame_lut8()) */
     ULONG written;                       /* pixels given a colour */
     const ULONG *palette;
+    const UBYTE *remap;                  /* with lut8: the frame's index to the one written */
     ULONG width;                         /* the screen's */
     ULONG fx, fw, fh;                    /* the frame's left, width and height */
     ULONG x1, y1, fy;                    /* the screen's limits, the frame's top */
@@ -226,7 +238,7 @@ static void put(struct out *o, UBYTE index)
     ULONG x = o->fx + o->col, y = o->fy + o->row;
     if (index < o->colours && (WORD)index != o->trans && x < o->x1 && y < o->y1) {
         if (o->lut8)
-            o->lut8[y * o->width + x] = index;
+            o->lut8[y * o->width + x] = o->remap[index];
         else
             o->argb[y * o->width + x] = o->palette[index];
         o->written++;
@@ -237,9 +249,10 @@ static void put(struct out *o, UBYTE index)
 }
 
 /* Decodes frame f's LZW stream onto the screen: ARGB words, or with lut8
- * the colour indexes. The number of pixels it gave a colour. */
+ * the colour indexes, each through remap (NULL: as they are). The number
+ * of pixels it gave a colour. */
 static ULONG draw(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *f,
-    ULONG *argb, UBYTE *lut8, struct gif_work *w)
+    ULONG *argb, UBYTE *lut8, const UBYTE *remap, struct gif_work *w)
 {
     struct out o;
     ULONG pos = f->data, bits = 0, block = 0, i;
@@ -261,6 +274,12 @@ static ULONG draw(const UBYTE *file, ULONG len, const struct gif_info *g, const 
     o.lut8 = lut8;
     o.written = 0;
     o.palette = w->palette;
+    if (lut8 && !remap) {
+        for (i = 0; i < 256; i++)
+            w->remap[i] = (UBYTE)i;
+        remap = w->remap;
+    }
+    o.remap = remap;
     o.width = g->width;
     o.fx = f->x;
     o.fy = f->y;
@@ -374,7 +393,7 @@ LONG gif_show(const UBYTE *file, ULONG len, const struct gif_info *g, const stru
         f = frame + c->shown + 1;
         if (f->disposal == 3 && c->saved)
             copy_rect(g, f, c->saved, c->argb);
-        draw(file, len, g, f, c->argb, (UBYTE *)0, (struct gif_work *)c->work);
+        draw(file, len, g, f, c->argb, (UBYTE *)0, (const UBYTE *)0, (struct gif_work *)c->work);
         c->shown++;
     }
     return 0;
@@ -395,6 +414,116 @@ LONG gif_frame_lut8(const UBYTE *file, ULONG len, const struct gif_info *g, cons
     ULONG n, count = g->width * g->height;
     for (n = 0; n < count; n++)
         pixels[n] = fill;
-    *holes = count - draw(file, len, g, f, (ULONG *)0, pixels, (struct gif_work *)work);
+    *holes = count - draw(file, len, g, f, (ULONG *)0, pixels, (const UBYTE *)0, (struct gif_work *)work);
     return 0;
+}
+
+static void fill_rect8(const struct gif_info *g, const struct gif_frame *f, UBYTE *lut8, UBYTE value)
+{
+    ULONG x0, y0, x1, y1, x, y;
+    if (!clip(g, f, &x0, &y0, &x1, &y1))
+        return;
+    for (y = y0; y < y1; y++) {
+        UBYTE *row = lut8 + y * g->width;
+        for (x = x0; x < x1; x++)
+            row[x] = value;
+    }
+}
+
+static void copy_rect8(const struct gif_info *g, const struct gif_frame *f, UBYTE *to, const UBYTE *from)
+{
+    ULONG x0, y0, x1, y1, x, y;
+    if (!clip(g, f, &x0, &y0, &x1, &y1))
+        return;
+    for (y = y0; y < y1; y++) {
+        ULONG at = y * g->width;
+        for (x = x0; x < x1; x++)
+            to[at + x] = from[at + x];
+    }
+}
+
+LONG gif_show8(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *frame,
+    struct gif_canvas8 *c, ULONG index)
+{
+    ULONG n, count = g->width * g->height;
+
+    if (index >= g->frames)
+        return -1;
+    if (c->shown >= 0 && index < (ULONG)c->shown)
+        c->shown = -1;
+    if (c->shown < 0) {
+        for (n = 0; n < count; n++)
+            c->lut8[n] = c->back;
+    }
+    while (c->shown < (LONG)index) {
+        const struct gif_frame *f;
+        ULONG k;
+        if (c->shown >= 0) {                             /* the frame shown goes as it says */
+            const struct gif_frame *before = frame + c->shown;
+            if (before->disposal == 2)
+                fill_rect8(g, before, c->lut8, c->back);
+            else if (before->disposal == 3 && c->saved)
+                copy_rect8(g, before, c->lut8, c->saved);
+        }
+        k = (ULONG)c->shown + 1;
+        f = frame + k;
+        if (f->disposal == 3 && c->saved)
+            copy_rect8(g, f, c->saved, c->lut8);
+        draw(file, len, g, f, (ULONG *)0, c->lut8, c->remap + 256UL * c->table[k], (struct gif_work *)c->work);
+        c->shown++;
+    }
+    return 0;
+}
+
+/* The index of colour rgb in palette, added when it isn't there; -1 when
+ * the palette is full. */
+static LONG colour_index(UBYTE *palette, ULONG *colours, const UBYTE *rgb)
+{
+    ULONG i;
+    for (i = 0; i < *colours; i++)
+        if (palette[i * 3] == rgb[0] && palette[i * 3 + 1] == rgb[1] && palette[i * 3 + 2] == rgb[2])
+            return (LONG)i;
+    if (*colours == 256)
+        return -1;
+    palette[i * 3] = rgb[0];
+    palette[i * 3 + 1] = rgb[1];
+    palette[i * 3 + 2] = rgb[2];
+    (*colours)++;
+    return (LONG)i;
+}
+
+LONG gif_one_table(const UBYTE *file, ULONG len, const struct gif_info *g, const struct gif_frame *frame,
+    UBYTE *palette, UBYTE *remaps, UWORD *tables, UBYTE *back)
+{
+    static const UBYTE black[3] = { 0, 0, 0 };
+    const UBYTE *bg = black;
+    ULONG k, j, distinct = 0, colours = 0, gsize = 0;
+
+    if (len >= 13 && (file[10] & 0x80))
+        gsize = 2UL << (file[10] & 7);
+    if (gsize && file[11] < gsize && 13 + 3UL * gsize <= len)
+        bg = file + 13 + 3 * file[11];
+    *back = (UBYTE)colour_index(palette, &colours, bg);
+    for (k = 0; k < g->frames; k++) {
+        const struct gif_frame *f = &frame[k];
+        for (j = 0; j < k; j++) {
+            const struct gif_frame *e = &frame[j];
+            if (e->colours == f->colours && (e->palette == f->palette || !f->colours
+                    || !cmp(file + e->palette, file + f->palette, 3UL * f->colours)))
+                break;
+        }
+        if (j < k) {
+            tables[k] = tables[j];
+            continue;
+        }
+        tables[k] = (UWORD)distinct;
+        for (j = 0; j < f->colours; j++) {
+            LONG i = colour_index(palette, &colours, file + f->palette + 3 * j);
+            if (i < 0)
+                return -1;
+            remaps[256 * distinct + j] = (UBYTE)i;
+        }
+        distinct++;
+    }
+    return (LONG)colours;
 }

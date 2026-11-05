@@ -9,6 +9,8 @@
  * HASH is an FNV-1a hash of the composited screen as big-endian ARGB
  * bytes. The frames are shown in order, then the last one again from the
  * start and frame 0 again, which must give the same hashes (checked here).
+ * Every frame is also shown as indexes of one colour table (gif_show8(),
+ * the animation object's frames) and checked against the ARGB screen.
  *
  * With -cuts first, it also decodes every file cut short at every length
  * and with every byte of its first 64 changed, and prints only a count:
@@ -114,6 +116,57 @@ static int lut8_differs(const UBYTE *file, ULONG len, struct decoded *d)
     return differs;
 }
 
+/* gif_show8() (gfopengif.datatype's animation object) against gif_show()
+ * on every frame, forward and then going back: each pixel the colour of
+ * its index in gif_one_table()'s table, or the background index where the
+ * screen is transparent. 1 when they differ; 0 when the table has more
+ * than 256 colours (the cube is used then). */
+static int lut8_anim_differs(const UBYTE *file, ULONG len, struct decoded *d)
+{
+    ULONG count = d->g.width * d->g.height, i, n, k;
+    UBYTE palette[768], *remaps = calloc(256, d->g.frames);
+    UWORD *tables = malloc(sizeof(UWORD) * d->g.frames);
+    struct gif_canvas8 c;
+    int differs = 0;
+    LONG colours;
+    static const ULONG order[] = { 0, 1, 2, 3, 0, 99 };
+
+    memset(&c, 0, sizeof c);
+    c.lut8 = malloc(count ? count : 1);
+    c.saved = d->g.restores ? malloc(count) : NULL;
+    c.work = malloc(GIF_WORKSIZE);
+    c.shown = -1;
+    if (!remaps || !tables || !c.lut8 || (d->g.restores && !c.saved) || !c.work)
+        differs = 1;
+    else if ((colours = gif_one_table(file, len, &d->g, d->frame, palette, remaps, tables, &c.back)) > 0) {
+        c.remap = remaps;
+        c.table = tables;
+        for (k = 0; k < d->g.frames + sizeof order / sizeof order[0] && !differs; k++) {
+            i = k < d->g.frames ? k : order[k - d->g.frames];
+            if (i >= d->g.frames)
+                i = d->g.frames - 1;
+            gif_show(file, len, &d->g, d->frame, &d->c, i);
+            gif_show8(file, len, &d->g, d->frame, &c, i);
+            for (n = 0; n < count && !differs; n++) {
+                UBYTE x = c.lut8[n];
+                ULONG want = d->c.argb[n];
+                if ((LONG)x >= colours)
+                    differs = 1;
+                else if (!(want >> 24))
+                    differs = x != c.back;
+                else
+                    differs = want != (0xff000000UL | (ULONG)palette[x * 3] << 16 | (ULONG)palette[x * 3 + 1] << 8 | palette[x * 3 + 2]);
+            }
+        }
+    }
+    free(remaps);
+    free(tables);
+    free(c.lut8);
+    free(c.saved);
+    free(c.work);
+    return differs;
+}
+
 static int run(const char *name, const UBYTE *file, ULONG len, int quiet)
 {
     struct decoded d;
@@ -147,10 +200,14 @@ static int run(const char *name, const UBYTE *file, ULONG len, int quiet)
     gif_show(file, len, &d.g, d.frame, &d.c, d.g.frames - 1);
     if (fnv(d.c.argb, count) != hash[d.g.frames - 1])
         bad = 1;
+    if (lut8_anim_differs(file, len, &d))
+        bad |= 4;
     if ((bad & 1) && !quiet)
         printf("%s going back gives other pixels\n", name);
     if ((bad & 2) && !quiet)
         printf("%s frame 0 as colour indexes gives other pixels\n", name);
+    if ((bad & 4) && !quiet)
+        printf("%s the frames in one colour table give other pixels\n", name);
     free(hash);
     close_gif(&d);
     return bad;
