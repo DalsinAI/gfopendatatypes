@@ -77,3 +77,5 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh
       - name: GFOpenDatatypes text, ascii, animation and anim classes
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh
+      - name: animation.datatype's IFF ANIM writer, read back by anim.datatype's reader
+        run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh

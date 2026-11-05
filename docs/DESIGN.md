@@ -133,7 +133,7 @@ legal advice; the "no" rows need the Team's word before anyone writes them.
 | gfopentga | TGA 2.0, RLE or not (#6) | done | yes: our own code, Truevision's public spec | this CPU | core jobs |
 | cdxl | the film as it plays (#6) | done | yes: our own code | this CPU | GPU for chunky films' dithering |
 | gfopenmodule | the module as it came | (IFF: the song rendered to 8SVX) | yes for 8SVX (libxmp, MIT); a module can't be made from sound | cores, service, this CPU | the GPU has nothing to do here |
-| gfopengif | one-frame GIF89a: colour indexes as they are, else exact or median cut to 256 | done (an animated GIF write goes with ANIM write) | yes: our own code; the LZW patents ended in 2003 and 2004 | this CPU | core jobs |
+| gfopengif | one-frame GIF89a: colour indexes as they are, else exact or median cut to 256; an animated GIF writes IFF ANIM through the animation class | an animated GIF out | yes: our own code; the LZW patents ended in 2003 and 2004 | this CPU | core jobs |
 | gfopenpicture | none | AVIF, JPEG XL, QOI, OpenEXR, Radiance HDR, JPEG 2000, DDS through the service | yes: libavif, libjxl, OpenJPEG and OpenEXR are BSD; AV1 is royalty-free. **No**: HEIC (HEVC patents), camera RAW and fonts (nothing to write); PSD and XCF later | the service | scaling on the GPU |
 | gfopensound | none | FLAC, Ogg Vorbis, Opus, ALAC, MP3 through the service | yes: FLAC, Vorbis, Opus (BSD), ALAC (Apache 2.0), MP3 (LAME runs in the service; the patents ended in 2017). **No**: AAC and WMA (encoder licences and patents); MIDI, SID and modules can't be made from sound | the service | decode as core jobs where there is 68k code (FLAC first) |
 | gfopendoc | none | the document as it came; converted by the service to ODF, PDF or DOCX | yes: LibreOffice (MPL 2.0) runs as its own program on the Cradle | the service | page scaling on the GPU |
@@ -147,7 +147,7 @@ legal advice; the "no" rows need the Team's word before anyone writes them.
 | picture | ILBM | the ladder for scaling and remapping (`PDTM_SCALE`, the pen remap) |
 | sound | 8SVX | none |
 | text, ascii | FTXT, and raw text | none |
-| animation, anim | **none** | ANIM writing (ANIM-5 deltas), so every animation datatype gets IFF write |
+| animation, anim | ANIM (ANIM-5 deltas, interleave 0) from any subclass's frames | sound and per-frame colours in the ANIM |
 | ilbm, 8svx | through picture and sound | raw write of their own forms |
 
 ## 4. Order of work
@@ -159,7 +159,8 @@ legal advice; the "no" rows need the Team's word before anyone writes them.
    lossless webp and gzip (#6). Each still to be checked on an Amiga with
    `tests/dtsave.c`.
 3. ANIM write in the animation class, so every animation datatype writes
-   IFF.
+   IFF (done, 5 November 2026: `adt_anim_write`; to check on an Amiga with
+   `dtsave`).
 4. Core jobs for webp, gfopenpng and gfopentga decoding and encoding; GPU
    dithering for webm, cdxl and gfopenvideo.
 5. The service's encode calls (`media.encode/1`, `doc.convert/1`, in
