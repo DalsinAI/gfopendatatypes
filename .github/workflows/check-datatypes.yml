@@ -7,7 +7,8 @@
 # (Datatypes/tests/test-webm.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
 # (Datatypes/tests/test-stream.sh), and the writers: gfopenpng.datatype's
-# (Datatypes/tests/test-pngenc.sh), gfopentga's (test-tgaenc.sh), webp's
+# (Datatypes/tests/test-pngenc.sh), gfopentga's (test-tgaenc.sh), gfopengif's
+# (test-gifenc.sh), webp's
 # lossless one with libwebp patched as for the Amiga (test-webpenc.sh) and
 # gzip's (test-gzenc.sh), each read back by our decoders and by Pillow or
 # Python's zlib; and the datatypes' RomTag versions
@@ -54,6 +55,8 @@ jobs:
         run: sh Datatypes/tests/test-pngenc.sh
       - name: gfopentga.datatype's TGA writer
         run: sh Datatypes/tests/test-tgaenc.sh
+      - name: gfopengif.datatype's GIF writer
+        run: sh Datatypes/tests/test-gifenc.sh
       - name: webp.datatype's lossless WebP writer
         run: sh Datatypes/tests/test-webpenc.sh
       - name: gzip.datatype's gzip writer

@@ -38,6 +38,15 @@
  * while the system's gif.datatype stays installed and untouched. Removing
  * the descriptor gives GIFs back to it.
  *
+ * GIF out (47.4): DTM_WRITE with DTWM_RAW writes the picture as a
+ * one-frame GIF89a (gifencode.c, our own LZW). A picture of 256 colours or
+ * fewer keeps its own: one held as colour indexes (an ILBM, a GIF's first
+ * frame) is written with its table and its transparent colour; one held
+ * as ARGB is written exactly when it has 256 colours or fewer (255 with
+ * transparent pixels), else brought down to 256 by median cut. A pixel
+ * with alpha under 128 is transparent. DTWM_IFF goes to picture.datatype
+ * (ILBM), as before. An animation's write is animation.datatype's.
+ *
  * A read or write of the pixels with no pixel array is refused, as in
  * gfopenpng.datatype (see there).
  *
@@ -65,6 +74,7 @@
 #include "dtlib.h"
 #include <datatypes/gfopenimage.h>
 #include "gifdecode.h"
+#include "gifencode.h"
 
 /* V44's tags for files of several pictures (the NDK's numbers). */
 #ifndef PDTA_WhichPicture
@@ -75,10 +85,10 @@
 #endif
 
 const char LibName[] = "gfopengif.datatype";
-const char LibIdString[] = "gfopengif.datatype 47.3 (5.11.2026) AmiCradle Team";
+const char LibIdString[] = "gfopengif.datatype 47.4 (5.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 3;
-static const char version[] __attribute__((used)) = "$VER: gfopengif.datatype 47.3 (5.11.2026)";
+const UWORD LibRevision = 4;
+static const char version[] __attribute__((used)) = "$VER: gfopengif.datatype 47.4 (5.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -640,6 +650,82 @@ static Object *newAnimation(struct TagItem *attrs, struct gifhand *hand)
     return NewObjectA(c, NULL, t);
 }
 
+static void *e_alloc(struct gife_env *e, ULONG n)
+{
+    (void)e;
+    return big_alloc(n);
+}
+
+static void e_free(struct gife_env *e, void *p)
+{
+    (void)e;
+    FreeVec(p);
+}
+
+/* DTM_WRITE's raw write: the picture as a GIF to fh. 0, or an IoErr() code. */
+static LONG writeGIF(Class *cl, Object *o, BPTR fh)
+{
+    struct gife_env env;
+    struct BitMapHeader *bmh = NULL;
+    struct ColorRegister *cmap = NULL;
+    ULONG w, h, colours = 0, alpha = TRUE, size = 0;
+    UBYTE *px, *gif = NULL;
+    LONG err = 0;
+
+    if (!fh)
+        return ERROR_REQUIRED_ARG_MISSING;
+    if (GetDTAttrs(o, PDTA_BitMapHeader, (ULONG)&bmh, TAG_DONE) < 1 || !bmh
+        || !bmh->bmh_Width || !bmh->bmh_Height)
+        return ERROR_OBJECT_WRONG_TYPE;
+    w = bmh->bmh_Width;
+    h = bmh->bmh_Height;
+    env.alloc = e_alloc;
+    env.free = e_free;
+
+    /* Colour indexes and their table, when the picture holds them */
+    if (bmh->bmh_Depth <= 8
+        && GetDTAttrs(o, PDTA_NumColors, (ULONG)&colours, PDTA_ColorRegisters, (ULONG)&cmap, TAG_DONE) == 2
+        && cmap && colours >= 1 && colours <= 256 && (px = big_alloc(w * h))) {
+        if (DoSuperMethod(cl, o, PDTM_READPIXELARRAY, (ULONG)px, PBPAFMT_LUT8, w, 0, 0, w, h)) {
+            UBYTE rgb[768];
+            ULONG i, used = colours;
+            LONG trans = bmh->bmh_Masking == mskHasTransparentColor ? (LONG)bmh->bmh_Transparent : -1;
+            for (i = 0; i < w * h; i++)           /* an index past the table widens it (black) */
+                if (px[i] >= used)
+                    used = (ULONG)px[i] + 1;
+            if (trans >= (LONG)used)
+                used = (ULONG)trans + 1;
+            for (i = 0; i < used; i++) {
+                rgb[3 * i] = i < colours ? cmap[i].red : 0;
+                rgb[3 * i + 1] = i < colours ? cmap[i].green : 0;
+                rgb[3 * i + 2] = i < colours ? cmap[i].blue : 0;
+            }
+            err = gif_encode_lut8(&env, px, w, h, w, rgb, used, trans, &gif, &size);
+            FreeVec(px);
+            goto written;
+        }
+        FreeVec(px);                         /* held as ARGB: the 32-bit route */
+    }
+
+    if (!(px = big_alloc(w * h * 4)))
+        return ERROR_NO_FREE_STORE;
+    if (!DoSuperMethod(cl, o, PDTM_READPIXELARRAY, (ULONG)px, PBPAFMT_ARGB, w * 4, 0, 0, w, h)) {
+        FreeVec(px);
+        return ERROR_OBJECT_WRONG_TYPE;
+    }
+    if (GetDTAttrs(o, PDTA_AlphaChannel, (ULONG)&alpha, TAG_DONE) != 1)
+        alpha = TRUE;
+    err = gif_encode(&env, px, w, h, w * 4, alpha ? 0 : GIFE_OPAQUE, &gif, &size);
+    FreeVec(px);
+written:
+    if (!err) {
+        if (Write(fh, gif, size) != (LONG)size)
+            err = IoErr();
+        FreeVec(gif);
+    }
+    return err;
+}
+
 /* OIM_READFRAME: 0, or an IoErr() code. */
 static LONG readFrame(struct gifdata *d, struct oiReadFrame *m)
 {
@@ -715,6 +801,17 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
             return TRUE;
         }
         return DoSuperMethodA(cl, o, msg);
+    }
+    case DTM_WRITE: {
+        struct dtWrite *w = (struct dtWrite *)msg;
+        LONG err;
+        if (w->dtw_Mode != DTWM_RAW)
+            return DoSuperMethodA(cl, o, msg);   /* IFF: picture.datatype's ILBM */
+        if ((err = writeGIF(cl, o, w->dtw_FileHandle))) {
+            SetIoErr(err);
+            return FALSE;
+        }
+        return TRUE;
     }
     case OIM_READFRAME: {
         LONG err = readFrame(INST_DATA(cl, o), (struct oiReadFrame *)msg);

@@ -22,6 +22,10 @@ On the Amiga itself:
                      Oktalyzer, DigiBooster, XM, S3M, IT and more, through
                      AHI, else Paula
 
+Saving (a program's Save as, DTM_WRITE): PNG, Targa, GIF, lossless WebP,
+CDXL and gzip in their own formats, on the Amiga itself; every picture as
+an IFF ILBM and every sound as an IFF 8SVX.
+
 Through a services card or a paired Cradle (they ask gfopenservice.device's
 media.decode/1 and doc.render/1; without one they say so and don't open):
   openpicture.datatype   AVIF, HEIC, JPEG XL, camera RAW, PSD, XCF, SVG...
