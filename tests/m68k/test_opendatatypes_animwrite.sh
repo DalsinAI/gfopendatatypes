@@ -21,6 +21,18 @@ for opt in -O0 -O2; do
         "$cc" -std=gnu99 $opt -m68040 -fno-lto -fno-builtin -fno-tree-loop-distribute-patterns \
             -fno-delete-null-pointer-checks -Wall -Wextra -Werror -c "$cls/$c.c" -o "$tmp/$(basename "$c").o"
     done
+    # no 64-bit MULU.L/MULS.L/DIVU.L/DIVS.L in the writer: the 68060 traps them
+    wide=$("${M68K_PREFIX:-m68k-linux-gnu-}objdump" -d "$tmp/animation_core.o" | python3 -I -c '
+import re, sys
+n = 0
+for l in sys.stdin:
+    m = re.match(r"\s*[0-9a-f]+:\s+((?:[0-9a-f]{4} )+)\s*(mul|div)", l)
+    if m:
+        w = m.group(1).split()
+        if len(w) > 1 and (int(w[0], 16) & 0xff80) == 0x4c00 and int(w[1], 16) & 0x0400:
+            n += 1
+print(n)')
+    [ "$wide" = 0 ] || { echo "FAIL $opt: $wide 64-bit multiplies or divides in animation_core.o (the 68060 traps them)"; fail=1; }
     "$cc" -std=gnu99 $opt -m68040 -static -Wall -Wextra -Werror -Wno-format -I"$cls" \
         "$here/opendatatypes_animwrite_test.c" "$tmp/animation_core.o" "$tmp/anim_core.o" -o "$tmp/t"
     rm -rf "$tmp/files"; mkdir "$tmp/files"

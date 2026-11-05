@@ -937,10 +937,11 @@ odt_s32 adt_anim_write(const struct adt_aw_spec *s, const struct adt_aw_io *io)
     size = rb * s->height * s->depth;
     ncol = s->colors ? (s->ncolors > 256 ? 256 : s->ncolors) : 0;
     /* the most a frame can take: a literal for every row of every column
-     * (and an op byte each 127 rows), or ByteRun1's row with a count byte
-     * each 128 bytes and one more */
+     * (and an op byte each 127 rows, counted as each 64: a shift, as a
+     * division by 127 is a 64-bit multiply the 68060 traps), or ByteRun1's
+     * row with a count byte each 128 bytes and one more */
     cap = 12 + 8 + 20 + 8 + 768 + 2 + 12 + 8 + 48 + 8 + 64 + 2
-        + s->depth * (s->height * (rb + rb / 128 + 2) + rb * (s->height / 127 + 3));
+        + s->depth * (s->height * (rb + (rb >> 7) + 2) + rb * ((s->height >> 6) + 3));
     buf[0] = io->alloc(io->h, size);
     buf[1] = io->alloc(io->h, size);
     cur = io->alloc(io->h, size);
