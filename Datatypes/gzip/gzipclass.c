@@ -35,10 +35,10 @@
 #include "gzcore.h"
 
 const char LibName[] = "gzip.datatype";
-const char LibIdString[] = "gzip.datatype 47.2 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "gzip.datatype 47.3 (6.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: gzip.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: gzip.datatype 47.3 (6.11.2026)";
 
 const char dt_superclass[] = STREAMDTCLASS;
 const UWORD dt_superversion = 47;

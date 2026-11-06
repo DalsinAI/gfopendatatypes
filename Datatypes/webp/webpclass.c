@@ -35,10 +35,10 @@
 #include "dsp/lossless.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.2 (23.10.2026) AmiCradle Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.3 (6.11.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.3 (6.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
