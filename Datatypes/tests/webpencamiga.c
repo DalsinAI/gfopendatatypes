@@ -8,6 +8,12 @@
  * twice: webpencamiga with libnix's malloc, webpencamiga-av with
  * AllocVec's, as common/dtlib.c gives the datatype (-DAV_MALLOC).
  *
+ * Each is built with WEBPENC_TRACE, so libwebp's progress (the percent it
+ * reports as it goes) is printed as it comes, and a hang shows where.
+ * Variants (build-dtsave.sh): -nd with libwebp and the encoder built
+ * -fno-tree-loop-distribute-patterns (GCC 16.2.0b can turn a loop that
+ * shifts an array up into a forward copy), -o1 at -O1.
+ *
  *     webpencamiga [MAXLEVEL]      (default 9)
  *
  * MIT, Copyright (c) 2026 AmiCradle Team.
@@ -93,6 +99,14 @@ static LONG put(void *h, const UBYTE *p, ULONG n)
     return 0;
 }
 
+extern int (*webp_encode_trace)(int percent);
+static int trace(int percent)
+{
+    printf(" %d", percent);
+    fflush(stdout);
+    return 1;
+}
+
 static ULONG ticks(void)
 {
     struct DateStamp d;
@@ -126,11 +140,13 @@ static int one(const char *name, ULONG w, ULONG h, int kind, LONG level)
                 v = ((x / 8 + y / 8) & 1) ? 0xFFFFFFFFUL : 0x80000000UL;
             px[y * w + x] = keep[y * w + x] = v;
         }
-    printf("%s %lux%lu level %ld: encoding...\n", name, (unsigned long)w, (unsigned long)h, (long)level);
+    printf("%s %lux%lu level %ld: encoding...", name, (unsigned long)w, (unsigned long)h, (long)level);
     fflush(stdout);
+    webp_encode_trace = trace;
     t0 = ticks();
     err = webp_encode_lossless(px, w, h, w, level, put, &b);
     t1 = ticks();
+    printf("\n");
     if (err) {
         printf("  ERROR %ld after %lu ticks\n", (long)err, (unsigned long)(t1 - t0));
         ok = 0;
