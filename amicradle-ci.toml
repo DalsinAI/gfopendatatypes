@@ -1,0 +1,46 @@
+# amicradle-ci manifest for gfopendatatypes (pilot, 6 Nov 2026).
+# MIT, Copyright (c) 2026 AmiCradle Team.
+schema = 1
+repo = "gfopendatatypes"
+
+[stove]
+name = "os32-gcc16"
+version = "16.2.0-open6"
+
+[build]
+entry = "build-amiga.sh"
+outputs = [
+  "pack/*.lha",
+  "pack/GFOpenDatatypes/**/*.datatype",
+  "library/libs/*.library",
+  "library/datatypes/*.datatype",
+  "Tests/dtsave",
+  "Tests/dtanim",
+]
+
+[test]
+host_parallel = true
+# The host job from .github/workflows/check-datatypes.yml, unchanged.
+host = [
+  "sh Datatypes/tests/test-tga.sh",
+  "sh Datatypes/tests/test-gif.sh",
+  "sh Datatypes/tests/test-cdxl.sh",
+  "sh Datatypes/tests/test-webm.sh",
+  "sh Datatypes/tests/test-stream.sh",
+  "sh Datatypes/tests/test-webm-read.sh",
+  "sh Datatypes/tests/test-pngenc.sh",
+  "sh Datatypes/tests/test-tgaenc.sh",
+  "sh Datatypes/tests/test-gifenc.sh",
+  "sh Datatypes/tests/test-webpenc.sh",
+  "sh Datatypes/tests/test-gzenc.sh",
+  "python3 Datatypes/tests/test-romtag.py",
+  "sh Datatypes/tests/test-planar.sh",
+  # The m68k job (Debian's m68k-linux GCC under qemu-m68k): here until
+  # ac090-run exists, then it moves to the nightly cross-check.
+  "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh",
+  "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh",
+  "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh",
+]
+
+[paths]
+skip = ["*.md", "docs/*", "LICENSE"]
