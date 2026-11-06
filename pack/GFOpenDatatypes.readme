@@ -24,7 +24,8 @@ On the Amiga itself:
 
 Saving (a program's Save as, DTM_WRITE): PNG, Targa, GIF, lossless WebP,
 CDXL and gzip in their own formats, on the Amiga itself; every picture as
-an IFF ILBM and every sound as an IFF 8SVX.
+an IFF ILBM, every sound as an IFF 8SVX and, with the Team's animation
+class, every film as an IFF ANIM.
 
 Through a services card or a paired Cradle (they ask gfopenservice.device's
 media.decode/1 and doc.render/1; without one they say so and don't open):

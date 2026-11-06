@@ -20,7 +20,7 @@ const odt_u32 adt_methods[] = {
     ODT_DTM_PROCLAYOUT, ODT_DTM_ASYNCLAYOUT, ODT_DTM_FRAMEBOX, ODT_DTM_TRIGGER, ODT_DTM_REMOVEDTOBJECT,
     ODT_DTM_OBTAINDRAWINFO, ODT_DTM_DRAW, ODT_DTM_RELEASEDRAWINFO,
     ADT_ADTM_LOADFRAME, ADT_ADTM_UNLOADFRAME, ADT_ADTM_START, ADT_ADTM_PAUSE, ADT_ADTM_STOP, ADT_ADTM_LOCATE,
-    ADT_ADTM_LOADNEWFORMATFRAME, ADT_ADTM_UNLOADNEWFORMATFRAME, ~0UL
+    ADT_ADTM_LOADNEWFORMATFRAME, ADT_ADTM_UNLOADNEWFORMATFRAME, ODT_DTM_WRITE, ~0UL
 };
 
 /* Defaults (ABI test, each) */
@@ -769,6 +769,431 @@ static odt_u32 layout(const struct odt_cenv *env, struct adt_inst *in, void *obj
 
 odt_u32 adt_inst_size(void) { return sizeof(struct adt_inst); }
 
+/* ---- writing: IFF ANIM ---------------------------------------------------------- */
+
+static void aw_put32(odt_u8 *p, odt_u32 v)
+{
+    p[0] = (odt_u8)(v >> 24); p[1] = (odt_u8)(v >> 16); p[2] = (odt_u8)(v >> 8); p[3] = (odt_u8)v;
+}
+
+static void aw_put16(odt_u8 *p, odt_u32 v)
+{
+    p[0] = (odt_u8)(v >> 8); p[1] = (odt_u8)v;
+}
+
+/* ByteRun1 (the ILBM spec's): runs of 3 to 128 as -(n-1) and the byte,
+ * else literals of up to 128 as n-1 and the bytes */
+static odt_u32 aw_byterun1(const odt_u8 *in, odt_u32 n, odt_u8 *out)
+{
+    odt_u32 o = 0, i = 0;
+    while (i < n) {
+        odt_u32 r = 1, s, l = 0;
+        while (i + r < n && r < 128 && in[i + r] == in[i]) r++;
+        if (r >= 3) {
+            out[o++] = (odt_u8)(257 - r);
+            out[o++] = in[i];
+            i += r;
+            continue;
+        }
+        s = i;
+        while (i < n && l < 128) {
+            if (l && i + 2 < n && in[i] == in[i + 1] && in[i] == in[i + 2]) break;
+            i++;
+            l++;
+        }
+        out[o++] = (odt_u8)(l - 1);
+        while (s < i) out[o++] = in[s++];
+    }
+    return o;
+}
+
+/* One column of a plane in method 5: its op count, then skips (1-127
+ * rows), runs (0, count, byte) and literals (0x80 | n, n bytes), from the
+ * top; rows left unchanged at the bottom need no op. The bytes written,
+ * or 0 when the column would need more than 255 ops. */
+static odt_u32 aw_column(const odt_u8 *cur, const odt_u8 *ref, odt_u32 rb, odt_u32 rows, odt_u8 *out)
+{
+    odt_u32 o = 1, ops = 0, y = 0;
+    while (y < rows) {
+        odt_u32 s = 0, r, n;
+        while (y + s < rows && cur[(y + s) * rb] == ref[(y + s) * rb]) s++;
+        if (y + s == rows) break;
+        y += s;
+        while (s) {                     /* a skip op takes 1 to 127 rows */
+            odt_u32 k = s > 127 ? 127 : s;
+            out[o++] = (odt_u8)k;
+            ops++;
+            s -= k;
+        }
+        r = 1;
+        while (y + r < rows && r < 255 && cur[(y + r) * rb] == cur[y * rb]) r++;
+        if (r >= 4) {                   /* a run: 3 bytes for 4 or more rows */
+            out[o++] = 0;
+            out[o++] = (odt_u8)r;
+            out[o++] = cur[y * rb];
+            ops++;
+            y += r;
+            continue;
+        }
+        /* a literal, up to two unchanged rows together or a run of 4 */
+        n = 0;
+        while (y + n < rows && n < 127) {
+            odt_u32 k = y + n, q = 1;
+            if (cur[k * rb] == ref[k * rb] && (k + 1 == rows || cur[(k + 1) * rb] == ref[(k + 1) * rb]))
+                break;
+            if (n) {
+                while (k + q < rows && q < 4 && cur[(k + q) * rb] == cur[k * rb]) q++;
+                if (q == 4) break;
+            }
+            n++;
+        }
+        out[o++] = (odt_u8)(0x80 | n);
+        while (n--) out[o++] = cur[(y++) * rb];
+        ops++;
+    }
+    if (ops > 255) return 0;
+    out[0] = (odt_u8)ops;
+    return o;
+}
+
+/* The same column with the fewest ops: a skip to the first changed row,
+ * then literals of 127 to the last. 0 if even that needs more than 255. */
+static odt_u32 aw_column_few(const odt_u8 *cur, const odt_u8 *ref, odt_u32 rb, odt_u32 rows, odt_u8 *out)
+{
+    odt_u32 o = 1, ops = 0, first = 0, last = rows;
+    while (first < rows && cur[first * rb] == ref[first * rb]) first++;
+    while (last > first && cur[(last - 1) * rb] == ref[(last - 1) * rb]) last--;
+    while (first) {
+        odt_u32 k = first > 127 ? 127 : first;
+        out[o++] = (odt_u8)k;
+        ops++;
+        first -= k;
+        cur += k * rb;
+        ref += k * rb;
+        last -= k;
+    }
+    while (last) {
+        odt_u32 n = last > 127 ? 127 : last;
+        out[o++] = (odt_u8)(0x80 | n);
+        last -= n;
+        while (n--) {
+            out[o++] = *cur;
+            cur += rb;
+        }
+        ops++;
+    }
+    if (ops > 255) return 0;
+    out[0] = (odt_u8)ops;
+    return o;
+}
+
+/* A plane's method-5 data, or 0 when it is the same as ref's; ~0 when a
+ * column can't be put in 255 ops (more than 32,000 rows) */
+static odt_u32 aw_plane(const odt_u8 *cur, const odt_u8 *ref, odt_u32 rb, odt_u32 rows, odt_u8 *out)
+{
+    odt_u32 x, o = 0, i;
+    for (i = 0; i < rb * rows && cur[i] == ref[i]; i++)
+        ;
+    if (i == rb * rows) return 0;
+    for (x = 0; x < rb; x++) {
+        odt_u32 n = aw_column(cur + x, ref + x, rb, rows, out + o);
+        if (!n && !(n = aw_column_few(cur + x, ref + x, rb, rows, out + o))) return ~0UL;
+        o += n;
+    }
+    return o;
+}
+
+/* Frame f's planes into dst (depth planes of rows x rb, one after another) */
+static int aw_take(const struct adt_aw_spec *s, const struct adt_aw_io *io, odt_u32 f, odt_u32 rb, odt_u8 *dst)
+{
+    const struct adt_BitMap *bm = io->frame(io->h, f);
+    odt_u32 p, y, x, last = s->width & 7 ? (odt_u32)(0xFF00 >> (s->width & 7)) & 0xFF : 0xFF;
+    odt_u32 used = (s->width + 7) >> 3;
+    if (!bm) return 0;
+    for (p = 0; p < s->depth; p++) {
+        const odt_u8 *src = p < bm->Depth ? bm->Planes[p] : 0;
+        if (src == (const odt_u8 *)~0UL) src = 0;   /* a plane of ones: read as 0 */
+        for (y = 0; y < s->height; y++) {
+            odt_u8 *d = dst + (p * s->height + y) * rb;
+            for (x = 0; x < rb; x++)
+                d[x] = (src && y < bm->Rows && x < bm->BytesPerRow && x < used) ? src[y * bm->BytesPerRow + x] : 0;
+            if (used) d[used - 1] &= (odt_u8)last;
+        }
+    }
+    io->done(io->h, f);
+    return 1;
+}
+
+odt_s32 adt_anim_write(const struct adt_aw_spec *s, const struct adt_aw_io *io)
+{
+    odt_u32 rb, size, f, o, cap, ncol, pl, body, form;
+    odt_u8 *buf[2] = { 0, 0 }, *cur = 0, *out = 0, *b;
+    odt_s32 err = 0;
+
+    if (!s || !io || !s->width || !s->height || s->width > 32767 || s->height > 32767 || !s->depth ||
+        s->depth > 8 || !s->frames)
+        return DTC_ERROR_REQUIRED_ARG_MISSING;
+    rb = ((s->width + 15) >> 4) << 1;
+    size = rb * s->height * s->depth;
+    ncol = s->colors ? (s->ncolors > 256 ? 256 : s->ncolors) : 0;
+    /* the most a frame can take: a literal for every row of every column
+     * (and an op byte each 127 rows, counted as each 64: a shift, as a
+     * division by 127 is a 64-bit multiply the 68060 traps), or ByteRun1's
+     * row with a count byte each 128 bytes and one more */
+    cap = 12 + 8 + 20 + 8 + 768 + 2 + 12 + 8 + 48 + 8 + 64 + 2
+        + s->depth * (s->height * (rb + (rb >> 7) + 2) + rb * ((s->height >> 6) + 3));
+    buf[0] = io->alloc(io->h, size);
+    buf[1] = io->alloc(io->h, size);
+    cur = io->alloc(io->h, size);
+    out = io->alloc(io->h, cap);
+    if (!buf[0] || !buf[1] || !cur || !out) {
+        err = DTC_ERROR_NO_FREE_STORE;
+        goto done;
+    }
+
+    /* FORM ANIM, its size patched at the end */
+    aw_put32(out, ODT_ID('F', 'O', 'R', 'M'));
+    aw_put32(out + 4, 0);
+    aw_put32(out + 8, ODT_ID('A', 'N', 'I', 'M'));
+    if ((err = io->put(io->h, out, 12))) goto done;
+    form = 12;
+
+    for (f = 0; f < s->frames; f++) {
+        odt_u8 *ref;
+        if (!aw_take(s, io, f, rb, cur)) {
+            err = ODT_DTERROR_COULDNT_SAVE;
+            goto done;
+        }
+        b = out;
+        aw_put32(b, ODT_ID('F', 'O', 'R', 'M'));
+        aw_put32(b + 8, ODT_ID('I', 'L', 'B', 'M'));
+        o = 12;
+        if (f == 0) {
+            odt_u32 y, p, c;
+            aw_put32(b + o, ODT_ID('B', 'M', 'H', 'D'));
+            aw_put32(b + o + 4, 20);
+            aw_put16(b + o + 8, s->width);
+            aw_put16(b + o + 10, s->height);
+            aw_put16(b + o + 12, 0);
+            aw_put16(b + o + 14, 0);
+            b[o + 16] = (odt_u8)s->depth;
+            b[o + 17] = 0;              /* no mask */
+            b[o + 18] = 1;              /* ByteRun1 */
+            b[o + 19] = 0;
+            aw_put16(b + o + 20, 0);
+            b[o + 22] = s->xaspect ? s->xaspect : 1;
+            b[o + 23] = s->yaspect ? s->yaspect : 1;
+            aw_put16(b + o + 24, s->width);
+            aw_put16(b + o + 26, s->height);
+            o += 28;
+            if (ncol) {
+                aw_put32(b + o, ODT_ID('C', 'M', 'A', 'P'));
+                aw_put32(b + o + 4, ncol * 3);
+                o += 8;
+                for (c = 0; c < ncol; c++) {
+                    b[o++] = s->colors[c].red;
+                    b[o++] = s->colors[c].green;
+                    b[o++] = s->colors[c].blue;
+                }
+                if (o & 1) b[o++] = 0;
+            }
+            if (s->has_modeid) {
+                aw_put32(b + o, ODT_ID('C', 'A', 'M', 'G'));
+                aw_put32(b + o + 4, 4);
+                aw_put32(b + o + 8, s->modeid);
+                o += 12;
+            }
+            body = o;
+            aw_put32(b + o, ODT_ID('B', 'O', 'D', 'Y'));
+            o += 8;
+            for (y = 0; y < s->height; y++)       /* interleaved: each row's planes in turn */
+                for (p = 0; p < s->depth; p++)
+                    o += aw_byterun1(cur + (p * s->height + y) * rb, rb, b + o);
+            aw_put32(b + body + 4, o - body - 8);
+            if (o & 1) b[o++] = 0;
+            for (p = 0; p < size; p++) buf[0][p] = cur[p];
+        } else {
+            odt_u32 dlta, p;
+            ref = f == 1 ? buf[0] : buf[f & 1];    /* the frame two before; frame 1 on frame 0 */
+            aw_put32(b + o, ODT_ID('A', 'N', 'H', 'D'));
+            aw_put32(b + o + 4, 40);
+            for (p = 0; p < 40; p++) b[o + 8 + p] = 0;
+            b[o + 8] = 5;                         /* byte vertical delta */
+            aw_put16(b + o + 10, s->width);
+            aw_put16(b + o + 12, s->height);
+            aw_put32(b + o + 18, f * s->reltime); /* abstime */
+            aw_put32(b + o + 22, s->reltime);     /* reltime */
+            /* interleave 0 (two frames back), bits 0: stored, not XORed */
+            o += 48;
+            dlta = o;
+            aw_put32(b + o, ODT_ID('D', 'L', 'T', 'A'));
+            o += 8;
+            pl = o;
+            for (p = 0; p < 64; p++) b[o + p] = 0;   /* 8 plane offsets, 8 unused */
+            o += 64;
+            for (p = 0; p < s->depth; p++) {
+                odt_u32 n = aw_plane(cur + p * s->height * rb, ref + p * s->height * rb, rb, s->height, b + o);
+                if (n == ~0UL) {
+                    err = ODT_DTERROR_COULDNT_SAVE;
+                    goto done;
+                }
+                if (n) {
+                    aw_put32(b + pl + 4 * p, o - pl);
+                    o += n;
+                }
+            }
+            aw_put32(b + dlta + 4, o - dlta - 8);
+            if (o & 1) b[o++] = 0;
+            for (p = 0; p < size; p++) buf[f & 1][p] = cur[p];
+        }
+        aw_put32(b + 4, o - 8);
+        if ((err = io->put(io->h, b, o))) goto done;
+        form += o;
+    }
+    err = io->patch(io->h, 4, form - 8);
+done:
+    if (buf[0]) io->free(io->h, buf[0]);
+    if (buf[1]) io->free(io->h, buf[1]);
+    if (cur) io->free(io->h, cur);
+    if (out) io->free(io->h, out);
+    return err;
+}
+
+/* The class's side: frames from the subclass, the file through DOS */
+struct aw_glue {
+    const struct odt_cenv *env;
+    struct adt_inst *in;
+    void *obj;
+    odt_u32 fh;
+    odt_s32 start;                      /* where the file began */
+    struct adt_Frame msg;
+    odt_u8 newformat;
+};
+
+static void *aw_alloc(void *h, odt_u32 n)
+{
+    struct aw_glue *g = h;
+    return g->env->alloc(g->env, n);
+}
+
+static void aw_free(void *h, void *p)
+{
+    struct aw_glue *g = h;
+    g->env->free(g->env, p);
+}
+
+static odt_s32 aw_write(void *h, const odt_u8 *p, odt_u32 n)
+{
+    struct aw_glue *g = h;
+    if (g->env->write(g->env, g->fh, p, (odt_s32)n) != (odt_s32)n)
+        return g->env->io_err ? (g->env->io_err(g->env) ? g->env->io_err(g->env) : ODT_DTERROR_COULDNT_SAVE)
+                              : ODT_DTERROR_COULDNT_SAVE;
+    return 0;
+}
+
+static odt_s32 aw_patch(void *h, odt_u32 at, odt_u32 v)
+{
+    struct aw_glue *g = h;
+    odt_u8 b[4];
+    aw_put32(b, v);
+    if (g->env->seek(g->env, g->fh, g->start + (odt_s32)at, -1) < 0) return ODT_DTERROR_COULDNT_SAVE;
+    if (aw_write(h, b, 4)) return ODT_DTERROR_COULDNT_SAVE;
+    if (g->env->seek(g->env, g->fh, 0, 1) < 0) return ODT_DTERROR_COULDNT_SAVE;
+    return 0;
+}
+
+static void aw_done(void *h, odt_u32 f)
+{
+    struct aw_glue *g = h;
+    (void)f;
+    g->msg.MethodID = g->newformat == NF_NEW ? ADT_ADTM_UNLOADNEWFORMATFRAME : ADT_ADTM_UNLOADFRAME;
+    g->env->do_method(g->env, g->obj, &g->msg);
+}
+
+static const struct adt_BitMap *aw_frame(void *h, odt_u32 f)
+{
+    struct aw_glue *g = h;
+    odt_u8 *z = (odt_u8 *)&g->msg;
+    odt_u32 i, r = 0;
+    for (i = 0; i < sizeof g->msg; i++) z[i] = 0;
+    g->msg.alf_TimeStamp = f;
+    g->msg.alf_Frame = f;
+    g->msg.alf_Size = sizeof g->msg;
+    g->newformat = NF_OLD;
+    if (g->in->newformat != NF_OLD) {
+        g->msg.MethodID = ADT_ADTM_LOADNEWFORMATFRAME;
+        r = g->env->do_method(g->env, g->obj, &g->msg);
+        if (r || g->msg.alf_BitMap) g->newformat = NF_NEW;
+    }
+    if (g->newformat == NF_OLD) {
+        for (i = 0; i < sizeof g->msg; i++) z[i] = 0;
+        g->msg.alf_TimeStamp = f;
+        g->msg.alf_Frame = f;
+        g->msg.MethodID = ADT_ADTM_LOADFRAME;
+        r = g->env->do_method(g->env, g->obj, &g->msg);
+    }
+    if (!g->msg.alf_BitMap) {
+        if (r) aw_done(h, f);
+        return 0;
+    }
+    return g->msg.alf_BitMap;
+}
+
+/* DTM_WRITE in IFF mode: the frames the subclass gives, as an IFF ANIM */
+static odt_u32 write_anim(const struct odt_cenv *env, struct adt_inst *in, void *obj, odt_u32 fh)
+{
+    struct aw_glue g;
+    struct adt_aw_spec s;
+    struct adt_aw_io io;
+    odt_s32 err;
+    odt_u32 depth = in->depth;
+    if (!fh || !env->write || !env->seek || !in->frames || !in->width || !in->height) {
+        if (env->set_io_err) env->set_io_err(env, DTC_ERROR_REQUIRED_ARG_MISSING);
+        return 0;
+    }
+    if (!depth || depth > 8) {           /* the colours say how many planes, else the key frame */
+        depth = 1;
+        while (depth < 8 && (1UL << depth) < in->num_colors) depth++;
+        if (in->key_frame && in->key_frame->Depth > depth && in->key_frame->Depth <= 8) depth = in->key_frame->Depth;
+    }
+    g.env = env;
+    g.in = in;
+    g.obj = obj;
+    g.fh = fh;
+    g.newformat = NF_OLD;
+    if ((g.start = env->seek(env, fh, 0, 0)) < 0) {
+        if (env->set_io_err) env->set_io_err(env, ODT_DTERROR_COULDNT_SAVE);
+        return 0;
+    }
+    s.width = in->width;
+    s.height = in->height;
+    s.depth = depth;
+    s.frames = in->frames;
+    s.ncolors = in->colregs ? in->num_colors : 0;
+    s.colors = in->colregs;
+    s.modeid = in->mode_id;
+    s.has_modeid = in->mode_id != ~0UL;
+    s.xaspect = s.yaspect = 1;
+    s.pad = 0;
+    s.reltime = in->fps ? (60 + in->fps / 2) / in->fps : 6;
+    if (!s.reltime) s.reltime = 1;
+    io.h = &g;
+    io.alloc = aw_alloc;
+    io.free = aw_free;
+    io.put = aw_write;
+    io.patch = aw_patch;
+    io.frame = aw_frame;
+    io.done = aw_done;
+    lock(env, obj);                      /* the player waits while the frames are taken */
+    err = adt_anim_write(&s, &io);
+    unlock(env, obj);
+    if (err) {
+        if (env->set_io_err) env->set_io_err(env, err);
+        return 0;
+    }
+    return 1;
+}
+
 odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, void *msg)
 {
     odt_u32 id = *(odt_u32 *)msg;
@@ -852,6 +1277,12 @@ odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *ob
                    si ? si->si_TopHoriz : 0, 1);
         if (si && env->sem_attempt) env->sem_release(env, &si->si_Lock);
         return 1;
+    }
+    case ODT_DTM_WRITE: {
+        struct odt_dtWrite *w = msg;
+        if (w->dtw_Mode != ODT_DTWM_IFF)
+            return env->do_super(env, cl, obj, msg);   /* raw: the file as it came, or the subclass's own */
+        return write_anim(env, in, obj, w->dtw_FileHandle);
     }
     case ODT_DTM_DRAW: {
         struct odt_dtDraw *d = msg;

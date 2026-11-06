@@ -100,6 +100,12 @@ ZLIB_USERS = ("gzip.datatype", "gfopenpng.datatype")
 
 STORE = "SYS:Storage/GFOpenDatatypes"
 DEST = {"Classes": "SYS:Classes/DataTypes", "Devs": "DEVS:DataTypes", "Libs": "LIBS:"}
+# Descriptors of the Team's own datatypes from before the 1 November rename
+# (Open* to GFOpen*): they have the same masks as ours, and the old one is
+# tried first, so an Amiga that had the old pack keeps opening PNGs with
+# openpng.datatype, which can't save (lab t4-datatypes-20261105). Installing
+# moves them to Superseded; Uninstall puts them back.
+RETIRED = [("Devs", "OpenPNG"), ("Devs", "OpenTGA"), ("Devs", "OpenGIF")]
 
 
 def tackon(directory: str, name: str) -> str:
@@ -235,6 +241,26 @@ PUT = """; Installs one file. What was there first is kept in Superseded, once: 
     (textfile (dest #mark) (append (cat "GFOpenDatatypes " #version "\\n")))
 )
 
+; Moves one file of an older pack that would shadow ours to Superseded, with a
+; mark in Installed, so Uninstall puts it back (P_TAKE).
+(procedure P_RETIRE
+    (set #dest (tackon #dir #name))
+    (set #old (tackon (tackon #sup #tag) #name))
+    (set #mark (tackon (tackon #ins #tag) #name))
+    (if (= (exists #dest (noreq)) 1)
+        (
+            (if (= (exists #old (noreq)) 0)
+                (copyfiles (source #dest) (dest (tackon #sup #tag)) (nogauge) (optional "force")))
+            (if (= (exists #old (noreq)) 1)
+                (
+                    (delete #dest (optional "force" "nofail"))
+                    (textfile (dest #mark) (append (cat "GFOpenDatatypes " #version ": retired\\n")))
+                )
+            )
+        )
+    )
+)
+
 (procedure P_DIRS
     (if (= (exists #store (noreq)) 0) (makedir #store))
     (if (= (exists #sup (noreq)) 0) (makedir #sup))
@@ -359,6 +385,9 @@ def install_script(version: str, date: str, choices: list, always: list, library
 (working "Installing GFOpenDatatypes")
 (P_DIRS)
 """)
+    out.append("; the older pack's descriptors that would shadow ours\n")
+    for tag, name in RETIRED:
+        out.append(f'(set #dir {q(DEST[tag])}) (set #name {q(name)}) (set #tag {q(tag)}) (P_RETIRE)\n')
     done = 0
     for k, page in enumerate(pages, 1):
         for bit, c in enumerate(page):
@@ -437,6 +466,9 @@ def uninstall_script(version: str, date: str, choices: list, always: list, libra
             out.append(file_lines(f, "P_TAKE", ""))
     if zlib:
         out.append("; z.library (GFOpenZlib)\n" + file_lines(zlib["files"][0], "P_TAKE", ""))
+    out.append("; the older pack's descriptors it moved aside\n")
+    for tag, name in RETIRED:
+        out.append(f'(set #dir {q(DEST[tag])}) (set #name {q(name)}) (set #tag {q(tag)}) (P_TAKE)\n')
     out.append(f"""
 ; The folders, once empty, and this script
 (delete (tackon #ins "Classes") (optional "nofail"))
