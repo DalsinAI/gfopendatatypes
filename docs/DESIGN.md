@@ -123,6 +123,13 @@ hand. GFOpenUp should carry both before the datatypes rely on them.
 licence and patents let the Team ship it. It is the Team's reading, not
 legal advice; the "no" rows need the Team's word before anyone writes them.
 
+**The Team's ruling (6 November 2026)** on those rows: "mp4 we merge in,
+the others we use ffmpeg". MP4 (H.264 video, the MP4 container) is written
+by the datatypes themselves, its encoder merged into GFOpenDatatypes; HEIC,
+AAC and WMA (and HEVC and WMV with them) are written by the service's FFmpeg
+(`gfopenservice.device`'s encode calls), never by code in the pack. The
+rows below still say what the patents are; the ruling is what decides.
+
 ### The Team's datatypes (`Datatypes/`)
 
 | Datatype | Raw write today | Raw write to add | Licence | Ladder today | Ladder to add |
@@ -134,10 +141,10 @@ legal advice; the "no" rows need the Team's word before anyone writes them.
 | cdxl | the film as it plays (#6) | done | yes: our own code | this CPU | GPU for chunky films' dithering |
 | gfopenmodule | the module as it came | (IFF: the song rendered to 8SVX) | yes for 8SVX (libxmp, MIT); a module can't be made from sound | cores, service, this CPU | the GPU has nothing to do here |
 | gfopengif | one-frame GIF89a: colour indexes as they are, else exact or median cut to 256; an animated GIF writes IFF ANIM through the animation class | an animated GIF out | yes: our own code; the LZW patents ended in 2003 and 2004 | this CPU | core jobs |
-| gfopenpicture | none | AVIF, JPEG XL, QOI, OpenEXR, Radiance HDR, JPEG 2000, DDS through the service | yes: libavif, libjxl, OpenJPEG and OpenEXR are BSD; AV1 is royalty-free. **No**: HEIC (HEVC patents), camera RAW and fonts (nothing to write); PSD and XCF later | the service | scaling on the GPU |
-| gfopensound | none | FLAC, Ogg Vorbis, Opus, ALAC, MP3 through the service | yes: FLAC, Vorbis, Opus (BSD), ALAC (Apache 2.0), MP3 (LAME runs in the service; the patents ended in 2017). **No**: AAC and WMA (encoder licences and patents); MIDI, SID and modules can't be made from sound | the service | decode as core jobs where there is 68k code (FLAC first) |
+| gfopenpicture | none | AVIF, JPEG XL, QOI, OpenEXR, Radiance HDR, JPEG 2000, DDS through the service | yes: libavif, libjxl, OpenJPEG and OpenEXR are BSD; AV1 is royalty-free. HEIC by the service's FFmpeg (the ruling above); camera RAW and fonts have nothing to write; PSD and XCF later | the service | scaling on the GPU |
+| gfopensound | none | FLAC, Ogg Vorbis, Opus, ALAC, MP3 through the service | yes: FLAC, Vorbis, Opus (BSD), ALAC (Apache 2.0), MP3 (LAME runs in the service; the patents ended in 2017). AAC and WMA by the service's FFmpeg (the ruling above; encoder licences and patents); MIDI, SID and modules can't be made from sound | the service | decode as core jobs where there is 68k code (FLAC first) |
 | gfopendoc | none | the document as it came; converted by the service to ODF, PDF or DOCX | yes: LibreOffice (MPL 2.0) runs as its own program on the Cradle | the service | page scaling on the GPU |
-| gfopenvideo | none | WebM (VP9 or AV1 with Opus), MKV with the same, MPEG-1 | yes for those (royalty-free; MPEG-1's patents have ended). **No**: MP4/H.264, HEVC, WMV (encoder patents) | the service | HAM8 and 256-colour conversion on the GPU, then cores |
+| gfopenvideo | none | WebM (VP9 or AV1 with Opus), MKV with the same, MPEG-1 | yes for those (royalty-free; MPEG-1's patents have ended). MP4/H.264 merged into the datatypes (the ruling above); HEVC and WMV by the service's FFmpeg | the service | HAM8 and 256-colour conversion on the GPU, then cores |
 | stream, gzip, brotli | plain bytes; gzip coded again on request, `SDTA_WriteCoded` (#6) | a Brotli encoder (our own, from RFC 7932) | yes: zlib licence and MIT | this CPU | core jobs for compression |
 
 ### datatypes.library's system classes (`libraries/opendatatypes/`)
