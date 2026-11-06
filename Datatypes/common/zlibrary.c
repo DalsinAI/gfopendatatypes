@@ -1,15 +1,40 @@
 /*
  * gfopenimage datatypes: z.library's calls (zlibrary.h), through its jump
- * table as GFOpenZlib's z.lvo lists it: the stream in A0, the other arguments
- * in D0 upwards, the base in A6. D0, D1, A0 and A1 are the library's to
+ * table: the Aminet z.library's order and registers (its z_lib.sfd), which
+ * GFOpenZlib follows from 53.13 (its z.lvo); 53.12 had InflateInit2,
+ * InflateReset and CRC32 elsewhere, so these need z.library 53.13 or the
+ * Aminet one. The stream in A0, the other arguments in D0 upwards, the
+ * base in A6. D0, D1, A0 and A1 are the library's to
  * change; the result comes back in D0.
  *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
  */
 #include <exec/types.h>
+#include <exec/libraries.h>
+#include <proto/exec.h>
 
 #include "zlibrary.h"
+
+/* z.library, but not GFOpenZlib 53.12: its jump table was wrong from -102
+ * on (InflateInit2, InflateReset and CRC32 among them), so calling it here
+ * would jump into the wrong function. NULL then, as when there is none. */
+struct Library *zl_Open(void)
+{
+    struct Library *b = OpenLibrary((CONST_STRPTR)ZL_NAME, ZL_VERSION);
+    if (b && b->lib_Version == 53 && b->lib_Revision == 12 && b->lib_IdString) {
+        const char *id = (const char *)b->lib_IdString, *w = "GFOpenZlib";
+        for (; *id; id++) {
+            int i = 0;
+            while (w[i] && id[i] == w[i]) i++;
+            if (!w[i]) {
+                CloseLibrary(b);
+                return NULL;
+            }
+        }
+    }
+    return b;
+}
 
 #define CALL(lvo, ...)                                                            \
     __asm volatile("jsr %%a6@(" #lvo ":W)"                                        \
@@ -29,7 +54,7 @@ LONG zl_InflateInit2(struct Library *ZBase, struct zl_stream *s, LONG windowBits
     REGS(ZBase);
     a0 = (ULONG)s;
     d0 = (ULONG)windowBits;
-    CALL(-132);
+    CALL(-102);
     return (LONG)d0;
 }
 
@@ -54,7 +79,7 @@ LONG zl_InflateReset(struct Library *ZBase, struct zl_stream *s)
 {
     REGS(ZBase);
     a0 = (ULONG)s;
-    CALL(-162);
+    CALL(-114);
     return (LONG)d0;
 }
 
@@ -95,6 +120,6 @@ ULONG zl_Crc32(struct Library *ZBase, ULONG crc, const UBYTE *buf, ULONG len)
     d0 = crc;
     a0 = (ULONG)buf;
     d1 = len;
-    CALL(-234);
+    CALL(-138);
     return d0;
 }

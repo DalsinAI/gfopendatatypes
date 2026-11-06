@@ -104,6 +104,16 @@ static int writer(const uint8_t *data, size_t size, const WebPPicture *pic)
     return 1;
 }
 
+#ifdef WEBPENC_TRACE
+/* tests/webpencamiga.c's: libwebp's progress, as it reports it */
+int (*webp_encode_trace)(int percent);
+static int trace_hook(int percent, const WebPPicture *pic)
+{
+    (void)pic;
+    return webp_encode_trace ? webp_encode_trace(percent) : 1;
+}
+#endif
+
 LONG webp_encode_lossless(ULONG *argb, ULONG width, ULONG height, ULONG stride, LONG level,
                           LONG (*put)(void *h, const UBYTE *p, ULONG n), void *h)
 {
@@ -156,6 +166,9 @@ LONG webp_encode_lossless(ULONG *argb, ULONG width, ULONG height, ULONG stride, 
     s.err = 0;
     pic.writer = writer;
     pic.custom_ptr = &s;
+#ifdef WEBPENC_TRACE
+    pic.progress_hook = trace_hook;
+#endif
 
     ok = VP8LEncodeImage(&config, &pic);
     if (s.err)

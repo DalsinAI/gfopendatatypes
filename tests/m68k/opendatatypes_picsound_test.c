@@ -829,6 +829,32 @@ static void cmd_sndvh(char **a)
     printf("live %ld\n", live - base);
 }
 
+/* PDTA_AlphaChannel: kept as set, else what the BMHD's masking says. Prints
+ * only when wrong, so the log matches the reference. */
+static void check_alpha_channel(void)
+{
+    void *o = new_obj(&cl_pic, ODT_DTST_RAM, NULL, 0);
+    struct pic_BitMapHeader *b = (void *)get(o, PIC_PDTA_BitMapHeader);
+    struct odt_TagItem t[2];
+    struct odt_opSet set;
+    odt_u32 a0, a1, a2, a3;
+    a0 = get(o, PIC_PDTA_AlphaChannel);
+    b->bmh_Masking = PIC_mskHasAlpha;
+    a1 = get(o, PIC_PDTA_AlphaChannel);
+    t[0].ti_Tag = PIC_PDTA_AlphaChannel; t[0].ti_Data = 0;
+    t[1].ti_Tag = ODT_TAG_DONE;
+    set.MethodID = ODT_OM_SET; set.ops_AttrList = t; set.ops_GInfo = NULL;
+    m_do_method(&env, o, &set);
+    a2 = get(o, PIC_PDTA_AlphaChannel);
+    t[0].ti_Data = 1;
+    m_do_method(&env, o, &set);
+    a3 = get(o, PIC_PDTA_AlphaChannel);
+    if (a0 != 0 || a1 != 1 || a2 != 0 || a3 != 1)
+        printf("FAIL PDTA_AlphaChannel %lu %lu %lu %lu\n", (unsigned long)a0, (unsigned long)a1,
+               (unsigned long)a2, (unsigned long)a3);
+    dispose(o);
+}
+
 int main(int argc, char **argv)
 {
     char line[1024];
@@ -840,6 +866,7 @@ int main(int argc, char **argv)
     make_class(&cl_ilbm, &cl_pic, ilbm_dispatch, ilbm_inst_size());
     make_class(&cl_snd, &cl_dt, snd_dispatch, snd_inst_size());
     make_class(&cl_svx, &cl_snd, svx_dispatch, svx_inst_size());
+    check_alpha_channel();
     while (fgets(line, sizeof line, f)) {
         char *a[16];
         int n = 0;

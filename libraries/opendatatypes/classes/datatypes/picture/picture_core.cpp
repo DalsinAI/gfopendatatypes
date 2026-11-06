@@ -481,6 +481,9 @@ u32 set_attrs(env_t *env, pic_inst *p, odt_TagItem *tags)
             invalidate(env, p);
             break;
         case PIC_PDTA_SourceMode: p->sourcemode = d; break;
+        case PIC_PDTA_AlphaChannel:
+            p->flags = static_cast<u16>((p->flags & ~PIC_F_ALPHA) | PIC_F_ALPHASET | (d ? PIC_F_ALPHA : 0));
+            break;
         case PIC_PDTA_DestMode: p->destmode = d; invalidate(env, p); break;
         case PIC_OBP_Precision: p->precision = static_cast<s32>(d); invalidate(env, p); break;
         case PIC_PDTA_MaskPlane: {
@@ -528,6 +531,10 @@ bool get_attr(env_t *env, pic_inst *p, u32 id, u32 *st)
     case PIC_PDTA_NumSparse: *st = p->numsparse; return true;
     case PIC_PDTA_SparseTable: *st = reinterpret_cast<u32>(p->sparse); return true;
     case PIC_PDTA_SourceMode: *st = p->sourcemode; return true;
+    case PIC_PDTA_AlphaChannel:
+        *st = (p->flags & PIC_F_ALPHASET) ? ((p->flags & PIC_F_ALPHA) ? 1 : 0)
+                                          : (p->bmhd.bmh_Masking == PIC_mskHasAlpha ? 1 : 0);
+        return true;
     case PIC_PDTA_DestMode: *st = p->destmode; return true;
     case PIC_PDTA_MaskPlane: *st = reinterpret_cast<u32>(p->mask); return true;
     case PIC_PDTA_WhichPicture: *st = 0; return true;

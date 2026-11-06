@@ -48,6 +48,10 @@ extern "C" {
 #define PIC_PDTA_DestMode        (ODT_DTA_Dummy + 251)
 #define PIC_PDTA_UseFriendBitMap (ODT_DTA_Dummy + 255)
 #define PIC_PDTA_MaskPlane       (ODT_DTA_Dummy + 258)
+/* Whether the picture's ARGB pixels carry alpha (the subclass says; AROS's
+ * and the Team's datatypes set it, 0x80001100). Not set: TRUE when the BMHD
+ * says mskHasAlpha. */
+#define PIC_PDTA_AlphaChannel    (ODT_DTA_Dummy + 256)
 
 #define PIC_PMODE_V42 0
 #define PIC_PMODE_V43 1
@@ -152,6 +156,8 @@ struct pic_inst {
 #define PIC_F_FRIEND     0x0004
 #define PIC_F_LAIDOUT    0x0008
 #define PIC_F_DESTARGB   0x0010
+#define PIC_F_ALPHA      0x0020      /* PDTA_AlphaChannel TRUE */
+#define PIC_F_ALPHASET   0x0040      /* PDTA_AlphaChannel was set */
 
 odt_u32 pic_inst_size(void);
 odt_u32 pic_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, void *msg);

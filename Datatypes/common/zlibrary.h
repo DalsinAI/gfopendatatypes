@@ -23,7 +23,11 @@
 struct Library;
 
 #define ZL_NAME    "z.library"
-#define ZL_VERSION 53              /* GFOpenZlib is 53.12; the Aminet one 53.x */
+#define ZL_VERSION 53              /* GFOpenZlib is 53.13; the Aminet one 53.x */
+
+/* OpenLibrary(ZL_NAME, ZL_VERSION), refusing GFOpenZlib 53.12 (its jump
+ * table was not the Aminet library's): CloseLibrary() it as usual */
+struct Library *zl_Open(void);
 
 /* zlib.h's z_stream, as z.library lays it out on the 68k (56 bytes) */
 struct zl_stream {

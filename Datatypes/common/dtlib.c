@@ -289,6 +289,50 @@ void *realloc(void *p, size_t size)
 
 #endif /* DT_OWN_MALLOC */
 
+/* qsort of our own, in place of libnix's: on the Amiga libnix's never
+ * returned from libwebp's Huffman tree sort (webp.datatype's lossless save
+ * hung at 65%; webpencamiga in the lab, 6 November 2026), while the same
+ * encoder with this one writes files that decode back the same. A heap
+ * sort: no recursion, no extra memory, n log n at worst. */
+static void qs_swap(unsigned char *a, unsigned char *b, size_t size)
+{
+    while (size--) {
+        unsigned char t = *a;
+        *a++ = *b;
+        *b++ = t;
+    }
+}
+
+static void qs_sift(unsigned char *base, size_t root, size_t n, size_t size,
+                    int (*cmp)(const void *, const void *))
+{
+    for (;;) {
+        size_t child = 2 * root + 1, big = root;
+        if (child < n && cmp(base + child * size, base + big * size) > 0)
+            big = child;
+        if (child + 1 < n && cmp(base + (child + 1) * size, base + big * size) > 0)
+            big = child + 1;
+        if (big == root)
+            return;
+        qs_swap(base + root * size, base + big * size, size);
+        root = big;
+    }
+}
+
+void qsort(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *))
+{
+    unsigned char *b = base;
+    size_t i;
+    if (n < 2 || !size)
+        return;
+    for (i = n / 2; i-- > 0;)
+        qs_sift(b, i, n, size, cmp);
+    for (i = n - 1; i > 0; i--) {
+        qs_swap(b, b + i * size, size);
+        qs_sift(b, 0, i, size, cmp);
+    }
+}
+
 /* A small vsnprintf for decoders' error messages (%s %c %d %u %x %%), so
  * libnix's stdio (which needs a program's start-up) stays out. */
 int vsnprintf(char *buffer, size_t size, const char *format, va_list ap)
