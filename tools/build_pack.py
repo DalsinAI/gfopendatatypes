@@ -24,7 +24,9 @@ what the builds made, so a new datatype needs no change to this file.
     Libs/z.library                    GFOpenZlib, for gzip and gfopenpng's PNG writing
   build/pack/GFOpenDatatypes.info       the drawer's icon
   build/pack/GFOpenDatatypes.json       what is in it, for GFOpenUp's GFOpenImage part
-  build/pack/GFOpenDatatypes-<version>.lha   with --lha (jlha or lha on PATH)
+  build/pack/GFOpenDatatypes-<version>.lha   with --lha (jlha or lha on PATH); its
+                                        members' times are SOURCE_DATE_EPOCH (default:
+                                        the last commit's time)
 
 z.library is the Team's GFOpenZlib (amicradle-guest libraries/openzlib), built
 from a checkout of it (AMICRADLE_GUEST or GUEST, else beside this one) and
@@ -53,6 +55,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -492,6 +495,58 @@ def uninstall_script(version: str, date: str, choices: list, always: list, libra
 
 # ---------------------------------------------------------------- the pack
 
+def source_date_epoch() -> int:
+    """SOURCE_DATE_EPOCH, else the last commit's time, else now: the pack's
+    date and every archived file's and drawer's time, so the same sources
+    give the same .lha wherever and whenever it is built."""
+    if os.environ.get("SOURCE_DATE_EPOCH"):
+        return int(os.environ["SOURCE_DATE_EPOCH"])
+    try:
+        return int(subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%ct"],
+                                  capture_output=True, text=True, check=True).stdout.strip())
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return int(time.time())
+
+
+def lha_sorted(lha: str, cwd: Path, arc: Path, roots: list[str], epoch: int) -> None:
+    """The archive of roots (relative to cwd), member by member in sorted
+    order. jlha recurses into a drawer in the order the file system lists
+    it, which differs from one machine to the next, so no drawer is handed
+    to it full: each drawer is added on its own while still empty (from a
+    skeleton of them, parents first), then every file in one sorted list."""
+    dirs: list[str] = []
+    files: list[str] = []
+    for r in roots:
+        if (cwd / r).is_dir():
+            dirs.append(r)
+            for d, ds, fs in os.walk(cwd / r):
+                rel = Path(d).relative_to(cwd)
+                dirs += [(rel / n).as_posix() for n in ds]
+                files += [(rel / n).as_posix() for n in fs]
+        else:
+            files.append(r)
+    dirs.sort()
+    files.sort()
+    with tempfile.TemporaryDirectory(prefix="build_pack-") as t:
+        skel = Path(t)
+        for d in dirs:
+            (skel / d).mkdir()
+            os.utime(skel / d, (epoch, epoch))
+            run([lha, "aq", str(arc), d], cwd=skel)
+    if files:
+        run([lha, "aq", str(arc), *files], cwd=cwd)
+
+
+def stamp(paths: list[Path], epoch: int) -> None:
+    """Every file and drawer under paths (and paths themselves) to epoch."""
+    for top in paths:
+        if top.is_dir():
+            for d, dirs, files in os.walk(top):
+                for n in dirs + files:
+                    os.utime(Path(d) / n, (epoch, epoch), follow_symlinks=False)
+        os.utime(top, (epoch, epoch), follow_symlinks=False)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--version", default="0.1")
@@ -511,7 +566,8 @@ def main() -> int:
     choices, always, library, zlib = collect(a.datatypes_out, a.library_out, a.zlib_out)
     if not library:
         print("build_pack: no datatypes.library build: the pack has the datatypes only")
-    date = time.strftime("%d.%m.%Y", time.gmtime(int(os.environ.get("SOURCE_DATE_EPOCH", time.time()))))
+    epoch = source_date_epoch()
+    date = time.strftime("%d.%m.%Y", time.gmtime(epoch))
 
     top = a.out / "GFOpenDatatypes"
     if top.exists():
@@ -556,7 +612,11 @@ def main() -> int:
             sys.exit("build_pack: --lha needs jlha or lha on PATH")
         arc = a.out / f"GFOpenDatatypes-{a.version}.lha"
         arc.unlink(missing_ok=True)
-        run([lha, "aq", arc.name, "GFOpenDatatypes", "GFOpenDatatypes.info"], cwd=a.out)
+        # the build's times and the file system's order would make each
+        # archive differ: every member gets SOURCE_DATE_EPOCH's time, and
+        # the members go in sorted (drawers first, then files)
+        stamp([top, a.out / "GFOpenDatatypes.info"], epoch)
+        lha_sorted(lha, a.out, arc.resolve(), ["GFOpenDatatypes", "GFOpenDatatypes.info"], epoch)
         print(f"{arc} ({arc.stat().st_size} bytes)")
     return 0
 
