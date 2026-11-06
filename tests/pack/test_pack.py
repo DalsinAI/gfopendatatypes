@@ -253,6 +253,22 @@ def main() -> int:
             check((mi.norm("LIBS:z.library") in disk.files) == want,
                   f"{what}: z.library {'goes in' if want else 'stays out'}")
 
+        # the older pack's descriptors (before the rename) would shadow ours: moved aside, and put back
+        disk = os32_disk()
+        disk.files[mi.norm("DEVS:DataTypes/OpenPNG")] = b"old OpenPNG descriptor"
+        disk.files[mi.norm("SYS:Classes/DataTypes/openpng.datatype")] = b"old openpng.datatype"
+        before = disk.snapshot()
+        run(disk, top, "Install-GFOpenDatatypes")
+        check(mi.norm("DEVS:DataTypes/OpenPNG") not in disk.files
+              and disk.files.get(mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Devs/OpenPNG")) == b"old OpenPNG descriptor"
+              and disk.files.get(mi.norm("SYS:Classes/DataTypes/openpng.datatype")) == b"old openpng.datatype",
+              "the old OpenPNG descriptor goes to Superseded (its class stays, unused)")
+        run(disk, top, "Install-GFOpenDatatypes")
+        check(disk.files.get(mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Devs/OpenPNG")) == b"old OpenPNG descriptor",
+              "installed again: still kept")
+        run(disk, top, "Uninstall-GFOpenDatatypes")
+        check(disk.snapshot() == before, "the uninstall puts the old descriptor back")
+
         # an GFOpenUp-installed copy of a datatype is put back as it was
         disk = os32_disk()
         disk.files[mi.norm("SYS:Classes/DataTypes/webp.datatype")] = b"GFOpenUp's webp 47.8"

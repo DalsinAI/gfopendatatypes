@@ -274,6 +274,44 @@ void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj)
 /* The player process's tick */
 void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj);
 
+/* ---- writing: the animation as an IFF ANIM (DTM_WRITE, DTWM_IFF) ------------- */
+
+/* What adt_anim_write writes */
+struct adt_aw_spec {
+    odt_u32 width, height, depth;       /* depth 1 to 8 */
+    odt_u32 frames;                     /* 1 or more */
+    odt_u32 ncolors;                    /* entries of colors for the CMAP (0: none) */
+    const struct adt_ColorRegister *colors;
+    odt_u32 modeid;                     /* the CAMG */
+    odt_u8 has_modeid;
+    odt_u8 xaspect, yaspect;            /* BMHD's; 0 is 1 */
+    odt_u8 pad;
+    odt_u32 reltime;                    /* each frame's time, in jiffies (60ths of a second) */
+};
+
+/* Where it comes from and goes to */
+struct adt_aw_io {
+    void *h;
+    void *(*alloc)(void *h, odt_u32 n);
+    void (*free)(void *h, void *p);
+    /* the next n bytes of the file; 0, or an IoErr() code */
+    odt_s32 (*put)(void *h, const odt_u8 *p, odt_u32 n);
+    /* a big-endian longword at byte at of the file, written over what was
+     * put there (the FORM's size); 0, or an IoErr() code */
+    odt_s32 (*patch)(void *h, odt_u32 at, odt_u32 v);
+    /* frame f's planes until done(h, f): NULL when it can't be had */
+    const struct adt_BitMap *(*frame)(void *h, odt_u32 f);
+    void (*done)(void *h, odt_u32 f);
+};
+
+/* Writes FORM ANIM: the first frame a FORM ILBM (BMHD, CMAP, CAMG,
+ * a ByteRun1 BODY), each one after a FORM ILBM of an ANHD and a DLTA in
+ * method 5 (byte vertical delta, stored, not XORed), against the frame two
+ * before, as double-buffered players draw (ANHD interleave 0; frame 1
+ * against frame 0). Planes past a frame's depth, and a NULL plane, are 0;
+ * the bits past the width are cleared. 0, or an IoErr() code. */
+odt_s32 adt_anim_write(const struct adt_aw_spec *s, const struct adt_aw_io *io);
+
 odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, void *msg);
 odt_u32 adt_inst_size(void);
 
