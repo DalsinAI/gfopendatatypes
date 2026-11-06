@@ -66,7 +66,7 @@ static ULONG codec(struct gdata *g, struct sdtCodec *m)
     sdt_call_in(&c, m);
     switch (m->sdtc_Op) {
     case SDTCO_INIT:
-        if (!(g->zbase = OpenLibrary((CONST_STRPTR)ZL_NAME, ZL_VERSION))) {
+        if (!(g->zbase = zl_Open())) {
             m->sdtc_Error = SDT_ERR_NOLIB;
             return SDTC_ERROR;
         }
@@ -119,7 +119,7 @@ static LONG writeCoded(Object *o, struct dtWrite *w)
          : format && !strcmp((const char *)format, "deflate") ? GZ_RAW : GZ_GZIP;
     if (!(work = AllocVec(WRITE_ROOM, MEMF_ANY)))
         return ERROR_NO_FREE_STORE;
-    if (!(zbase = OpenLibrary((CONST_STRPTR)ZL_NAME, ZL_VERSION))) {
+    if (!(zbase = zl_Open())) {
         FreeVec(work);
         return SDT_ERR_NOLIB;
     }

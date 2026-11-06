@@ -184,7 +184,7 @@ static LONG encodePNG(Class *cl, Object *o, struct oiEncodePNG *m)
         }
         px = own;
     }
-    if (!(zbase = OpenLibrary((CONST_STRPTR)ZL_NAME, ZL_VERSION))) {
+    if (!(zbase = zl_Open())) {
         if (own)
             FreeVec(own);
         return ERROR_OBJECT_NOT_FOUND;
