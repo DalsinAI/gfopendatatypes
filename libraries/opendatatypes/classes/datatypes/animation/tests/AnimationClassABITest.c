@@ -38,6 +38,14 @@
 #include "animation/animation_core.h"
 #include "anim/anim_core.h"
 
+/* NDK 3.2 has these under their picture names only (pictureclass.h) */
+#ifndef ADTA_NumSparse
+#define ADTA_NumSparse PDTA_NumSparse
+#endif
+#ifndef ADTA_SparseTable
+#define ADTA_SparseTable PDTA_SparseTable
+#endif
+
 /* ---- the cores' numbers against the NDK --------------------------------- */
 
 #define SAME(a, b) _Static_assert((a) == (b), #a)

@@ -481,7 +481,7 @@ static struct Library *lib_init(REG(d0, struct DTCBase *base), REG(a0, BPTR segl
         base->cl = MakeClass((CONST_STRPTR)lib_name, (CONST_STRPTR)DTC_SUPER, NULL, DTC_INST_SIZE(), 0);
         if (base->cl) {
             base->cl->cl_UserData = (ULONG)base;
-            base->cl->cl_Dispatcher.h_Entry = (HOOKFUNC)(void (*)(void))dispatch_entry;
+            base->cl->cl_Dispatcher.h_Entry = (__typeof__(base->cl->cl_Dispatcher.h_Entry))(void (*)(void))dispatch_entry;
             base->cl->cl_Dispatcher.h_SubEntry = NULL;
             base->cl->cl_Dispatcher.h_Data = base;
             AddClass(base->cl);
