@@ -25,3 +25,18 @@ echo "dtsave: $(wc -c < "$OUT/dtsave") bytes"
 $CC -O2 -m68040 -specs="$HERE/../build/m68k-soft-m68040.specs" -fomit-frame-pointer -fno-delete-null-pointer-checks \
     -Wall -Wno-pointer-sign -noixemul -I"$HERE/include" -o "$OUT/dtanim" "$HERE/tests/dtanim.c" -lamiga
 echo "dtanim: $(wc -c < "$OUT/dtanim") bytes"
+# webp.datatype's encoder alone, when build.sh has built libwebp (work/obj-libwebp)
+W="$HERE/work/libwebp/libwebp-1.6.0"
+if [ -d "$HERE/work/obj-libwebp" ] && [ -d "$W" ]; then
+    F="-O2 -m68040 -specs=$HERE/../build/m68k-soft-m68040.specs -fomit-frame-pointer -fno-delete-null-pointer-checks"
+    F="$F -DNDEBUG -DWORDS_BIGENDIAN -Wall -Wno-pointer-sign -I$W -I$W/src -I$HERE/webp"
+    T=$(mktemp -d)
+    $CC $F -c "$HERE/webp/webpencode.c" -o "$T/webpencode.o"
+    for v in "" -av; do
+        $CC $F $( [ -n "$v" ] && echo -DAV_MALLOC ) -c "$HERE/tests/webpencamiga.c" -o "$T/t.o"
+        $CC -m68040 -specs="$HERE/../build/m68k-soft-m68040.specs" -o "$OUT/webpencamiga$v" "$T/t.o" \
+            "$T/webpencode.o" "$HERE"/work/obj-libwebp/*.o
+        echo "webpencamiga$v: $(wc -c < "$OUT/webpencamiga$v") bytes"
+    done
+    rm -rf "$T"
+fi
