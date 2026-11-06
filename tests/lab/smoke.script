@@ -1,0 +1,14 @@
+; amicradle-ci T3, the lab tier: a real boot of the open ROM (ac090-boot, openrom-min), with
+; T2's outputs in SYS:Test/. Version reads each built library and class from its file, so a
+; file that is missing, isn't a library or has no version string ends the script with RC 20.
+; MIT, Copyright (c) 2026 AmiCradle Team.
+Version SYS:Test/library/libs/datatypes.library FULL
+Version SYS:Test/library/libs/opendatatypes.library
+Version SYS:Test/library/datatypes/picture.datatype
+Version SYS:Test/library/datatypes/ilbm.datatype
+Version SYS:Test/library/datatypes/sound.datatype
+Version SYS:Test/library/datatypes/8svx.datatype
+Version SYS:Test/library/datatypes/text.datatype
+Version SYS:Test/library/datatypes/ascii.datatype
+Version SYS:Test/library/datatypes/animation.datatype
+Version SYS:Test/library/datatypes/anim.datatype
