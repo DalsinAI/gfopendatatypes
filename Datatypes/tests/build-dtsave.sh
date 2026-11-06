@@ -27,7 +27,8 @@ $CC -O2 -m68040 -specs="$HERE/../build/m68k-soft-m68040.specs" -fomit-frame-poin
 echo "dtanim: $(wc -c < "$OUT/dtanim") bytes"
 # webp.datatype's encoder alone, when build.sh has built libwebp (work/obj-libwebp):
 # webpencamiga and -av with build.sh's objects; -nd and -o1 with libwebp's
-# encoder side built again, -fno-tree-loop-distribute-patterns and -O1
+# encoder side built again, -fno-tree-loop-distribute-patterns and -O1; -qs
+# with build.sh's objects and a qsort of its own (OWN_QSORT)
 W="$HERE/work/libwebp/libwebp-1.6.0"
 if [ -d "$HERE/work/obj-libwebp" ] && [ -d "$W" ]; then
     B="-m68040 -specs=$HERE/../build/m68k-soft-m68040.specs -fomit-frame-pointer -fno-delete-null-pointer-checks"
@@ -37,7 +38,7 @@ if [ -d "$HERE/work/obj-libwebp" ] && [ -d "$W" ]; then
          src/dsp/lossless_enc.c src/dsp/lossless.c src/utils/bit_writer_utils.c src/utils/huffman_encode_utils.c
          src/utils/utils.c src/utils/palette.c src/dsp/cpu.c"
     T=$(mktemp -d)
-    for v in "" -av -nd -o1; do
+    for v in "" -av -nd -o1 -qs; do
         case "$v" in -nd) F="-O2 -fno-tree-loop-distribute-patterns $B" ;; -o1) F="-O1 $B" ;; *) F="-O2 $B" ;; esac
         rm -rf "$T/o"; mkdir -p "$T/o"
         cp "$HERE"/work/obj-libwebp/*.o "$T/o/"
@@ -47,7 +48,10 @@ if [ -d "$HERE/work/obj-libwebp" ] && [ -d "$W" ]; then
             done
         fi
         $CC $F -c "$HERE/webp/webpencode.c" -o "$T/webpencode.o"
-        $CC $F $( [ "$v" = -av ] && echo -DAV_MALLOC ) -c "$HERE/tests/webpencamiga.c" -o "$T/t.o"
+        X=""
+        [ "$v" = -av ] && X=-DAV_MALLOC
+        [ "$v" = -qs ] && X=-DOWN_QSORT
+        $CC $F $X -c "$HERE/tests/webpencamiga.c" -o "$T/t.o"
         $CC -m68040 -specs="$HERE/../build/m68k-soft-m68040.specs" -o "$OUT/webpencamiga$v" "$T/t.o" \
             "$T/webpencode.o" "$T"/o/*.o
         echo "webpencamiga$v: $(wc -c < "$OUT/webpencamiga$v") bytes"

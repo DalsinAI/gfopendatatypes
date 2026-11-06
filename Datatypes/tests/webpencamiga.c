@@ -12,7 +12,8 @@
  * reports as it goes) is printed as it comes, and a hang shows where.
  * Variants (build-dtsave.sh): -nd with libwebp and the encoder built
  * -fno-tree-loop-distribute-patterns (GCC 16.2.0b can turn a loop that
- * shifts an array up into a forward copy), -o1 at -O1.
+ * shifts an array up into a forward copy), -o1 at -O1, -qs with a qsort of
+ * its own. Each first checks memmove (libnix's __bcopz, both ways) and qsort.
  *
  *     webpencamiga [MAXLEVEL]      (default 9)
  *
@@ -77,6 +78,58 @@ void *realloc(void *p, size_t size)
     return n;
 }
 #endif
+
+#ifdef OWN_QSORT
+/* -qs: a qsort of our own in place of libnix's (libwebp sorts its Huffman
+ * trees and palettes with it) */
+void qsort(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *))
+{
+    UBYTE *b = base, t;
+    size_t i, j, k;
+    for (i = 1; i < n; i++)                     /* insertion sort: the arrays here are small */
+        for (j = i; j > 0 && cmp(b + (j - 1) * size, b + j * size) > 0; j--)
+            for (k = 0; k < size; k++) {
+                t = b[(j - 1) * size + k];
+                b[(j - 1) * size + k] = b[j * size + k];
+                b[j * size + k] = t;
+            }
+}
+#endif
+
+/* what the encoder leans on from the C library, checked before it runs */
+static unsigned rnd_seed_free(int i)
+{
+    return (unsigned)(i * 2654435761u) >> 7;
+}
+
+static int cmp_int(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b;
+    return x < y ? -1 : x > y;
+}
+
+static void libc_check(void)
+{
+    static UBYTE m[64];
+    static int v[200];
+    int i, ok = 1;
+    for (i = 0; i < 64; i++) m[i] = (UBYTE)i;
+    memmove(m + 1, m, 40);                      /* overlapping, up: as libwebp's Huffman tree does */
+    for (i = 0; i < 64; i++)
+        if (m[i] != (UBYTE)(i == 0 ? 0 : i <= 40 ? i - 1 : i)) ok = 0;
+    printf("memmove up: %s\n", ok ? "ok" : "BROKEN");
+    for (i = 0; i < 64; i++) m[i] = (UBYTE)i;
+    memmove(m, m + 1, 40);
+    ok = 1;
+    for (i = 0; i < 40; i++) if (m[i] != (UBYTE)(i + 1)) ok = 0;
+    printf("memmove down: %s\n", ok ? "ok" : "BROKEN");
+    for (i = 0; i < 200; i++) v[i] = (int)((rnd_seed_free(i) % 50));
+    qsort(v, 200, sizeof v[0], cmp_int);
+    ok = 1;
+    for (i = 1; i < 200; i++) if (v[i - 1] > v[i]) ok = 0;
+    printf("qsort: %s\n", ok ? "ok" : "BROKEN");
+    fflush(stdout);
+}
 
 struct buf {
     UBYTE *p;
@@ -179,6 +232,7 @@ int main(int argc, char **argv)
     int fails = 0;
     static const LONG levels[] = { 0, 3, 6, 9 };
     unsigned i;
+    libc_check();
     for (i = 0; i < sizeof levels / sizeof levels[0]; i++) {
         l = levels[i];
         if (l > max)
