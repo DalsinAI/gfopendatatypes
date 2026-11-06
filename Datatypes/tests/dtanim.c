@@ -42,7 +42,8 @@ int main(int argc, char **argv)
     }
     GetDTAttrs(o, ADTA_Width, (ULONG)&width, ADTA_Height, (ULONG)&height, ADTA_Depth, (ULONG)&depth,
         ADTA_Frames, (ULONG)&frames, ADTA_FramesPerSecond, (ULONG)&fps, ADTA_KeyFrame, (ULONG)&key, TAG_DONE);
-    printf("%s %lux%lu depth=%lu frames=%lu fps=%lu key=%s\n", argv[1], width, height, depth, frames, fps, key ? "yes" : "no");
+    printf("%s %lux%lu depth=%lu frames=%lu fps=%lu key=%s\n", argv[1], (unsigned long)width,
+           (unsigned long)height, (unsigned long)depth, (unsigned long)frames, (unsigned long)fps, key ? "yes" : "no");
     chunky = malloc(((width + 15) & ~15) * height);
     tempBm = AllocBitMap((width + 15) & ~15, 1, 8, 0, NULL);
     InitRastPort(&temp);
@@ -54,7 +55,7 @@ int main(int argc, char **argv)
         alf.alf_TimeStamp = i;
         alf.alf_Frame = i;
         if (!DoMethodA(o, (Msg)&alf) || !alf.alf_BitMap) {
-            printf("frame %lu LOAD_FAIL\n", i);
+            printf("frame %lu LOAD_FAIL\n", (unsigned long)i);
             continue;
         }
         InitRastPort(&rp);
@@ -64,7 +65,7 @@ int main(int argc, char **argv)
             ReadPixelLine8(&rp, 0, y, width, chunky + y * width, &temp);
         for (p = 0; p < width * height; p++)
             sum = (sum * 31 + chunky[p]) & 0xffffffffUL;
-        printf("frame %lu shown=%lu sum=%08lx\n", i, alf.alf_Frame, sum);
+        printf("frame %lu shown=%lu sum=%08lx\n", (unsigned long)i, (unsigned long)alf.alf_Frame, sum);
         alf.MethodID = ADTM_UNLOADFRAME;
         DoMethodA(o, (Msg)&alf);
     }

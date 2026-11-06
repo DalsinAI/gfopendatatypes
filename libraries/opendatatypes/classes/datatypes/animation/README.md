@@ -8,7 +8,7 @@ IFF ANIM specs (ANIM-5, ANIM-7/8) and measured behaviour only.
 
 | File | What |
 |---|---|
-| `animation_core.c/.h` | Plain C core: ADTA_ attributes, ADTM_ methods, frame timing, preload cache, remap, control panel, sound offset |
+| `animation_core.c/.h` | Plain C core: ADTA_ attributes, ADTM_ methods, frame timing, preload cache, remap, control panel, sound offset, and the IFF ANIM writer (`adt_anim_write`) |
 | `adt_ext_amiga.h` | Amiga services: bitmaps, pens, blits, the panel's drawing, audio.device, the player process on timer.device |
 | `openanimation_class.c` | animation.datatype's shell (shell code is `../text/dtc_shell.h`) |
 | `../anim/anim_core.c/.h` | anim.datatype: ANIM scan, ANHD, DLTA ops 0, 5, 7, 8, ByteRun1 BODY, CAMG, EHB |
@@ -44,6 +44,33 @@ The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 | ADTM_START/PAUSE/STOP, STM_PLAY/PAUSE/STOP from a program | As the panel's buttons: the frame told when it moved, the gadget redrawn | ours |
 | Stopping the player | Waits until the process is gone (its start message comes back under Forbid), so the library can be expunged after | ours |
 | Sound | Started at ticks/fps x clock/period into the sample | measured |
+
+## Saving (DTM_WRITE)
+
+`DTWM_IFF` writes any animation, whatever its subclass, as an IFF ANIM:
+the frames are asked for with `ADTM_LOADNEWFORMATFRAME` (else
+`ADTM_LOADFRAME`) one at a time and given back after, the player waiting
+on the object's lock meanwhile. The first frame is a FORM ILBM (BMHD,
+CMAP from `ADTA_ColorRegisters`, CAMG from `ADTA_ModeID`, a ByteRun1
+BODY); each later one an ANHD and a DLTA in method 5 (byte vertical
+delta, stored, not XORed) against the frame two before (interleave 0, as
+double-buffered players draw; frame 1 against frame 0), each frame
+`60 / ADTA_FramesPerSecond` jiffies. A column that would need more than
+255 ops is written with the fewest instead. The FORM's size is written
+last, by a Seek back, so the file must be seekable. `DTWM_RAW` is left to
+the superclass (the file as it came) or the subclass's own writer.
+`DTM_WRITE` is in `DTA_Methods`, so MultiView offers Save As.
+
+`tests/m68k/test_opendatatypes_animwrite.sh` (5 November 2026, qemu-m68k,
+-O0 and -O2): 243 films of 1x1 to 640x512, 1 to 8 planes and 1 to 12
+frames (noise, a moving box, still frames, runs, whole frames flipping,
+and 1,200 and 3,000-row films whose columns need more than 255 ops) are
+written and read back by anim.datatype's own reader, every frame forward,
+backward and at random, with the size, CMAP, CAMG and fps: 7,165 checks,
+none failed. FFmpeg's IFF ANIM decoder reads all 243 with every frame.
+
+Not yet: sound in the ANIM, per-frame colours (`alf_CMap`), more than 8
+planes, and writing to a stream that can't Seek.
 
 ## Not yet
 

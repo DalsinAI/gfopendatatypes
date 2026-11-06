@@ -1,0 +1,40 @@
+#!/bin/sh
+# The whole of gfopendatatypes for the Amiga, as Cradle's stove builds call
+# a module (STOVE= the os32-gcc16 stove, OUT= where it goes): the
+# GFOpenDatatypes pack (tools/build_pack.py: every datatype,
+# datatypes.library and its system classes, and GFOpenZlib's z.library when
+# an amicradle-guest checkout is beside this one or named by
+# AMICRADLE_GUEST), its .lha, and the Amiga-side checks in OUT/Tests
+# (dtsave, dtanim) with the files to check with in OUT/Tests/media.
+# MIT, Copyright (c) 2026 AmiCradle Team.
+#
+#   STOVE     compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
+#   OUT       where it goes (default ./build-amiga)
+#   VERSION   the pack's version (default 0.1)
+#
+# usage: sh build-amiga.sh
+#   OUT/pack/GFOpenDatatypes/          the drawer: run Install-GFOpenDatatypes
+#   OUT/pack/GFOpenDatatypes-VERSION.lha
+#   OUT/Tests/dtsave, OUT/Tests/dtanim
+#   OUT/Tests/media/                   pictures, films and data made by
+#                                      Datatypes/tests/make-*.py
+set -eu
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+STOVE=${STOVE:-"$HOME/AmiCradle/stoves/os32-gcc16"}
+OUT=${OUT:-"$HERE/build-amiga"}
+VERSION=${VERSION:-0.1}
+mkdir -p "$OUT"
+export STOVE OS32_GCC16="$STOVE"
+LHA=
+if command -v jlha >/dev/null 2>&1 || command -v lha >/dev/null 2>&1; then LHA=--lha; fi
+python3 "$HERE/tools/build_pack.py" --version "$VERSION" --out "$OUT/pack" \
+    --library-out "$OUT/library" --zlib-out "$OUT/zlib" $LHA
+PREFIX="$OUT/Tests" sh "$HERE/Datatypes/tests/build-dtsave.sh"
+# The files a lab checks the writers with: Python alone (Pillow adds a WebP)
+M="$OUT/Tests/media"
+mkdir -p "$M"
+python3 "$HERE/Datatypes/tests/make-lab-media.py" "$M"
+python3 "$HERE/Datatypes/tests/make-gif.py" "$M/gif" >/dev/null
+python3 "$HERE/Datatypes/tests/make-tga.py" "$M/tga" >/dev/null
+python3 "$HERE/Datatypes/tests/make-cdxl.py" "$M/cdxl" >/dev/null
+cp "$HERE/Datatypes/tests/t.webm" "$M/film.webm"
