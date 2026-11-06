@@ -28,10 +28,10 @@
 #include "sdtcore.h"
 
 const char LibName[] = "stream.datatype";
-const char LibIdString[] = "stream.datatype 47.2 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "stream.datatype 47.3 (6.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: stream.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: stream.datatype 47.3 (6.11.2026)";
 
 const char dt_superclass[] = "datatypesclass";
 const UWORD dt_superversion = 0;
