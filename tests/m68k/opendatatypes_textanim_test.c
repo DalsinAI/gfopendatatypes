@@ -722,12 +722,20 @@ static void run_apure(const char *cmd, char *args)
         cmp_seed = seed;
         for (k = 0; k < cases; k++) {
             odt_u32 w = 1 + cmp_rnd() % (k & 1 ? 700 : 70), h = 1 + cmp_rnd() % 6, sd = cmp_rnd() % 10, dd = 1 + cmp_rnd() % 9;
-            odt_u32 sbpr = (((w + 15) >> 4) << 1) + 2 * (cmp_rnd() % 3), dbpr = (((w + 15) >> 4) << 1) + 2 * (cmp_rnd() % 2);
-            odt_u32 cw = w + (cmp_rnd() % 4 ? 0 : cmp_rnd() % 40), ch = h + cmp_rnd() % 2, p, i;
+            odt_u32 sbpr, dbpr, cw, ch, p, i, kind = cmp_rnd() % 8, odd = cmp_rnd() % 9 == 0;
             odt_u8 table[256], *sp[8], *a[8], *b[8];
             struct adt_BitMap s, d1, d2;
             int use_table = cmp_rnd() % 5 != 0, same = 1;
+            if (k % 4 == 2) w = 32 * (1 + cmp_rnd() % 12);    /* whole longwords */
+            sbpr = (((w + 15) >> 4) << 1) + 2 * (cmp_rnd() % 3) + odd;   /* odd: not word aligned */
+            dbpr = (((w + 15) >> 4) << 1) + 2 * (cmp_rnd() % 2);
+            cw = w + (cmp_rnd() % 4 ? 0 : cmp_rnd() % 40);
+            ch = h + cmp_rnd() % 2;
             for (i = 0; i < 256; i++) table[i] = (odt_u8)cmp_rnd();
+            /* the identity on the source's pixels (copied), or on all but one */
+            if (kind < 2)
+                for (i = 0; i < 256; i++) table[i] = (odt_u8)(i < (1u << (sd > 8 ? 8 : sd)) ? i : table[i]);
+            if (kind == 1 && sd) table[cmp_rnd() % (1u << (sd > 8 ? 8 : sd))] ^= 1;
             memset(&s, 0, sizeof s);
             memset(&d1, 0, sizeof d1);
             s.BytesPerRow = (odt_u16)sbpr; s.Rows = (odt_u16)h; s.Depth = (odt_u8)sd;

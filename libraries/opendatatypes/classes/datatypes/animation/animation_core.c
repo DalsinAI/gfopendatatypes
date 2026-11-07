@@ -88,88 +88,174 @@ odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps
 
 /* ---- remapping ----------------------------------------------------------------- */
 
-/* An 8 x 8 matrix of bits turned over. hi holds rows 0 to 3 (row 0 in its
- * top byte), lo rows 4 to 7; a row's top bit is column 0. Afterwards row j
- * holds what column j held, row 0's bit at the top. Eight plane bytes in
- * (plane 7 first) give eight pixels out, and eight pixels give the planes. */
-static inline void adt_turn8(odt_u32 *hi, odt_u32 *lo)
+/* 32 pixels of a row as 8 longwords of planes (plane p: pixel 0 in bit
+ * 31) turned into 8 longwords of pixels and back. Each step swaps one bit
+ * of the word's number with one bit of the position in the word (the bits
+ * above s in A with those below in B; A is the word whose number has that
+ * bit 0), so each is its own inverse. Planes: word p2p1p0, position
+ * ~x4..~x0 (x the pixel). The first step swaps p2 with ~x2: after it the
+ * words 0-3 and 4-7 are two halves that never meet again until the step
+ * is undone, four longwords each (they fit the 68k's data registers).
+ * Then in each half p0 with ~x0, p1 with ~x1, word bit 1 (now ~x1) with
+ * ~x4 and word bit 0 (now ~x0) with ~x3: word ~x2~x4~x3 holds pixels 4k to
+ * 4k+3 (k = x >> 2), a byte each, pixel 4k at the top. */
+#define ADT_SWAP(A, B, s, m)                                                                                           \
+    do {                                                                                                           \
+        odt_u32 t_ = (((A) >> (s)) ^ (B)) & (m);                                                                   \
+        (B) ^= t_;                                                                                                 \
+        (A) ^= t_ << (s);                                                                                          \
+    } while (0)
+
+/* A half's four longwords through the table (none: unchanged), pixels
+ * out of the planes and back in */
+static void adt_half(odt_u32 *h, const odt_u8 *table)
 {
-    odt_u32 x = *hi, y = *lo, t;
-    t = (x ^ (x >> 7)) & 0x00aa00aaUL;
-    x ^= t ^ (t << 7);
-    t = (y ^ (y >> 7)) & 0x00aa00aaUL;
-    y ^= t ^ (t << 7);
-    t = (x ^ (x >> 14)) & 0x0000ccccUL;
-    x ^= t ^ (t << 14);
-    t = (y ^ (y >> 14)) & 0x0000ccccUL;
-    y ^= t ^ (t << 14);
-    t = (x & 0xf0f0f0f0UL) | ((y >> 4) & 0x0f0f0f0fUL);
-    *lo = ((x << 4) & 0xf0f0f0f0UL) | (y & 0x0f0f0f0fUL);
-    *hi = t;
+    odt_u32 a0 = h[0], a1 = h[1], a2 = h[2], a3 = h[3];
+    union { odt_u32 l[4]; odt_u8 b[16]; } u;
+    odt_u32 i;
+    ADT_SWAP(a0, a1, 1, 0x55555555UL);
+    ADT_SWAP(a2, a3, 1, 0x55555555UL);
+    ADT_SWAP(a0, a2, 2, 0x33333333UL);
+    ADT_SWAP(a1, a3, 2, 0x33333333UL);
+    ADT_SWAP(a0, a2, 16, 0x0000ffffUL);
+    ADT_SWAP(a1, a3, 16, 0x0000ffffUL);
+    ADT_SWAP(a0, a1, 8, 0x00ff00ffUL);
+    ADT_SWAP(a2, a3, 8, 0x00ff00ffUL);
+    u.l[0] = a0; u.l[1] = a1; u.l[2] = a2; u.l[3] = a3;
+    for (i = 0; i < 16; i += 4) {
+        u.b[i] = table[u.b[i]];
+        u.b[i + 1] = table[u.b[i + 1]];
+        u.b[i + 2] = table[u.b[i + 2]];
+        u.b[i + 3] = table[u.b[i + 3]];
+    }
+    a0 = u.l[0]; a1 = u.l[1]; a2 = u.l[2]; a3 = u.l[3];
+    ADT_SWAP(a0, a1, 8, 0x00ff00ffUL);
+    ADT_SWAP(a2, a3, 8, 0x00ff00ffUL);
+    ADT_SWAP(a0, a2, 16, 0x0000ffffUL);
+    ADT_SWAP(a1, a3, 16, 0x0000ffffUL);
+    ADT_SWAP(a0, a2, 2, 0x33333333UL);
+    ADT_SWAP(a1, a3, 2, 0x33333333UL);
+    ADT_SWAP(a0, a1, 1, 0x55555555UL);
+    ADT_SWAP(a2, a3, 1, 0x55555555UL);
+    h[0] = a0; h[1] = a1; h[2] = a2; h[3] = a3;
 }
 
-/* Four pixels (a byte each) through the pen table */
-static inline odt_u32 adt_pens4(const odt_u8 *table, odt_u32 v)
+/* 32 pixels: a[p] plane p in and out */
+static inline void adt_remap32(odt_u32 *a, const odt_u8 *table)
 {
-    return (odt_u32)table[v >> 24] << 24 | (odt_u32)table[(v >> 16) & 255] << 16 | (odt_u32)table[(v >> 8) & 255] << 8 |
-           table[v & 255];
+    ADT_SWAP(a[0], a[4], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[1], a[5], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[2], a[6], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[3], a[7], 4, 0x0f0f0f0fUL);
+    adt_half(a, table);
+    adt_half(a + 4, table);
+    ADT_SWAP(a[0], a[4], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[1], a[5], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[2], a[6], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[3], a[7], 4, 0x0f0f0f0fUL);
+}
+
+/* BitMap rows are 16-bit aligned: a longword read or written whole (the
+ * 68000 needs only word alignment for one) */
+typedef odt_u32 __attribute__((aligned(2), may_alias)) adt_l2;
+
+/* n bytes (1 to 4) of a plane row as the top of a longword, and back with
+ * the bits keep has set left as they were */
+static inline odt_u32 adt_get_part(const odt_u8 *s, odt_u32 n)
+{
+    odt_u32 v = 0, i;
+    for (i = 0; i < 4; i++) v = v << 8 | (i < n ? s[i] : 0);
+    return v;
+}
+
+static inline void adt_put_part(odt_u8 *d, odt_u32 v, odt_u32 keep, odt_u32 n)
+{
+    odt_u32 i;
+    for (i = 0; i < n; i++) {
+        odt_u8 k = (odt_u8)(keep >> (24 - 8 * i));
+        d[i] = (odt_u8)((d[i] & k) | ((odt_u8)(v >> (24 - 8 * i)) & ~k));
+    }
 }
 
 void adt_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst)
 {
-    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth, nd = 0;
-    odt_u32 mask[2] = { 0, 0 }, any = 8, at[8];
+    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth, wl;
+    int ident, longs = !((odt_u32)src->BytesPerRow & 1) && !((odt_u32)dst->BytesPerRow & 1);
     if (w > (odt_u32)src->BytesPerRow * 8) w = (odt_u32)src->BytesPerRow * 8;
     if (w > (odt_u32)dst->BytesPerRow * 8) w = (odt_u32)dst->BytesPerRow * 8;
     if (h > src->Rows) h = src->Rows;
     if (h > dst->Rows) h = dst->Rows;
-    /* a missing source plane reads another plane's row and is masked off
-     * (none at all reads as 0); missing destination planes are skipped */
+    /* a missing source plane, or one past sd, reads as 0; missing
+     * destination planes are skipped, and those past 8 left alone */
     for (p = 0; p < sd; p++)
-        if (src->Planes[p]) {
-            if (any == 8) any = p;
-            mask[p >> 2] |= 0xffUL << (8 * (p & 3));
-        }
-    if (any == 8) sd = 0;
+        if (src->Planes[p]) longs &= !((odt_u32)src->Planes[p] & 1);
     for (p = 0; p < dd; p++)
-        if (dst->Planes[p]) at[nd++] = p;
+        if (dst->Planes[p]) longs &= !((odt_u32)dst->Planes[p] & 1);
+    /* the identity on every pixel the source can hold: the planes copied */
+    ident = adt_identity(table, sd);
+    wl = longs ? w & ~31UL : 0;
     for (y = 0; y < h; y++) {
         const odt_u8 *s[8];
         odt_u8 *d[8];
-        for (p = 0; p < sd; p++)
-            s[p] = (src->Planes[p] ? src->Planes[p] : src->Planes[any]) + y * src->BytesPerRow;
-        for (p = 0; p < nd; p++)
-            d[p] = dst->Planes[at[p]] + y * dst->BytesPerRow;
-        /* a byte of each plane at a time: its 8 pixels out of the planes,
-         * through the table and back into them */
-        for (x = 0; x < w; x += 8) {
-            odt_u32 byte = x >> 3, v[2] = { 0, 0 };
-            odt_u8 keep = (odt_u8)(w - x >= 8 ? 0 : 0xff >> (w - x)); /* bits past w stay as they are */
-            switch (sd) {
-            case 8: v[1] |= (odt_u32)s[7][byte] << 24; /* fall through */
-            case 7: v[1] |= (odt_u32)s[6][byte] << 16; /* fall through */
-            case 6: v[1] |= (odt_u32)s[5][byte] << 8;  /* fall through */
-            case 5: v[1] |= s[4][byte];                /* fall through */
-            case 4: v[0] |= (odt_u32)s[3][byte] << 24; /* fall through */
-            case 3: v[0] |= (odt_u32)s[2][byte] << 16; /* fall through */
-            case 2: v[0] |= (odt_u32)s[1][byte] << 8;  /* fall through */
-            case 1: v[0] |= s[0][byte];                /* fall through */
-            default: break;
+        for (p = 0; p < 8; p++) {
+            s[p] = p < sd && src->Planes[p] ? src->Planes[p] + y * src->BytesPerRow : 0;
+            d[p] = p < dd && dst->Planes[p] ? dst->Planes[p] + y * dst->BytesPerRow : 0;
+        }
+        if (ident) {
+            /* plane p of the source to plane p of the destination; 0 to
+             * those the source hasn't */
+            for (p = 0; p < 8; p++) {
+                const odt_u8 *q = s[p];
+                if (!d[p]) continue;
+                for (x = 0; x < wl; x += 32) *(adt_l2 *)(d[p] + (x >> 3)) = q ? *(const adt_l2 *)(q + (x >> 3)) : 0;
+                for (; x < w; x += 32) {
+                    odt_u32 n = (w - x + 7) >> 3, left = w - x;
+                    odt_u32 keep = left >= 32 ? 0 : 0xffffffffUL >> left;
+                    if (n > 4) n = 4;
+                    adt_put_part(d[p] + (x >> 3), q ? adt_get_part(q + (x >> 3), n) : 0, keep, n);
+                }
             }
-            v[0] &= mask[0];
-            v[1] &= mask[1];
-            adt_turn8(&v[1], &v[0]);    /* v[1]: pixels 0-3, v[0]: pixels 4-7 */
-            if (table) {
-                v[0] = adt_pens4(table, v[0]);
-                v[1] = adt_pens4(table, v[1]);
+            continue;
+        }
+        /* 32 pixels a turn: a longword of each plane out, through the
+         * table, back in; the row's end a byte at a time, with the bits
+         * past w left as they are */
+        for (x = 0; x < wl; x += 32) {
+            odt_u32 a[8], byte = x >> 3;
+            for (p = 0; p < 4; p++) {
+                odt_u32 lo = s[p] ? *(const adt_l2 *)(s[p] + byte) : 0;
+                odt_u32 hi = s[p + 4] ? *(const adt_l2 *)(s[p + 4] + byte) : 0;
+                ADT_SWAP(lo, hi, 4, 0x0f0f0f0fUL);
+                a[p] = lo;
+                a[p + 4] = hi;
             }
-            adt_turn8(&v[1], &v[0]);    /* v[0]: planes 3-0, v[1]: planes 7-4 */
-            for (p = 0; p < nd; p++) {
-                odt_u8 b = (odt_u8)(v[at[p] >> 2] >> (8 * (at[p] & 3)));
-                d[p][byte] = (odt_u8)((d[p][byte] & keep) | (b & ~keep));
+            adt_half(a, table);
+            adt_half(a + 4, table);
+            for (p = 0; p < 4; p++) {
+                odt_u32 lo = a[p], hi = a[p + 4];
+                ADT_SWAP(lo, hi, 4, 0x0f0f0f0fUL);
+                if (d[p]) *(adt_l2 *)(d[p] + byte) = lo;
+                if (d[p + 4]) *(adt_l2 *)(d[p + 4] + byte) = hi;
             }
         }
+        for (; x < w; x += 32) {
+            odt_u32 a[8], byte = x >> 3, left = w - x, n = left >= 32 ? 4 : (left + 7) >> 3;
+            odt_u32 keep = left >= 32 ? 0 : 0xffffffffUL >> left;
+            for (p = 0; p < 8; p++) a[p] = s[p] ? adt_get_part(s[p] + byte, n) : 0;
+            adt_remap32(a, table);
+            for (p = 0; p < 8; p++)
+                if (d[p]) adt_put_part(d[p] + byte, a[p], keep, n);
+        }
     }
+}
+
+int adt_identity(const odt_u8 *table, odt_u32 depth)
+{
+    odt_u32 i;
+    if (!table || depth > 8) return !table;
+    for (i = 0; i < (1UL << depth); i++)
+        if (table[i] != i) return 0;
+    return 1;
 }
 
 /* ---- the control panel ------------------------------------------------------------- */
@@ -302,6 +388,12 @@ static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct a
     obtain_pens(env, in);
     d = x->screen_depth ? x->screen_depth(env, in->screen) : 8;
     if (d > 8) d = 8;                   /* deeper screens: pens up to 255 */
+    /* every pen the colour it is in the frame (the film's own screen, or
+     * one with its colours), as deep as the screen: shown as it is */
+    if (f->Depth == d && adt_identity(in->color_table, d)) {
+        drop_remapped(env, s);
+        return;
+    }
     /* the slot's bitmap from an earlier frame is written over when a new
      * one would be the same (the size, the depth, every pixel remapped) */
     if (bm && (s->remapped_w != in->width || bm->Rows != in->height || bm->Depth != d || f->Rows < in->height ||

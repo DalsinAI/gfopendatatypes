@@ -280,7 +280,7 @@ def make_anim(rnd, spec):
     first = [chunk(b"BMHD", bmhd(w, h, depth, spec.get("masking", 0), spec.get("comp", 1)))]
     if spec.get("camg") is not None:
         first.append(chunk(b"CAMG", struct.pack(">I", spec["camg"])))
-    first.append(chunk(b"CMAP", bytes(rnd.getrandbits(8) for _ in range(3 * ncol))))
+    first.append(chunk(b"CMAP", spec["cmap"] if "cmap" in spec else bytes(rnd.getrandbits(8) for _ in range(3 * ncol))))
     if spec.get("dpan"):
         first.append(chunk(b"DPAN", struct.pack(">HHI", 4, spec["dpan"], 0)))
     first.append(chunk(b"BODY", body_bytes(frames[0], w, h, depth, spec.get("masking", 0), spec.get("comp", 1), rnd,
@@ -1335,13 +1335,19 @@ def expect_nclass(data, ops, truth):
         s = dict(frame=f, dur=duration(info, f), remapped=False)
         while len(kept) <= i:
             kept.append(False)
-        if can_remap():
+        if can_remap() and not (depth == 4 and table == list(range(16))):
             st["pens"] = True
             # the slot's bitmap from an earlier frame is drawn over, after a WaitBlit
             out.append("waitblit" if kept[i] else "allocbm %d %d 4" % (w, h))
             kept[i] = True
             s["remapped"] = True
-        elif kept[i]:
+        elif kept[i] or can_remap():
+            # every pen the colour it has in the frame, as deep as the
+            # screen: the frame is shown as it is
+            if can_remap():
+                st["pens"] = True
+            if not kept[i]:
+                return s
             out.append("freebm")
             kept[i] = False
         return s
@@ -1729,7 +1735,7 @@ def main():
         cmd("AREMAP %d %d %d %d %s %s" % (w, h, sd, dd, table.hex(), planes.hex()),
             [remap(w, h, sd, dd, table, planes)])
     # the remap against the one it replaced, on bitmaps the test makes
-    cmd("AREMAPCMP 2026 3000", ["aremapcmp 3000 cases, 0 differ from the old remap"])
+    cmd("AREMAPCMP 2026 6000", ["aremapcmp 6000 cases, 0 differ from the old remap"])
     for _ in range(10):
         l, t, w, h, ys, fr = (rnd.randint(0, 30), rnd.randint(0, 30), rnd.randint(0, 200), rnd.randint(0, 40),
                               rnd.choice([6, 8, 11]), rnd.randint(0, 40))
@@ -1763,6 +1769,10 @@ def main():
           "noremap", "locate1", "render", "nopanel", "render", "start0", "tick"]),
         (dict(op=7, w=16, h=5, depth=1, frames=3, camg=0x800, reltime=10),
          ["render", "preload9", "start1", "tick", "tick", "tick", "tick", "tick", "tick", "tick", "tick"]),
+        # every pen the colour's own number (the mock screen's pen for
+        # (r, g, b) is (3r + 5g + 7b) % 16): no remap, the frames as they are
+        (dict(op=5, w=32, h=6, depth=4, frames=4, reltime=6, cmap=bytes(v for i in range(16) for v in (0, 0, 7 * i % 16))),
+         ["layout", "render", "start0", "tick", "tick", "locate1", "render"]),
     ]
     for j, (sp, ops) in enumerate(runs):
         data, truth = make_anim(rnd, sp)

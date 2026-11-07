@@ -200,9 +200,15 @@ odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps
 /* ---- remapping ---------------------------------------------------------------- */
 
 /* Each pixel of src (w x h) through table into dst (planes as BitMaps
- * have them), eight pixels at a time; pixels past src's depth read as 0,
- * dst planes past 8 and dst's bits past w are left alone. */
+ * have them), 32 pixels at a time, a longword of each plane in and out
+ * (a byte at a time at a row's end, or where a BitMap isn't word
+ * aligned); pixels past src's depth read as 0, dst planes past 8 and
+ * dst's bits past w are left alone. No table, or one that is the identity
+ * on every pixel src can hold, copies the planes. */
 void adt_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst);
+
+/* Is table (NULL: none) the identity on 0 to 2^depth - 1? */
+int adt_identity(const odt_u8 *table, odt_u32 depth);
 
 /* ---- the control panel -------------------------------------------------------- */
 

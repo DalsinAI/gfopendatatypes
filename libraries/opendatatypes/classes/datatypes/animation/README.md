@@ -37,7 +37,8 @@ The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 | ADTM_STOP | Rewinds to frame 0 | measured |
 | Control panel | On unless OM_NEW's tags give DTA_ControlPanel (datatypesclass always answers it, FALSE) | ABI test |
 | Remap | ObtainBestPen per colour, planar to planar | measured |
-| Remapping a frame | A byte of each plane at a time (8 pixels); each cache slot keeps its remapped bitmap for the next frame loaded there, after a WaitBlit | ours |
+| Remapping a frame | 32 pixels a turn: a longword of each plane read, turned into pixels, through the pen table, turned back and written whole (a byte at a time only at a row's end, keeping the bits past the width); each cache slot keeps its remapped bitmap for the next frame loaded there, after a WaitBlit | ours |
+| Pens that are the frame's own colour numbers, frame as deep as the screen | Not remapped: the frame is shown as it is | ours |
 | A colour no pen could take | Shown as pen 0, not in ADTA_Allocated, never released | ours |
 | ADTA_Remap, ADTA_Screen or ADTA_NumColors changed | The pens released and the frame cache loaded again (remapped afresh) | ours |
 | DTA_TriggerMethods | Play, Pause, Stop, Rewind, Fast Forward (labels ours) | ABI test |
