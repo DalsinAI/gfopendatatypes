@@ -702,6 +702,22 @@ static void unfilter(UBYTE f, UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp)
     }
 }
 
+/* n pixels of 1, 2 or 4 bits (first pixel highest in its byte) to ARGB
+ * through a table: by shifts, a byte loaded once for all its pixels. */
+static void subbyte(const UBYTE *s, ULONG n, ULONG *d, ULONG step, ULONG depth, const ULONG *table)
+{
+    ULONG b = 0, max = (1UL << depth) - 1;
+    LONG sh = 0;
+    for (; n; n--, d += step) {
+        if (sh <= 0) {
+            b = *s++;
+            sh = 8;
+        }
+        sh -= (LONG)depth;
+        *d = table[(b >> sh) & max];
+    }
+}
+
 /* One row of n pixels to ARGB, each step words after the last. */
 static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d, ULONG step)
 {
@@ -709,11 +725,12 @@ static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d,
     switch (h->ctype) {
     case 0:
         if (depth < 8) {
-            ULONG per = 8 / depth, max = (1UL << depth) - 1, mul = 255 / max;
-            for (x = 0; x < n; x++, d += step) {
-                ULONG v = (s[x / per] >> ((per - 1 - x % per) * depth)) & max, g = v * mul;
-                *d = ((h->has_key && v == h->key[0]) ? 0 : 0xff000000UL) | (g << 16) | (g << 8) | g;
+            ULONG grey[16], max = (1UL << depth) - 1, mul = depth == 1 ? 255 : depth == 2 ? 85 : 17, v;
+            for (v = 0; v <= max; v++) {
+                ULONG g = v * mul;
+                grey[v] = ((h->has_key && v == h->key[0]) ? 0 : 0xff000000UL) | (g << 16) | (g << 8) | g;
             }
+            subbyte(s, n, d, step, depth, grey);
         } else if (depth == 8) {
             for (x = 0; x < n; x++, d += step) {
                 ULONG g = s[x];
@@ -727,11 +744,9 @@ static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d,
         }
         break;
     case 3:
-        if (depth < 8) {
-            ULONG per = 8 / depth, max = (1UL << depth) - 1;
-            for (x = 0; x < n; x++, d += step)
-                *d = h->palette[(s[x / per] >> ((per - 1 - x % per) * depth)) & max];
-        } else
+        if (depth < 8)
+            subbyte(s, n, d, step, depth, h->palette);
+        else
             for (x = 0; x < n; x++, d += step)
                 *d = h->palette[s[x]];
         break;
