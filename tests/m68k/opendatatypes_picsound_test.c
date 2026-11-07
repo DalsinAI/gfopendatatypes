@@ -11,7 +11,7 @@
  * line, and prints a log; test_opendatatypes_picsound.sh compares it with
  * the log python's own models expect. The words:
  *   ilbm FILE SCREEN REMAP DESTMODE SW SH KEEP   load, read, lay out, draw, write, reload
- *   pixw FILE                                    PDTM_WRITEPIXELARRAY then READPIXELARRAY
+ *   pixw FILE [LUT0 [L T W H]]                   PDTM_WRITEPIXELARRAY then READPIXELARRAY
  *   svx FILE PANEL                               load an 8SVX, play, draw, click, write, reload
  *   snd LEN STEREO CYCLES PAN TYPE               a sound made in memory, played
  */
@@ -377,9 +377,20 @@ static int x_play(const struct odt_cenv *e, void **player, const struct dtc_audi
 }
 static void x_stop(const struct odt_cenv *e, void **player) { (void)e; printf("stop%s\n", *player ? "" : " none"); *player = NULL; }
 
+/* memory the core asks for uncleared comes filled with junk, so a byte it
+ * reads before writing shows in the log */
+static void *x_alloc_any(const struct odt_cenv *e, odt_u32 n)
+{
+    odt_u8 *p = m_alloc(e, n);
+    odt_u32 i;
+    for (i = 0; i < n; i++) p[i] = (odt_u8)(0xa5 ^ (i * 29));
+    return p;
+}
+
 static const struct dtc_ext ext = {
     x_alloc_chip, x_alloc_bitmap, x_free_bitmap, x_write_lut8, x_write_argb, x_screen_depth, x_screen_cm,
     x_screen_bm, x_obtain, x_release, x_get_rgb, x_blit, x_fill, x_line, x_play, x_stop, 3546895UL,
+    x_alloc_any,
 };
 
 static struct odt_cenv env;
@@ -536,6 +547,8 @@ static void cmd_ilbm(char **a)
         print_px("argb", o, PIC_PBPAFMT_ARGB, w, ht);
         print_px("lut", o, PIC_PBPAFMT_LUT8, w, ht);
         print_px("grey", o, PIC_PBPAFMT_GREY8, w, ht);
+        print_px("rgb", o, PIC_PBPAFMT_RGB, w, ht);
+        print_px("rgba", o, PIC_PBPAFMT_RGBA, w, ht);
 
         t[0].ti_Tag = PIC_PDTA_Remap; t[0].ti_Data = (odt_u32)remap;
         t[1].ti_Tag = PIC_PDTA_DestMode; t[1].ti_Data = (odt_u32)destmode;
@@ -611,7 +624,10 @@ static void cmd_ilbm(char **a)
     free(data);
 }
 
-static void cmd_pixw(char **a)
+/* pixw FILE [LUT0 [L T W H]]: LUT0 1 makes it an index picture first (a
+ * LUT8 write of zeros), so RGB pixels take the nearest colour; L T W H the
+ * rectangle of the first write (else the whole picture) */
+static void cmd_pixw(char **a, int n)
 {
     odt_u32 len, i;
     odt_u8 *d = read_file(a[0], &len);
@@ -632,6 +648,12 @@ static void cmd_pixw(char **a)
     t[1].ti_Tag = ODT_TAG_DONE;
     set.MethodID = ODT_OM_SET; set.ops_AttrList = t; set.ops_GInfo = NULL;
     m_do_method(&env, o, &set);
+    if (n > 1 && atoi(a[1])) {
+        odt_u8 *z = calloc(1, w * h);
+        struct pic_pdtBlitPixelArray mz = { PIC_PDTM_WRITEPIXELARRAY, z, PIC_PBPAFMT_LUT8, w, 0, 0, w, h };
+        printf("lut0 %lu\n", (unsigned long)m_do_method(&env, o, &mz));
+        free(z);
+    }
     m.MethodID = PIC_PDTM_WRITEPIXELARRAY;
     m.pbpa_PixelData = d + 8 + ncol * 3;
     m.pbpa_PixelFormat = fmt;
@@ -639,6 +661,12 @@ static void cmd_pixw(char **a)
     m.pbpa_Left = m.pbpa_Top = 0;
     m.pbpa_Width = w;
     m.pbpa_Height = h;
+    if (n > 5) {
+        m.pbpa_Left = (odt_u32)atoi(a[2]);
+        m.pbpa_Top = (odt_u32)atoi(a[3]);
+        m.pbpa_Width = (odt_u32)atoi(a[4]);
+        m.pbpa_Height = (odt_u32)atoi(a[5]);
+    }
     printf("write %lu\n", (unsigned long)m_do_method(&env, o, &m));
     for (i = 0; i <= PIC_PBPAFMT_GREY8; i++) {
         char tag[8];
@@ -877,7 +905,7 @@ int main(int argc, char **argv)
         for (int i = 0; i < n; i++) printf(" %s", a[i]);
         printf("\n");
         if (!strcmp(a[0], "ilbm")) cmd_ilbm(a + 1);
-        else if (!strcmp(a[0], "pixw")) cmd_pixw(a + 1);
+        else if (!strcmp(a[0], "pixw")) cmd_pixw(a + 1, n - 1);
         else if (!strcmp(a[0], "svx")) cmd_svx(a + 1);
         else if (!strcmp(a[0], "snd")) cmd_snd(a + 1);
         else if (!strcmp(a[0], "sndvh")) cmd_sndvh(a + 1);

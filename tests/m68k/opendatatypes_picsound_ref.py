@@ -312,6 +312,8 @@ def expect_ilbm(name, data, sdepth, remap, destmode, sw, sh, keep):
     else:
         out += ["lut " + hx(row) for row in m["lut"]]
     out += ["grey " + hx((px[1] * 77 + px[2] * 151 + px[3] * 28) >> 8 for px in row) for row in argb]
+    out += ["rgb " + hx(b for px in row for b in px[1:]) for row in argb]
+    out += ["rgba " + hx(b for px in row for b in px[1:] + px[:1]) for row in argb]
     if sw:
         out.append("scale 1")
         if keep:
@@ -400,38 +402,62 @@ def expect_ilbm(name, data, sdepth, remap, destmode, sw, sh, keep):
 
 # ---- PDTM_WRITEPIXELARRAY and READPIXELARRAY ---------------------------------------------
 
-def pixw_case(rng, w, h, depth, ncol, fmt):
+def pixw_case(rng, w, h, depth, ncol, fmt, runs=False, lut0=False, rect=None):
+    """The file for one pixw line and what the picture holds after its
+    first write: lut0 makes it an index picture first (zeros), rect is that
+    write's rectangle (else the whole picture); runs repeats pixels and
+    uses the palette's own colours, as a picture does."""
     pal = [(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(ncol)]
     bpp = 3 if fmt == 0 else 4 if fmt <= 2 else 1
-    data = bytes(rng.randrange(256) if fmt != 3 else rng.randrange(max(ncol, 1) + 2) for _ in range(w * h * bpp))
+    if runs:
+        buf = bytearray()
+        for i in range(w * h):
+            if i and rng.randrange(4):
+                buf += buf[-bpp:]
+                continue
+            px = bytearray(rng.randrange(256) for _ in range(bpp))
+            if ncol and fmt <= 2 and rng.randrange(2):
+                k = 1 if fmt == 2 else 0
+                px[k:k + 3] = bytes(pal[rng.randrange(ncol)])
+            buf += px
+        data = bytes(buf)
+    else:
+        data = bytes(rng.randrange(256) if fmt != 3 else rng.randrange(max(ncol, 1) + 2) for _ in range(w * h * bpp))
     blob = struct.pack(">HHBHB", w, h, depth, ncol, fmt) + bytes(c for rgb in pal for c in rgb) + data
     palf = pal + [(0, 0, 0)] * (256 - ncol)
-    store_lut = fmt in (3, 4) and depth <= 8
-    pix = []
-    for i in range(w * h):
-        s = data[i * bpp:(i + 1) * bpp]
-        if fmt == 0:
-            a, r, g, b = 0xff, s[0], s[1], s[2]
-        elif fmt == 1:
-            a, r, g, b = s[3], s[0], s[1], s[2]
-        elif fmt == 2:
-            a, r, g, b = s
-        elif fmt == 4:
-            a, r, g, b = 0xff, s[0], s[0], s[0]
-        else:
-            a, (r, g, b) = 0xff, palf[s[0]]
-        if not store_lut:
-            pix.append((a, r, g, b))
-        elif fmt in (3, 4):
-            pix.append(s[0])
-        else:
-            n = ncol or 1
-            pix.append(min(range(n), key=lambda k: (sum((x - y) ** 2 for x, y in zip(palf[k], (r, g, b))), k)))
+    store_lut = (fmt in (3, 4) or lut0) and depth <= 8
+    pix = [0 if store_lut else (0, 0, 0, 0)] * (w * h)
+    rl, rt, rw, rh = rect if rect else (0, 0, w, h)
+    for y in range(min(rh, h - rt)):
+        for x in range(min(rw, w - rl)):
+            o = (y * w + x) * bpp
+            s = data[o:o + bpp]
+            if fmt == 0:
+                a, r, g, b = 0xff, s[0], s[1], s[2]
+            elif fmt == 1:
+                a, r, g, b = s[3], s[0], s[1], s[2]
+            elif fmt == 2:
+                a, r, g, b = s
+            elif fmt == 4:
+                a, r, g, b = 0xff, s[0], s[0], s[0]
+            else:
+                a, (r, g, b) = 0xff, palf[s[0]]
+            i = (rt + y) * w + rl + x
+            if not store_lut:
+                pix[i] = (a, r, g, b)
+            elif fmt in (3, 4):
+                pix[i] = s[0]
+            else:
+                n = ncol or 1
+                pix[i] = min(range(n), key=lambda k: (sum((u - v) ** 2 for u, v in zip(palf[k], (r, g, b))), k))
     return blob, pal, store_lut, pix
 
 
-def expect_pixw(name, w, h, pal, store_lut, pix):
-    out = ["== pixw " + name, "write 1"]
+def expect_pixw(name, w, h, pal, store_lut, pix, args=""):
+    out = ["== pixw " + name + args]
+    if args.split() and args.split()[0] == "1":
+        out.append("lut0 1")
+    out.append("write 1")
     palf = list(pal) + [(0, 0, 0)] * (256 - len(pal))
 
     def argb(i):
@@ -783,6 +809,25 @@ def main():
             f.write(blob)
         script.append("pixw " + name)
         expected += expect_pixw(name, w, h, p, store_lut, pix)
+
+    # (w, h, depth, ncol, fmt, runs, lut0, rect): RGB into an index picture
+    # (the nearest colour), each conversion into a true colour one, odd
+    # widths, and first writes of part of the picture (the rest stays 0)
+    for i, (w, h, depth, ncol, fmt, runs, lut0, rect) in enumerate([
+            (13, 7, 8, 256, 0, True, True, None), (11, 5, 6, 40, 2, True, True, None),
+            (9, 4, 8, 16, 1, False, True, None), (16, 4, 8, 0, 0, True, True, None),
+            (12, 5, 4, 16, 0, True, True, (3, 1, 6, 3)),
+            (37, 9, 24, 200, 3, False, False, None), (19, 3, 24, 0, 1, False, False, None),
+            (17, 4, 24, 0, 4, False, False, None), (33, 5, 24, 0, 2, False, False, None),
+            (31, 3, 8, 64, 3, True, False, None), (21, 6, 24, 0, 0, False, False, (3, 1, 10, 4)),
+            (21, 6, 8, 32, 3, False, False, (2, 2, 30, 9)), (20, 5, 24, 0, 0, False, False, (0, 0, 50, 50))]):
+        blob, p, store_lut, pix = pixw_case(rng, w, h, depth, ncol, fmt, runs, lut0, rect)
+        name = "q%02d.px" % i
+        with open(os.path.join(outdir, name), "wb") as f:
+            f.write(blob)
+        args = " %d %d %d %d %d" % ((1 if lut0 else 0,) + (rect or (0, 0, w, h)))
+        script.append("pixw " + name + args)
+        expected += expect_pixw(name, w, h, p, store_lut, pix, args)
 
     svx_cases = [
         ({"n": 50}, 0), ({"n": 51, "rate": 22050, "vol": 0x8000, "name": "beep"}, 1),
