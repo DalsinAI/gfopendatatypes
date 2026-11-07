@@ -557,6 +557,16 @@ def plan_lines(chans, length, period, volume, cycles, panset, pan, sigmask):
             out.append("seg r=%d v=%d p=%d c=%d len=%d sum=%08x" % (1 << ch if st else role, min(volume, 64),
                                                                      min(period, 65535),
                                                                      cycles if nchunks == 1 else 1, ln, s))
+    # the player's run on the simulated audio.device: every request in
+    # order and no gap; a plan for ever stopped after 2 * segments + 1, a
+    # request for ever (one segment, cycles 0) at its first wait
+    nseg = nchunks * len(bufs)
+    if nchunks == 1 and cycles == 0:
+        out.append("audio stop n=0")
+    elif nchunks > 1 and cycles == 0:
+        out.append("audio stop n=%d" % (2 * nseg + 1))
+    else:
+        out.append("audio end n=%d" % (nseg * (1 if nchunks == 1 else cycles)))
     return out
 
 
@@ -708,6 +718,27 @@ def expect_snd(length, stereo, cycles, pan, typ):
     return out
 
 
+def expect_sndre(length, typ):
+    # the chip copy kept between plays and the waveform between drawings;
+    # SDTA_Sample set again after its samples changed: both made afresh
+    out = ["== sndre %d %d" % (length, typ)]
+    inter = typ in (1, 3)
+    chans = [bytes((s * 37 + ch * 11) & 0xff for s in range(length)) for ch in range(2 if inter else 1)]
+    sps = 22050
+    period = (CLOCK + sps // 2) // sps
+    snd = {"len": length, "chans": chans}
+    out += render_lines(snd, 0, 0) * 2
+    plan = plan_lines(chans, length, period, 64, 1, False, -1, 0)
+    out += plan + ["trig 1", "stop"] + plan + ["trig 1", "chip %d" % len(chans)]
+    # every byte of the buffer changed (16-bit samples: their high bytes too)
+    chans = [bytes(b ^ 0x5a for b in c) for c in chans]
+    snd = {"len": length, "chans": chans}
+    out += render_lines(snd, 0, 0)
+    plan = plan_lines(chans, length, period, 64, 1, False, -1, 0)
+    out += ["stop"] + plan + ["trig 1", "chip %d" % (2 * len(chans)), "stop", "live 0"]
+    return out
+
+
 def expect_sndvh(length):
     # SDTA_VoiceHeader: copied, its rate and volume taken; SDTA_SampleLength 0 stops replay
     out = ["== sndvh %d" % length, "vh %d 11025 32768" % length]
@@ -807,6 +838,10 @@ def main():
 
     script.append("sndvh 900")
     expected += expect_sndvh(900)
+
+    for args in [(700, 0), (701, 1), (300, 2), (300, 3), (300000, 0)]:
+        script.append("sndre %d %d" % args)
+        expected += expect_sndre(*args)
 
     with open(os.path.join(outdir, "script.txt"), "w") as f:
         f.write("\n".join(script) + "\n")
