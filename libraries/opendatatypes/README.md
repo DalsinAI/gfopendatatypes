@@ -126,7 +126,7 @@ or open ("ABI test": `DatatypesABITest OBJ` has the PROBE line).
 | GetDTAttrsA's answer | how many tags the object knew; NULL object 0 | ABI test |
 | DTA_Methods of a class with none of its own | datatypesclass's list | ABI test |
 | DTM_FRAMEBOX default | FRAMEF_SPECIFY keeps the frame; else the contents' frame, else the kept one; 1 | ABI test |
-| DTM_WRITE DTWM_RAW default | the source's bytes (a file, the file under an IFF type's handle, or memory), the file's position put back; otherwise 0, ERROR_NOT_IMPLEMENTED | ABI test |
+| DTM_WRITE DTWM_RAW default | the source's bytes (a file, the file under an IFF type's handle, or memory), the file's position put back; a file over 256 bytes is copied 32 KB a packet (16 KB, then 256 bytes, when memory is short); otherwise 0, ERROR_NOT_IMPLEMENTED | ABI test |
 | SaveDTObjectA that fails | the file deleted, IoErr kept (else DTERROR_COULDNT_SAVE) | ABI test |
 | SaveDTObjectA's icon | ENV:Sys/def_project, else icon.library's default project | ABI test |
 | DTM_PROCLAYOUT default | GM_LAYOUT's part only | ABI test |
