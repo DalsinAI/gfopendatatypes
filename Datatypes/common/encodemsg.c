@@ -80,8 +80,15 @@ me_u32 me_pick_format(int kind, me_u32 asked, me_u32 own, me_u32 hint, int sourc
     return 0;
 }
 
+int me_hand_up(int kind, me_u32 asked)
+{
+    return kind == ME_KIND_FILM && asked && me_format_kind(asked) != ME_KIND_FILM;
+}
+
 me_u32 me_quality(long tag)
 {
+    if (tag == 0)
+        return 1;                              /* the smallest file */
     return tag >= 1 && tag <= 100 ? (me_u32)tag : 0;
 }
 

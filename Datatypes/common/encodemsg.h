@@ -86,7 +86,15 @@ int me_offered(const unsigned char *list, me_u32 count, me_u32 format);
  * an AVIF, say, which media.encode/1 does not write. */
 me_u32 me_pick_format(int kind, me_u32 asked, me_u32 own, me_u32 hint, int source);
 
-/* OIA_Quality's value as the service takes it: 1 to 100, else 0 (the default). */
+/* Does a film's DTM_WRITE go up to animation.datatype? When a format is
+ * asked for that is not one the service writes for films ('MP4 ', which
+ * animation.datatype writes on the 68k, or one it refuses itself). Pictures
+ * and sounds never: their superclasses write no other formats, so those
+ * fail with ERROR_NOT_IMPLEMENTED. */
+int me_hand_up(int kind, me_u32 asked);
+
+/* OIA_Quality's value as the service takes it: tag 0 (the smallest) to 100
+ * (the best) as 1 to 100; -1 or anything else 0, the default. */
 me_u32 me_quality(long tag);
 
 /* A sound.datatype object's samples (SDTA_Sample or SDTA_LeftSample,

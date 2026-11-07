@@ -86,11 +86,23 @@ static void choices(void)
     CHECK(me_pick_format(ME_KIND_FILM, 0, 0, 0, 0) == ME_FORMAT_HEVC);
     CHECK(me_pick_format(ME_KIND_SOUND, 0, ME_FORMAT_HEVC, 0, 1) == 0);   /* another kind's */
 
-    CHECK(me_quality(-1) == 0 && me_quality(0) == 0 && me_quality(1) == 1 && me_quality(100) == 100);
+    /* a film asked for a format the service doesn't write goes up to animation.datatype ('MP4 ');
+     * pictures and sounds never go up */
+    CHECK(me_hand_up(ME_KIND_FILM, 0x4d503420u) && me_hand_up(ME_KIND_FILM, AVIF));
+    CHECK(me_hand_up(ME_KIND_FILM, ME_FORMAT_HEIC) && me_hand_up(ME_KIND_FILM, ME_FORMAT_M4A));
+    CHECK(!me_hand_up(ME_KIND_FILM, 0) && !me_hand_up(ME_KIND_FILM, ME_FORMAT_HEVC));
+    CHECK(!me_hand_up(ME_KIND_FILM, ME_FORMAT_WMV));
+    CHECK(!me_hand_up(ME_KIND_PICTURE, 0x4d503420u) && !me_hand_up(ME_KIND_SOUND, 0x4d503420u));
+    CHECK(!me_hand_up(ME_KIND_PICTURE, ME_FORMAT_HEVC) && !me_hand_up(ME_KIND_SOUND, 0));
+    CHECK(me_pick_format(ME_KIND_PICTURE, 0x4d503420u, ME_FORMAT_HEIC, 0, 1) == 0);   /* refused: not of the kind */
+    CHECK(me_pick_format(ME_KIND_SOUND, 0x4d503420u, ME_FORMAT_AAC, 0, 1) == 0);
+
+    CHECK(me_quality(-1) == 0 && me_quality(0) == 1 && me_quality(1) == 1 && me_quality(100) == 100);
     CHECK(me_quality(101) == 0 && me_quality(-50) == 0);
     CHECK(me_strip_rows(320, 4, 240, 64 * 1024) == 51 && me_strip_rows(100000, 4, 10, 1024) == 1);
     CHECK(me_strip_rows(16, 4, 10, 1 << 20) == 10 && me_strip_rows(0, 4, 7, 100) == 7);
-    printf("the file to write: asked, own, none; offered lists; quality; strips\n");
+    printf("the file to write: asked, own, none; films hand 'MP4 ' up, pictures and sounds refuse it; "
+           "offered lists; quality; strips\n");
 }
 
 /* Sample frame i, channel c of a test sound: distinct, signed, both bytes used. */

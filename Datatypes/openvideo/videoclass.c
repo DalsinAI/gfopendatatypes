@@ -23,9 +23,11 @@
  * as the object plays it (8-bit mono, 22050 Hz), and goes to the encoder;
  * the service's FFmpeg makes the file and it comes back. The Team's ruling
  * (6 November 2026): HEVC and WMV are written by the service's FFmpeg,
- * never by code in the pack. OIA_WriteFormat ('HEVC', 'WMV ') and
- * OIA_Quality in dtw_AttrList choose (include/datatypes/gfopenimage.h); a
- * stream from a URL can't be written. IFF mode is animation.datatype's ANIM.
+ * never by code in the pack. OIA_WriteFormat ('HEVC', 'WMV '), OIA_Quality
+ * and OIA_WriteSound in dtw_AttrList choose (include/datatypes/gfopenimage.h);
+ * any other format asked for ('MP4 ', which animation.datatype writes on
+ * the 68k) goes up to the superclass. A stream from a URL can't be written
+ * here. IFF mode is animation.datatype's ANIM.
  *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
@@ -607,7 +609,7 @@ static LONG writeFilm(Class *cl, Object *o, struct dtWrite *w)
     s.pixels = ME_PIX_RGB;
     s.fps1000 = d->fps1000;
     s.quality = me_quality((LONG)GetTagData(OIA_Quality, (ULONG)-1, w->dtw_AttrList));
-    if (d->flags & MD_FLAG_SOUND) {
+    if ((d->flags & MD_FLAG_SOUND) && GetTagData(OIA_WriteSound, TRUE, w->dtw_AttrList)) {
         s.rate = SOUND_RATE;
         s.channels = 1;
         s.samples = ME_SAMPLE_S8;
@@ -678,6 +680,8 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         LONG err;
         if (w->dtw_Mode != DTWM_RAW)
             return DoSuperMethodA(cl, o, msg);   /* IFF: animation.datatype's ANIM */
+        if (me_hand_up(ME_KIND_FILM, GetTagData(OIA_WriteFormat, 0, w->dtw_AttrList)))
+            return DoSuperMethodA(cl, o, msg);   /* 'MP4 ' and others: animation.datatype's own writers */
         if ((err = writeFilm(cl, o, w))) {
             SetIoErr(err);
             return FALSE;
