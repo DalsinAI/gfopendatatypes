@@ -17,7 +17,7 @@ command -v "$qemu" >/dev/null || { echo "skipped: no $qemu"; exit 0; }
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 fail=0
 for opt in -O0 -O2; do
-    for c in animation/animation_core anim/anim_core; do
+    for c in animation/animation_core animation/mp4_core animation/mp4_h264 anim/anim_core; do
         "$cc" -std=gnu99 $opt -m68040 -fno-lto -fno-builtin -fno-tree-loop-distribute-patterns \
             -fno-delete-null-pointer-checks -Wall -Wextra -Werror -c "$cls/$c.c" -o "$tmp/$(basename "$c").o"
     done
@@ -34,7 +34,8 @@ for l in sys.stdin:
 print(n)')
     [ "$wide" = 0 ] || { echo "FAIL $opt: $wide 64-bit multiplies or divides in animation_core.o (the 68060 traps them)"; fail=1; }
     "$cc" -std=gnu99 $opt -m68040 -static -Wall -Wextra -Werror -Wno-format -I"$cls" \
-        "$here/opendatatypes_animwrite_test.c" "$tmp/animation_core.o" "$tmp/anim_core.o" -o "$tmp/t"
+        "$here/opendatatypes_animwrite_test.c" "$tmp/animation_core.o" "$tmp/mp4_core.o" "$tmp/mp4_h264.o" \
+        "$tmp/anim_core.o" -o "$tmp/t"
     rm -rf "$tmp/files"; mkdir "$tmp/files"
     if timeout 300 "$qemu" -cpu m68040 "$tmp/t" "$tmp/files" > "$tmp/out.txt"; then
         echo "$opt: $(tail -1 "$tmp/out.txt")"

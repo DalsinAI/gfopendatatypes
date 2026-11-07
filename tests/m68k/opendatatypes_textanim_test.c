@@ -305,7 +305,8 @@ static void a_wait_blit(const struct odt_cenv *env) { (void)env; printf("waitbli
 
 static const struct adt_ext anim_ext = {
     a_alloc_bitmap, a_free_bitmap, a_obtain_pen, a_release_pen, a_screen_depth, a_blit, t_fill, a_bevel, a_glyph,
-    t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit
+    t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit,
+    0, 0                                /* cmap_rgb, call_on_stack: MP4 writing (test_opendatatypes_mp4write.sh) */
 };
 
 static struct odt_cenv env_text, env_anim;

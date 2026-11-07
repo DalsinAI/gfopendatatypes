@@ -40,6 +40,7 @@ host = [
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh",
+  "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh",
 ]
 # T3: AmigaDOS scripts on a real boot of the open ROM, T2's outputs in SYS:Test/
 lab = ["tests/lab/smoke.script"]
