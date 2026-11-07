@@ -202,12 +202,19 @@ static void e_release_rp(const struct odt_cenv *env, void *rp) { (void)env; (voi
 
 #define FONT ((void *)0x7000)
 static odt_s32 cw(odt_u8 c, odt_u32 style) { return 4 + c % 5 + ((style & TDT_FSF_BOLD) ? 1 : 0); }
+/* TMEASURE k: italic text measures k pixels more than its characters
+ * (a font whose widths don't add up: the layout must measure as before) */
+static odt_s32 italic_extra;
+static long len_calls, len_chars;           /* TCOUNT: the measuring the layout did */
 static odt_s32 mock_len(const struct tdt_measure *m, odt_u32 style, const char *s, odt_u32 n)
 {
     odt_s32 w = 0;
     odt_u32 i;
     (void)m;
+    len_calls++;
+    len_chars += n;
     for (i = 0; i < n; i++) w += cw((odt_u8)s[i], style);
+    if (n && (style & TDT_FSF_ITALIC)) w += italic_extra;
     return w;
 }
 static void *t_open_font(const struct odt_cenv *env, const void *ta) { (void)env; printf("openfont %s\n", *(const char *const *)ta); return FONT; }
@@ -234,8 +241,33 @@ static odt_s32 t_pen(const struct odt_cenv *env, struct odt_GadgetInfo *gi, odt_
 static int t_double(const struct odt_cenv *env, odt_u32 s1, odt_u32 m1, odt_u32 s2, odt_u32 m2)
 { (void)env; return (s2 - s1) * 1000000 + m2 - m1 < 500000; }
 
+/* the measuring RastPort a layout opens: given back once, and only its
+ * own measuring goes through it */
+static int measure_rps;
+static char measure_rp_obj[4];
+static void *t_measure_open(const struct odt_cenv *env, void *f)
+{
+    (void)env;
+    if (f != FONT || measure_rps) printf("FAIL measure_open\n");
+    measure_rps++;
+    return measure_rp_obj;
+}
+static odt_s32 t_measure_len(const struct odt_cenv *env, void *rp, odt_u32 style, const char *s, odt_u32 n)
+{
+    (void)env;
+    if (rp != measure_rp_obj || !measure_rps) printf("FAIL measure_len\n");
+    return mock_len(0, style, s, n);
+}
+static void t_measure_close(const struct odt_cenv *env, void *rp)
+{
+    (void)env;
+    if (rp != measure_rp_obj || measure_rps != 1) printf("FAIL measure_close\n");
+    measure_rps--;
+}
+
 static const struct tdt_ext text_ext = {
-    t_open_font, t_close_font, t_default_font, t_font_size, t_text_length, t_text, t_fill, t_clip, t_unclip, t_pen, t_double
+    t_open_font, t_close_font, t_default_font, t_font_size, t_text_length, t_text, t_fill, t_clip, t_unclip, t_pen, t_double,
+    t_measure_open, t_measure_len, t_measure_close
 };
 
 /* ---- the animation family's services --------------------------------------------- */
@@ -628,7 +660,8 @@ static void run_animback(char *args)
     else if (!bad) printf("animback %lu ok\n", (unsigned long)n);
 }
 
-/* text pure: TLAY wrap hex | TSEL x0 y0 x1 y1 | TCOPY all | TWORD x y | TRENDER l t w h row px */
+/* text pure: TLAY wrap hex | TSEL x0 y0 x1 y1 | TCOPY all | TWORD x y | TRENDER l t w h row px |
+ * TMEASURE italic_extra */
 static void run_text(const char *cmd, char *args)
 {
     if (!strcmp(cmd, "TLAY")) {
@@ -669,6 +702,8 @@ static void run_text(const char *cmd, char *args)
         printf("tword %lu ", (unsigned long)n);
         hex(w, n);
         printf("\n");
+    } else if (!strcmp(cmd, "TMEASURE")) {
+        italic_extra = atoi(args);
     } else if (!strcmp(cmd, "TRENDER")) {
         long l, t, w, h, row, px;
         struct tdt_pens pens = { 1, 0, 3, 2 };

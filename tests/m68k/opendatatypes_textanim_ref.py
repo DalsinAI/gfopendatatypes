@@ -735,8 +735,12 @@ def cw(c, style):
     return 4 + c % 5 + (1 if style & BOLD else 0)
 
 
+ITALIC = 4
+ITALIC_EXTRA = [0]     # TMEASURE: italic text k pixels wider than its characters
+
+
 def tlen(style, s):
-    return sum(cw(c, style) for c in s)
+    return sum(cw(c, style) for c in s) + (ITALIC_EXTRA[0] if s and style & ITALIC else 0)
 
 
 class Seg:
@@ -1681,27 +1685,49 @@ def main():
     for _ in range(6):
         alphabet = b"abcdefghij     \t\n\x1b[1;3m"
         texts.append(bytes(rnd.choice(alphabet) for _ in range(rnd.randint(1, 160))))
-    for t in texts:
+    # long ones: rows deep in them for the row index (selecting, words,
+    # drawing from row N); then measured by a font whose italic widths
+    # don't add up (TMEASURE), which the layout must measure as before
+    big = []
+    for n in (1500, 4000):
+        words = []
+        while sum(len(w) + 1 for w in words) < n:
+            w = bytes(rnd.choice(b"abcdefghijklmnop") for _ in range(rnd.randint(1, 14)))
+            words.append(w + rnd.choice([b" ", b" ", b" ", b"\t", b"\n", b"  ", b"\x1b[3m", b"\x1b[0m ", b"\x1b[1m "]))
+        big.append(b"".join(words))
+    texts += big
+    runs = [(t, 0) for t in texts] + [(t, 3) for t in texts[4:12] + big]
+    for t, extra in runs:
+        if extra != ITALIC_EXTRA[0]:
+            ITALIC_EXTRA[0] = extra
+            cmd("TMEASURE %d" % extra, [])
+        deep = len(t) > 1000
         for wrap in (0, 37, 90):
             lay = layout(t, wrap)
             cmd("TLAY %d %s" % (wrap, t.hex()), ["tlay r 0"] + dump_layout(lay))
             ys = lay["rows"] * YS + 5
-            for _ in range(2):
+            for _ in range(4 if deep else 2):
                 x0, y0 = rnd.randint(-3, 120), rnd.randint(-3, ys)
                 x1, y1 = rnd.randint(-3, 120), rnd.randint(-3, ys)
+                if deep and rnd.random() < 0.5:
+                    y1 = min(ys, y0 + rnd.randint(0, 3 * YS))
                 clear_selected(lay)
                 n = select(lay, x0, y0, x1, y1)
                 cmd("TSEL %d %d %d %d" % (x0, y0, x1, y1), ["tsel %d" % n] + dump_layout(lay))
                 for all_ in (0, 1):
                     c = copy_text(lay, all_)
                     cmd("TCOPY %d" % all_, ["tcopy " + c.hex(), "ftxt " + chunk_form_ftxt(c).hex()])
-            for _ in range(3):
+            for _ in range(8 if deep else 3):
                 x, y = rnd.randint(-2, 100), rnd.randint(-2, ys)
                 wd = word_at(lay, x, y)
                 cmd("TWORD %d %d" % (x, y), ["tword %d %s" % (len(wd), wd.hex())])
-            args = (rnd.randint(0, 20), rnd.randint(0, 20), rnd.randint(1, 120), rnd.randint(1, 50),
-                    rnd.randint(0, 2), rnd.randint(0, 30))
-            cmd("TRENDER %d %d %d %d %d %d" % args, render(lay, *args) + ["trender done"])
+            for _ in range(4 if deep else 1):
+                args = (rnd.randint(0, 20), rnd.randint(0, 20), rnd.randint(1, 120), rnd.randint(1, 50),
+                        rnd.randint(0, lay["rows"] + 2) if deep else rnd.randint(0, 2), rnd.randint(0, 30))
+                cmd("TRENDER %d %d %d %d %d %d" % args, render(lay, *args) + ["trender done"])
+    if ITALIC_EXTRA[0]:
+        ITALIC_EXTRA[0] = 0
+        cmd("TMEASURE 0", [])
 
     # ---- animation, pure ----
     for _ in range(25):
