@@ -607,6 +607,12 @@ static void cmd_ilbm(char **a)
             if (!m_do_method(&env, o, &wm)) {
                 printf("write fail %ld\n", ioerr);
             } else {
+                /* the BODY as written, every byte */
+                odt_u32 at = 12;
+                while (at + 8 <= wlen && be32(wbuf + at) != ODT_ID('B', 'O', 'D', 'Y'))
+                    at += 8 + ((be32(wbuf + at + 4) + 1) & ~1UL);
+                if (at + 8 <= wlen) hexrow("body", wbuf + at + 8, be32(wbuf + at + 4));
+                else printf("body none\n");
                 memset(&h2, 0, sizeof h2);
                 h2.data = wbuf;
                 h2.len = wlen;

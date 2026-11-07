@@ -957,9 +957,73 @@ extern "C" odt_u32 pic_byterun1_pack(const odt_u8 *in, odt_u32 n, odt_u8 *out)
     return o;
 }
 
+namespace {
+/* Eight pixels at a time: their bytes are an 8 x 8 matrix of bits, and
+ * turned over (odt_turn8) its rows are the eight planes' bytes. STEP is
+ * known at build time for the two callers, so the eight loads are fixed
+ * offsets. */
+template <u32 STEP> inline void planes8(const u8 *px, u32 n, u8 *out, u32 rb)
+{
+    u32 full = n >> 3, b = 0;
+    for (; b < full; b++, px += 8 * STEP) {
+        unsigned int hi = static_cast<unsigned int>(px[0]) << 24 | static_cast<unsigned int>(px[STEP]) << 16 |
+                          static_cast<unsigned int>(px[2 * STEP]) << 8 | px[3 * STEP];
+        unsigned int lo = static_cast<unsigned int>(px[4 * STEP]) << 24 |
+                          static_cast<unsigned int>(px[5 * STEP]) << 16 |
+                          static_cast<unsigned int>(px[6 * STEP]) << 8 | px[7 * STEP];
+        odt_turn8(&hi, &lo);            /* row j: bit 7 - j of the 8 pixels */
+        u8 *o = out + b;
+        o[7 * rb] = static_cast<u8>(hi >> 24);
+        o[6 * rb] = static_cast<u8>(hi >> 16);
+        o[5 * rb] = static_cast<u8>(hi >> 8);
+        o[4 * rb] = static_cast<u8>(hi);
+        o[3 * rb] = static_cast<u8>(lo >> 24);
+        o[2 * rb] = static_cast<u8>(lo >> 16);
+        o[rb] = static_cast<u8>(lo >> 8);
+        o[0] = static_cast<u8>(lo);
+    }
+    if (n & 7) {
+        /* the last pixels, the rest of their byte 0 */
+        unsigned int v[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        for (u32 i = 0; i < (n & 7); i++)
+            v[i] = px[i * STEP];
+        unsigned int hi = v[0] << 24 | v[1] << 16 | v[2] << 8 | v[3], lo = v[4] << 24 | v[5] << 16 | v[6] << 8 | v[7];
+        odt_turn8(&hi, &lo);
+        u8 *o = out + b++;
+        o[7 * rb] = static_cast<u8>(hi >> 24);
+        o[6 * rb] = static_cast<u8>(hi >> 16);
+        o[5 * rb] = static_cast<u8>(hi >> 8);
+        o[4 * rb] = static_cast<u8>(hi);
+        o[3 * rb] = static_cast<u8>(lo >> 24);
+        o[2 * rb] = static_cast<u8>(lo >> 16);
+        o[rb] = static_cast<u8>(lo >> 8);
+        o[0] = static_cast<u8>(lo);
+    }
+    for (; b < rb; b++)                 /* a row's even length */
+        for (u32 d = 0; d < 8; d++)
+            out[d * rb + b] = 0;
+}
+} // namespace
+
+extern "C" void pic_planes8(const odt_u8 *px, odt_u32 step, odt_u32 n, odt_u8 *out, odt_u32 rb)
+{
+    if (step == 1)
+        planes8<1>(px, n, out, rb);
+    else if (step == 4)
+        planes8<4>(px, n, out, rb);
+    else
+        for (u32 d = 0; d < 8; d++)     /* any other step: a bit at a time */
+            for (u32 x = 0; x < rb * 8; x++) {
+                u8 *o = out + d * rb + (x >> 3);
+                u8 bit = static_cast<u8>(0x80 >> (x & 7));
+                *o = static_cast<u8>(x < n && ((px[x * step] >> d) & 1) ? *o | bit : *o & ~bit);
+            }
+}
+
 /* ILBM of the picture: BMHD, CMAP and CAMG for an index picture of up to 8
  * planes, a deep ILBM of 24 planes (no CMAP) for a true colour one; the
- * BODY packed with ByteRun1, a plane's row at a time. */
+ * BODY packed with ByteRun1, a plane's row at a time, the planes of a row
+ * made eight pixels at a time. */
 extern "C" int pic_write_ilbm(const odt_cenv *env, pic_inst *p, odt_u32 fh)
 {
     if (!ensure_pixels(env, p) || !env->write) {
@@ -984,7 +1048,9 @@ extern "C" int pic_write_ilbm(const odt_cenv *env, pic_inst *p, odt_u32 fh)
     u32 rb = pic_rowbytes(w);
     u32 bodymax = h * depth * (rb + rb / 128 + 2);
     u32 head = 12 + 28 + (lut ? 8 + ((ncol * 3 + 1) & ~1U) : 0) + 12 + 8;
-    u8 *buf = static_cast<u8 *>(env->alloc(env, head + bodymax + rb + 2));
+    /* every byte written before it is read: the headers, the BODY as it
+     * is packed, the plane rows of each picture row */
+    u8 *buf = static_cast<u8 *>(alloc_raw(env, head + bodymax + (lut ? 8 : 24) * rb));
     if (!buf) {
         set_err(env, DTC_ERROR_NO_FREE_STORE);
         return 0;
@@ -1029,21 +1095,17 @@ extern "C" int pic_write_ilbm(const odt_cenv *env, pic_inst *p, odt_u32 fh)
     u32 body = o;
     dtc_put32(buf + o, ODT_ID('B', 'O', 'D', 'Y'));
     o += 8;
-    for (u32 y = 0; y < h; y++)
-        for (u32 d = 0; d < depth; d++) {
-            for (u32 x = 0; x < rb; x++)
-                row[x] = 0;
-            for (u32 x = 0; x < w; x++) {
-                u32 v;
-                if (lut)
-                    v = p->pixels[y * w + x] >> d;
-                else
-                    v = p->pixels[(y * w + x) * 4 + 1 + d / 8] >> (d & 7);
-                if (v & 1)
-                    row[x >> 3] |= static_cast<u8>(0x80 >> (x & 7));
-            }
-            o += pic_byterun1_pack(row, rb, buf + o);
-        }
+    for (u32 y = 0; y < h; y++) {
+        /* the row's planes: an index's 8 (those past depth unused), or red's,
+         * green's and blue's 8 each */
+        if (lut)
+            pic_planes8(p->pixels + y * w, 1, w, row, rb);
+        else
+            for (u32 k = 0; k < 3; k++)
+                pic_planes8(p->pixels + y * w * 4 + 1 + k, 4, w, row + k * 8 * rb, rb);
+        for (u32 d = 0; d < depth; d++)
+            o += pic_byterun1_pack(row + d * rb, rb, buf + o);
+    }
     dtc_put32(buf + body + 4, o - body - 8);
     if (o & 1)
         buf[o++] = 0;

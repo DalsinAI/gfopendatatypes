@@ -58,6 +58,44 @@ def pack_simple(data):
     return bytes(out)
 
 
+def pack_class(data):
+    """ByteRun1 as picture.datatype packs a plane's row: runs of three or
+    more replicated, literals up to 128 that stop where a run of three
+    starts."""
+    out, i, n = bytearray(), 0, len(data)
+    while i < n:
+        r = 1
+        while i + r < n and r < 128 and data[i + r] == data[i]:
+            r += 1
+        if r >= 3:
+            out += bytes([257 - r, data[i]])
+            i += r
+            continue
+        s, l = i, 0
+        while i < n and l < 128:
+            if l and i + 2 < n and data[i] == data[i + 1] == data[i + 2]:
+                break
+            i += 1
+            l += 1
+        out += bytes([l - 1]) + data[s:s + l]
+    return bytes(out)
+
+
+def body_of(rows, depth):
+    """The BODY picture.datatype writes: each row's planes in turn (plane d
+    bit d of each value), a plane's row even bytes, packed with ByteRun1"""
+    out = bytearray()
+    for row in rows:
+        rb = rowbytes(len(row))
+        for d in range(depth):
+            plane = bytearray(rb)
+            for x, v in enumerate(row):
+                if (v >> d) & 1:
+                    plane[x >> 3] |= 0x80 >> (x & 7)
+            out += pack_class(bytes(plane))
+    return bytes(out)
+
+
 def unpack(data, n):
     out, i = bytearray(), 0
     while len(out) < n and i < len(data):
@@ -395,6 +433,11 @@ def expect_ilbm(name, data, sdepth, remap, destmode, sw, sh, keep):
     if bw > 0 and bh > 0:
         has_mask = m["alpha"] is not None or masking in (1, 2, 4)
         out.append("blit 1 1 10 5 %d %d %d" % (bw, bh, 1 if has_mask else 0))
+    if store_argb:
+        body = body_of([[px[1] | px[2] << 8 | px[3] << 16 for px in row] for row in argb], 24)
+    else:
+        body = body_of(m["lut"], m["d"])
+    out.append("body " + hx(body))
     out += ["rt " + hx(b for px in row for b in px[1:]) for row in argb]
     out += ["pens left 0", "live 0"]
     return out
@@ -792,6 +835,23 @@ def main():
         ({"w": 8, "h": 3, "depth": 2, "cmap": pal(4), "nobody": True}, 0, 1, 0, 0, 0, 0),
         ({"w": 8, "h": 3, "depth": 2, "cmap": pal(4), "notform": True}, 0, 1, 0, 0, 0, 0),
         ({"w": 32768, "h": 32768, "depth": 32, "body": b"\x00" * 8}, 0, 1, 0, 0, 0, 0),  # BODY size past 32 bits
+        # widths about a byte of pixels and a row's word, for the BODY written
+        ({"w": 1, "h": 2, "depth": 1, "cmap": pal(2)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 7, "h": 3, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 8, "h": 2, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 9, "h": 2, "depth": 7, "cmap": pal(128)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 16, "h": 2, "depth": 2, "cmap": pal(4)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 33, "h": 4, "depth": 5, "cmap": pal(32)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 140, "h": 3, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 17, "h": 3, "depth": 24}, 0, 1, 0, 0, 0, 0),
+        ({"w": 24, "h": 2, "depth": 32}, 0, 1, 0, 0, 0, 0),
+        # runs: of three and more, longer than 128, and literals cut by them
+        ({"w": 1100, "h": 2, "depth": 2, "cmap": pal(4),
+          "values": [[(x // 300 + y) & 3 if x % 97 else 1 for x in range(1100)] for y in range(2)]}, 0, 1, 0, 0, 0, 0),
+        ({"w": 61, "h": 3, "depth": 8, "cmap": pal(256),
+          "values": [[(x // 9) * 37 + y if x % 5 else x for x in range(61)] for y in range(3)]}, 0, 1, 0, 0, 0, 0),
+        ({"w": 40, "h": 2, "depth": 24,
+          "values": [[(x // 10) * 0x010203 + y for x in range(40)] for y in range(2)]}, 0, 1, 0, 0, 0, 0),
     ]
     for i, (spec, sd, rm, dm, sw, sh, keep) in enumerate(ilbm_cases):
         data = write_ilbm(spec, rng)
