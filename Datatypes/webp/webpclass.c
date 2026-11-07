@@ -32,13 +32,13 @@
 #include "webp/decode.h"
 #include "webp/demux.h"
 #include "webpencode.h"
-#include "dsp/lossless.h"
+#include "webpcore.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.3 (6.11.2026) AmiCradle Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.4 (7.11.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 3;
-static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.3 (6.11.2026)";
+const UWORD LibRevision = 4;
+static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.4 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -46,11 +46,10 @@ ULONG dt_instsize = 0;
 
 BOOL dt_init(void)
 {
-    /* libwebp picks its DSP functions on first use; doing it here, while
-       the library loads, keeps that out of concurrent decodes. */
-    WebPDecoderConfig config;
-    VP8LEncDspInit();                  /* and the lossless encoder's, for DTM_WRITE */
-    return WebPInitDecoderConfig(&config) ? TRUE : FALSE;
+    /* libwebp sets up its function and look-up tables on first use; all of
+       them here, while the library loads, so decodes in several tasks at
+       once only read them (webpcore.c). */
+    return webp_core_init() ? TRUE : FALSE;
 }
 
 void dt_cleanup(void)
