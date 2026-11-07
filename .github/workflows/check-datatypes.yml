@@ -9,7 +9,9 @@
 # (Datatypes/tests/test-stream.sh), and the writers: gfopenpng.datatype's
 # (Datatypes/tests/test-pngenc.sh), gfopentga's (test-tgaenc.sh), gfopengif's
 # (test-gifenc.sh), webp's
-# lossless one with libwebp patched as for the Amiga (test-webpenc.sh) and
+# lossless one with libwebp patched as for the Amiga (test-webpenc.sh; the
+# 68060 patch's sums in test-webp060.sh, also as 68040 code in the m68k
+# job) and
 # gzip's (test-gzenc.sh), each read back by our decoders and by Pillow or
 # Python's zlib; and the datatypes' RomTag versions
 # (Datatypes/tests/test-romtag.py); and webm.datatype's reader through its
@@ -59,6 +61,8 @@ jobs:
         run: sh Datatypes/tests/test-gifenc.sh
       - name: webp.datatype's lossless WebP writer
         run: sh Datatypes/tests/test-webpenc.sh
+      - name: libwebp's 68060 patch gives libwebp's own sums
+        run: QEMU_M68K= sh Datatypes/tests/test-webp060.sh
       - name: gzip.datatype's gzip writer
         run: sh Datatypes/tests/test-gzenc.sh
       - name: the datatypes' RomTags carry their version
@@ -79,3 +83,5 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh
       - name: animation.datatype's IFF ANIM writer, read back by anim.datatype's reader
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh
+      - name: libwebp's 68060 patch as 68040 code (same files, no more instructions)
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-webp060.sh

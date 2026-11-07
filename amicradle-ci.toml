@@ -32,6 +32,7 @@ host = [
   "sh Datatypes/tests/test-tgaenc.sh",
   "sh Datatypes/tests/test-gifenc.sh",
   "sh Datatypes/tests/test-webpenc.sh",
+  "sh Datatypes/tests/test-webp060.sh",
   "sh Datatypes/tests/test-gzenc.sh",
   "python3 Datatypes/tests/test-romtag.py",
   "sh Datatypes/tests/test-planar.sh",

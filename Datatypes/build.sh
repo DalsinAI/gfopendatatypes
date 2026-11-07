@@ -84,10 +84,13 @@ compile() {
 unpack libwebp libwebp-1.6.0.tar.gz e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 W="$WORK/libwebp/libwebp-1.6.0"
 # No floating point in the decoder or the lossless encoder (see the
-# patches), and no null read in the demuxer's chunk iterator (see the patch).
+# patches), no null read in the demuxer's chunk iterator (see the patch), and
+# no 64-bit multiplies or divides in the lossless encoder's busiest sums,
+# which a 68060 traps (libwebp-1.6.0-m68060.patch, tests/test-webp060.sh).
 (cd "$W" && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-no-float.patch" \
     && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-demux-null-chunk.patch" \
-    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch")
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch" \
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-m68060.patch")
 # The decoder, the demuxer (animated and extended files) and the shared code.
 # The SSE, NEON and MIPS files compile to nothing on 68k and are left out.
 XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \

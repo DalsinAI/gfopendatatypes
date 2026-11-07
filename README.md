@@ -80,6 +80,10 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
   sanitizers.
 - `sh tests/achelpers/test_achelpers.sh`: the AC090 helpers and dtlib.c's
   memory functions under qemu-m68k.
+- `sh Datatypes/tests/test-webpenc.sh` and `test-webp060.sh`: webp.datatype's
+  encoder; and the 68060 patch's sums against libwebp's own and the
+  encoder's files with and without it (with the instructions it runs under
+  qemu-m68k), on the host and as 68040 code.
 - `sh Datatypes/tests/test-planar.sh`: `common/include/odt_planar.h`
   against the bit-at-a-time loop it replaced, under AddressSanitizer and
   UBSan (and as 68040 code with `QEMU_M68K=qemu-m68k`).
