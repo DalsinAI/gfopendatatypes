@@ -10,6 +10,10 @@
  *       it, a picture encoded at three levels and decoded back: none of it
  *       may write libwebp's data, or two tasks decoding at once could meet
  *       half-made tables
+ *   webpcoretest anim
+ *       animated WebPs made here: an opaque one whose first frame doesn't
+ *       cover the canvas comes on the ANIM background colour; one with
+ *       alpha, and one whose frame covers the canvas, come as the frame
  *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
@@ -20,7 +24,6 @@
 #include "webpcore.h"
 #include "webpencode.h"
 #include "src/webp/decode.h"
-#include "src/webp/demux.h"
 #include "src/dsp/lossless.h"
 
 extern unsigned char __start_webp_data[], __stop_webp_data[], __start_webp_bss[], __stop_webp_bss[];
@@ -62,25 +65,12 @@ static unsigned char *readfile(const char *name, size_t *n)
 static int decode_as_datatype(const unsigned char *data, size_t size)
 {
     WebPBitstreamFeatures ft;
-    int w = 0, h = 0;
-    uint8_t *px = NULL;
+    int x = 0, y = 0, w = 0, h = 0;
+    uint8_t *px;
     if (WebPGetFeatures(data, size, &ft) != VP8_STATUS_OK)
         return 0;
-    if (ft.has_animation) {
-        WebPData d;
-        WebPDemuxer *dm;
-        WebPIterator it;
-        d.bytes = data;
-        d.size = size;
-        if ((dm = WebPDemux(&d)) != NULL) {
-            if (WebPDemuxGetFrame(dm, 1, &it)) {
-                px = WebPDecodeARGB(it.fragment.bytes, it.fragment.size, &w, &h);
-                WebPDemuxReleaseIterator(&it);
-            }
-            WebPDemuxDelete(dm);
-        }
-    } else
-        px = WebPDecodeARGB(data, size, &w, &h);
+    px = ft.has_animation ? webp_first_frame(data, size, ft.has_alpha, &x, &y, &w, &h)
+                          : WebPDecodeARGB(data, size, &w, &h);
     WebPFree(px);
     return px != NULL;
 }
@@ -138,12 +128,134 @@ static int init_test(int old, int nfiles, char **files)
     return decoded != nfiles + 3 ? 1 : changed ? 3 : 0;
 }
 
+/* --- animated WebPs, put together here from lossless frames ------------ */
+
+static void le(unsigned char *p, ULONG v, int n)
+{
+    while (n--) {
+        *p++ = (unsigned char)v;
+        v >>= 8;
+    }
+}
+
+/* A lossless WebP's VP8L chunk (header and payload) for w x h pixels. */
+static struct buf vp8l_chunk(const ULONG *argb, ULONG w, ULONG h)
+{
+    struct buf b = { 0, 0, 0 }, c = { 0, 0, 0 };
+    ULONG *work = malloc(w * h * 4), size;
+    memcpy(work, argb, w * h * 4);
+    webp_encode_lossless(work, w, h, w, 0, put, &b);
+    free(work);
+    /* RIFF xxxx WEBP VP8L size payload */
+    size = b.p[16] | (b.p[17] << 8) | (b.p[18] << 16) | ((ULONG)b.p[19] << 24);
+    put(&c, b.p + 12, 8 + size + (size & 1));
+    free(b.p);
+    return c;
+}
+
+/* An animation of one frame: canvas cw x ch, the frame w x h at (x, y). */
+static struct buf animation(int alpha, ULONG bg, ULONG cw, ULONG ch, ULONG x, ULONG y,
+                            const ULONG *argb, ULONG w, ULONG h)
+{
+    struct buf f = vp8l_chunk(argb, w, h), out = { 0, 0, 0 };
+    unsigned char hd[12 + 18 + 14 + 24];
+    memcpy(hd, "RIFF", 4);
+    memcpy(hd + 8, "WEBP", 4);
+    memcpy(hd + 12, "VP8X", 4);
+    le(hd + 16, 10, 4);
+    hd[20] = (unsigned char)(0x02 | (alpha ? 0x10 : 0));   /* animation, alpha */
+    hd[21] = hd[22] = hd[23] = 0;
+    le(hd + 24, cw - 1, 3);
+    le(hd + 27, ch - 1, 3);
+    memcpy(hd + 30, "ANIM", 4);
+    le(hd + 34, 6, 4);
+    le(hd + 38, bg, 4);                                  /* B, G, R, A */
+    le(hd + 42, 0, 2);
+    memcpy(hd + 44, "ANMF", 4);
+    le(hd + 48, 16 + f.n, 4);
+    le(hd + 52, x / 2, 3);
+    le(hd + 55, y / 2, 3);
+    le(hd + 58, w - 1, 3);
+    le(hd + 61, h - 1, 3);
+    le(hd + 64, 100, 3);
+    hd[67] = 0;
+    le(hd + 4, sizeof hd - 8 + f.n, 4);
+    put(&out, hd, sizeof hd);
+    put(&out, f.p, f.n);
+    free(f.p);
+    return out;
+}
+
+static int fails, checks;
+#define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf("FAIL " __VA_ARGS__); printf("\n"); } } while (0)
+
+static void anim_case(const char *name, int alpha, ULONG cw, ULONG ch, ULONG fx, ULONG fy, ULONG fw, ULONG fh)
+{
+    const ULONG bg = 0xc0336699UL;   /* A 0xc0 (ignored), R 0x33, G 0x66, B 0x99 */
+    ULONG *frame = malloc(fw * fh * 4), i;
+    struct buf a;
+    int x = -1, y = -1, w = 0, h = 0;
+    uint8_t *px;
+    const int covers = fx == 0 && fy == 0 && fw == cw && fh == ch;
+
+    for (i = 0; i < fw * fh; i++)
+        frame[i] = (alpha ? ((i * 37) & 0xff) << 24 : 0xff000000UL) | (0x102030UL + i * 0x030507UL) % 0x1000000UL;
+    a = animation(alpha, bg, cw, ch, fx, fy, frame, fw, fh);
+    px = webp_first_frame(a.p, a.n, alpha, &x, &y, &w, &h);
+    CHECK(px != NULL, "%s: no picture", name);
+    if (!px)
+        goto done;
+    if (alpha || covers) {
+        CHECK(x == (int)fx && y == (int)fy && w == (int)fw && h == (int)fh, "%s: %dx%d at (%d,%d), not the frame", name, w, h, x, y);
+        for (i = 0; i < fw * fh && w == (int)fw && h == (int)fh; i++) {
+            const ULONG v = ((ULONG)px[4 * i] << 24) | (px[4 * i + 1] << 16) | (px[4 * i + 2] << 8) | px[4 * i + 3];
+            if (v != frame[i]) {
+                CHECK(0, "%s: pixel %lu is %08lx, not %08lx", name, (unsigned long)i, (unsigned long)v, (unsigned long)frame[i]);
+                break;
+            }
+        }
+    } else {
+        int bad = 0;
+        ULONG cx, cy;
+        CHECK(x == 0 && y == 0 && w == (int)cw && h == (int)ch, "%s: %dx%d at (%d,%d), not the %lux%lu canvas", name, w, h, x, y,
+              (unsigned long)cw, (unsigned long)ch);
+        for (cy = 0; cy < ch && w == (int)cw && h == (int)ch && !bad; cy++)
+            for (cx = 0; cx < cw && !bad; cx++) {
+                const uint8_t *q = px + 4 * (cy * cw + cx);
+                const ULONG v = ((ULONG)q[0] << 24) | (q[1] << 16) | (q[2] << 8) | q[3];
+                const int in = cx >= fx && cx < fx + fw && cy >= fy && cy < fy + fh;
+                const ULONG want = in ? frame[(cy - fy) * fw + (cx - fx)] : 0xff336699UL;
+                if (v != want) {
+                    CHECK(0, "%s: (%lu,%lu) is %08lx, not %08lx", name, (unsigned long)cx, (unsigned long)cy,
+                          (unsigned long)v, (unsigned long)want);
+                    bad = 1;
+                }
+            }
+        checks++;
+    }
+    WebPFree(px);
+done:
+    free(a.p);
+    free(frame);
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && !strcmp(argv[1], "init")) {
         const int old = argc >= 3 && !strcmp(argv[2], "old");
         return init_test(old, argc - 2 - old, argv + 2 + old);
     }
-    fprintf(stderr, "usage: webpcoretest init [old] FILE...\n");
+    if (argc == 2 && !strcmp(argv[1], "anim")) {
+        webp_core_init();
+        anim_case("opaque, frame inside the canvas", 0, 20, 12, 4, 2, 8, 6);
+        anim_case("opaque, frame at the corner", 0, 31, 17, 0, 0, 30, 17);
+        anim_case("opaque, frame at the far edge", 0, 64, 40, 34, 20, 30, 20);
+        anim_case("opaque, frame covering the canvas", 0, 16, 9, 0, 0, 16, 9);
+        anim_case("alpha, frame inside the canvas", 1, 20, 12, 4, 2, 8, 6);
+        anim_case("alpha, frame covering the canvas", 1, 16, 9, 0, 0, 16, 9);
+        printf("webpcoretest anim: %d checks, %d failed\n", checks, fails);
+        return fails != 0;
+    }
+    fprintf(stderr, "usage: webpcoretest init [old] FILE... | anim\n");
     return 2;
 }

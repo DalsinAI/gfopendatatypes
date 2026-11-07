@@ -88,7 +88,8 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
   `test-webpcore.sh`: webp.datatype's encoder; the 68060 patch's sums against
   libwebp's own and the encoder's files with and without it (with the
   instructions it runs under qemu-m68k); and `webp/webpcore.c` (libwebp's
-  tables set up in `dt_init()`), on the host and as 68040 code.
+  tables set up in `dt_init()`, an animation's first frame on its background
+  colour), on the host and as 68040 code.
 - `sh Datatypes/tests/test-planar.sh`: `common/include/odt_planar.h`
   against the bit-at-a-time loop it replaced, under AddressSanitizer and
   UBSan (and as 68040 code with `QEMU_M68K=qemu-m68k`).

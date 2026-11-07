@@ -7,6 +7,9 @@
 #   are compared before and after decoding every kind of WebP (made with
 #   Pillow when it is installed) and encoding: nothing may change. The
 #   init dt_init() did before 47.4 must be caught writing them.
+# - an opaque animated WebP whose first frame doesn't cover the canvas
+#   comes on the ANIM background colour; with alpha, or a frame covering
+#   the canvas, as the frame alone.
 # MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC        the host compiler (default cc)
@@ -89,6 +92,10 @@ run() {          # NAME RUNNER...
     sed 's/^/     /' "$OUT/$name/new.txt"
     if [ $r -eq 0 ]; then say "ok   ($name) after webp_core_init() nothing writes libwebp's data"
     else say "FAIL ($name) webp_core_init() leaves tables to the first decode (exit $r)"; fi
+    r=0; "$@" "$OUT/$name/webpcoretest" anim > "$OUT/$name/anim.txt" 2>&1 || r=$?
+    sed 's/^/     /' "$OUT/$name/anim.txt"
+    if [ $r -eq 0 ]; then say "ok   ($name) an animation's first frame on its background colour"
+    else say "FAIL ($name) an animation's first frame"; fi
 }
 
 build host "$CC" ld objcopy -O1 -g -fno-pie -no-pie

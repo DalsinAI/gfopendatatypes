@@ -1,7 +1,8 @@
 /*
  * webp.datatype: WebP pictures for AmigaOS 3.x, a picture.datatype (V43
  * mode) subclass built on libwebp. Lossy, lossless and alpha pictures load
- * as 32-bit ARGB; an animated WebP shows its first frame.
+ * as 32-bit ARGB; an animated WebP shows its first frame (one without
+ * alpha on the ANIM chunk's background colour).
  *
  * DTM_WRITE in raw mode (47.2) writes the picture as a lossless WebP
  * (webpencode.c, libwebp's own lossless encoder), so a picture saved and
@@ -30,7 +31,6 @@
 
 #include "dtlib.h"
 #include "webp/decode.h"
-#include "webp/demux.h"
 #include "webpencode.h"
 #include "webpcore.h"
 
@@ -56,27 +56,19 @@ void dt_cleanup(void)
 {
 }
 
-/* Writes the first frame of an animated WebP at its place on the canvas. */
-static BOOL writeFirstFrame(Class *cl, Object *o, const UBYTE *data, ULONG size)
+/* Writes the first frame of an animated WebP at its place on the canvas;
+   without alpha, on the ANIM background colour (webpcore.c). */
+static BOOL writeFirstFrame(Class *cl, Object *o, const UBYTE *data, ULONG size, int has_alpha)
 {
-    WebPData webpData = { data, size };
-    WebPDemuxer *demux = WebPDemux(&webpData);
-    WebPIterator iter;
+    int x = 0, y = 0, fw = 0, fh = 0;
+    UBYTE *frame = webp_first_frame(data, size, has_alpha, &x, &y, &fw, &fh);
     BOOL ok = FALSE;
 
-    if (!demux)
-        return FALSE;
-    if (WebPDemuxGetFrame(demux, 1, &iter)) {
-        int fw = 0, fh = 0;
-        UBYTE *frame = WebPDecodeARGB(iter.fragment.bytes, iter.fragment.size, &fw, &fh);
-        if (frame) {
-            ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)frame, PBPAFMT_ARGB, fw * 4,
-                iter.x_offset, iter.y_offset, fw, fh) ? TRUE : FALSE;
-            WebPFree(frame);
-        }
-        WebPDemuxReleaseIterator(&iter);
+    if (frame) {
+        ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)frame, PBPAFMT_ARGB, fw * 4,
+            x, y, fw, fh) ? TRUE : FALSE;
+        WebPFree(frame);
     }
-    WebPDemuxDelete(demux);
     return ok;
 }
 
@@ -116,7 +108,7 @@ static BOOL loadWebP(Class *cl, Object *o)
         TAG_DONE);
 
     if (features.has_animation)
-        ok = writeFirstFrame(cl, o, data, size);
+        ok = writeFirstFrame(cl, o, data, size, features.has_alpha);
     else {
         int width = 0, height = 0;
         UBYTE *argb = WebPDecodeARGB(data, size, &width, &height);

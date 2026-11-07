@@ -115,7 +115,8 @@ XFLAGS="-I$W -I$W/src $ACSTRING" compile "$W" "$WORK/obj-libwebp" \
 # three picture calls it needs: libwebp's picture files would bring the lossy
 # encoder). No floating point in any of it: the link map is checked below.
 # dtstart.c is linked first, so the library's first code is a safe return.
-# webpcore.c: libwebp's tables set up in dt_init() (tests/test-webpcore.sh).
+# webpcore.c: libwebp's tables set up in dt_init(), and an animation's first
+# frame on its background colour (tests/test-webpcore.sh).
 XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" \
     common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c webp/webpcore.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/webp.datatype" \

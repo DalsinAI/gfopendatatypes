@@ -63,7 +63,7 @@ jobs:
         run: sh Datatypes/tests/test-webpenc.sh
       - name: libwebp's 68060 patch gives libwebp's own sums
         run: QEMU_M68K= sh Datatypes/tests/test-webp060.sh
-      - name: webp.datatype's libwebp tables (webp/webpcore.c)
+      - name: webp.datatype's libwebp tables and animations (webp/webpcore.c)
         run: QEMU_M68K= sh Datatypes/tests/test-webpcore.sh
       - name: gzip.datatype's gzip writer
         run: sh Datatypes/tests/test-gzenc.sh
@@ -87,5 +87,5 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh
       - name: libwebp's 68060 patch as 68040 code (same files, no more instructions)
         run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-webp060.sh
-      - name: webp.datatype's libwebp tables as 68040 code
+      - name: webp.datatype's libwebp tables and animations as 68040 code
         run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-webpcore.sh
