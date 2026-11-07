@@ -1,6 +1,7 @@
 /*
- * gfopenimage: forced into every compile of zlib, libpng and libjpeg
- * (-include) when build.sh runs with AC_HELPERS=1. Their memcpy, memmove and
+ * Forced into every compile of libwebp and libvpx (-include) when
+ * Datatypes/build.sh runs with AC_HELPERS=1 (gfopenimage forces it into
+ * zlib, libpng and libjpeg the same way). Their memcpy, memmove and
  * memset calls go through the front doors of AC090's native helpers
  * (amicradle-guest's ac_helpers.h): under 64 bytes, GCC's own code as
  * before; from 64 bytes, the tagged functions, which run as host code on

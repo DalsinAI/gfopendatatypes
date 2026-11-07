@@ -80,6 +80,10 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
   sanitizers.
 - `sh tests/achelpers/test_achelpers.sh`: the AC090 helpers and dtlib.c's
   memory functions under qemu-m68k.
+- `sh Datatypes/tests/test-acstring.sh`: libwebp and libvpx with
+  `achelpers/ac_string.h` forced in (as `AC_HELPERS=1` builds them) decode
+  and encode the same as without, as 68040 code under qemu-m68k (needs the
+  amicradle-guest checkout, as the build does).
 - `sh Datatypes/tests/test-webpenc.sh` and `test-webp060.sh`: webp.datatype's
   encoder; and the 68060 patch's sums against libwebp's own and the
   encoder's files with and without it (with the instructions it runs under
