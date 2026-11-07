@@ -29,8 +29,6 @@ $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopengif.datatype" \
     "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/gifdecode.o" "$WORK/gifencode.o" "$WORK/gifclass.o" -lamiga \
     -Wl,-Map="$WORK/gfopengif.datatype.map"
 echo "gfopengif.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopengif.datatype") bytes"
-# "GIF87a" or "GIF89a" and the four bytes of the screen size: ten bytes, a
-# longer mask than the system's GIF descriptor, so it is tried first.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenGIF" GFOpenGIF gfopengif pict gif "#?" \
-    '$VER: GFOpenGIF 47.1 (3.11.2026)' "'G'" "'I'" "'F'" "'8'" ANY "'a'" ANY ANY ANY ANY
-echo "Devs/DataTypes/GFOpenGIF: $(wc -c < "$OUT/Devs/DataTypes/GFOpenGIF") bytes"
+# Its descriptor: descriptors.sh.
+. "$HERE/descriptors.sh"
+desc_gfopengif "$OUT"

@@ -29,9 +29,6 @@ $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopentga.datatype" \
     "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/tgadecode.o" "$WORK/tgaencode.o" "$WORK/tgaclass.o" -lamiga \
     -Wl,-Map="$WORK/gfopentga.datatype.map"
 echo "gfopentga.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopentga.datatype") bytes"
-# A TGA file starts with no signature (its first bytes are lengths and
-# kinds), so the name tells it: Truevision's .tga, and .targa, .icb, .vda
-# and .vst. With no mask it is tried after every descriptor that has one.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenTGA" "Targa picture" gfopentga pict tga \
-    "#?.(tga|targa|icb|vda|vst)" '$VER: GFOpenTGA 47.1 (12.10.2026)'
-echo "Devs/DataTypes/GFOpenTGA: $(wc -c < "$OUT/Devs/DataTypes/GFOpenTGA") bytes"
+# Its descriptor: descriptors.sh.
+. "$HERE/descriptors.sh"
+desc_gfopentga "$OUT"

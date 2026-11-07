@@ -40,6 +40,9 @@ host = [
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh",
+  # The descriptors through datatypes.library's recognition (and, with the
+  # stove, the hooks as built, run as the library runs them).
+  "QEMU_M68K=qemu-m68k python3 -I tests/recognition/test_recognition.py",
 ]
 # T3: AmigaDOS scripts on a real boot of the open ROM, T2's outputs in SYS:Test/
 lab = ["tests/lab/smoke.script"]
