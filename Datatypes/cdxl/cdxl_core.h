@@ -61,8 +61,12 @@ void cdxl_to_chunky(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *o
 void cdxl_palette(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb);
 
 /* A chunky RGB picture as indices into the 6x6x6 colour cube (i = r * 36 +
- * g * 6 + b, each step 51), with a 4x4 ordered dither. */
+ * g * 6 + b, each step 51), with a 4x4 ordered dither: pixel (r, g, b) at
+ * Bayer value d is ((r * 5 + d * 16) >> 8) * 36 + ... + ((b * 5 + d * 16) >> 8),
+ * from const tables (cdxl_cube_tables.h, common/mkcubedither.py); and one
+ * pixel of it. */
 void cdxl_rgb_to_cube(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *out);
+uint8_t cdxl_cube_pixel(unsigned d, unsigned r, unsigned g, unsigned b);
 
 /* The sound as signed 8-bit mono (stereo mixed), audio bytes to out. */
 void cdxl_mono(const uint8_t *frame, const struct cdxl_frame *f, int8_t *out);

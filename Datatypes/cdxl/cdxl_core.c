@@ -4,6 +4,7 @@
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "cdxl_core.h"
+#include "cdxl_cube_tables.h"
 #include "../../common/include/odt_planar.h"
 
 static uint32_t get32(const uint8_t *p)
@@ -109,17 +110,35 @@ void cdxl_palette(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb
     }
 }
 
+static const uint8_t cdxl_bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
+
+uint8_t cdxl_cube_pixel(unsigned d, unsigned r, unsigned g, unsigned b)
+{
+    const uint8_t *t = cdxl_cube[d & 15];
+    return (uint8_t)(t[r & 255] + t[256 + (g & 255)] + t[512 + (b & 255)]);
+}
+
 void cdxl_rgb_to_cube(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *out)
 {
-    static const uint8_t bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
     const uint8_t *s = frame + cdxl_image_at(f);
     unsigned x, y;
 
-    for (y = 0; y < f->height; y++)
-        for (x = 0; x < f->width; x++, s += 3) {
-            unsigned d = bayer[y & 3][x & 3] * 16;
-            *out++ = (uint8_t)(((s[0] * 5 + d) >> 8) * 36 + ((s[1] * 5 + d) >> 8) * 6 + ((s[2] * 5 + d) >> 8));
+    /* the cube's parts from the tables (cdxl_cube_tables.h), a row of them
+     * for each of the four dither values on a line: four pixels a turn */
+    for (y = 0; y < f->height; y++) {
+        const uint8_t *b = cdxl_bayer[y & 3];
+        const uint8_t *t0 = cdxl_cube[b[0]], *t1 = cdxl_cube[b[1]], *t2 = cdxl_cube[b[2]], *t3 = cdxl_cube[b[3]];
+        for (x = 0; x + 4 <= f->width; x += 4, s += 12, out += 4) {
+            out[0] = (uint8_t)(t0[s[0]] + t0[256 + s[1]] + t0[512 + s[2]]);
+            out[1] = (uint8_t)(t1[s[3]] + t1[256 + s[4]] + t1[512 + s[5]]);
+            out[2] = (uint8_t)(t2[s[6]] + t2[256 + s[7]] + t2[512 + s[8]]);
+            out[3] = (uint8_t)(t3[s[9]] + t3[256 + s[10]] + t3[512 + s[11]]);
         }
+        for (; x < f->width; x++, s += 3) {
+            const uint8_t *t = cdxl_cube[b[x & 3]];
+            *out++ = (uint8_t)(t[s[0]] + t[256 + s[1]] + t[512 + s[2]]);
+        }
+    }
 }
 
 void cdxl_mono(const uint8_t *frame, const struct cdxl_frame *f, int8_t *out)

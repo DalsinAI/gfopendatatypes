@@ -98,12 +98,9 @@ typedef struct {
 
 ULONG dt_instsize = sizeof(WebMData);
 
-static WebMDitherTables ditherTables;
-
 BOOL dt_init(void)
 {
-    webm_dither_init(&ditherTables);
-    return TRUE;
+    return TRUE;                   /* the dither's tables are const (webm_dither_tables.h) */
 }
 
 void dt_cleanup(void)
@@ -154,7 +151,7 @@ static BOOL decodeOne(WebMData *d, ULONG index)
     while ((img = vpx_codec_get_frame(&d->codec, &iter)))
         last = img;
     if (last)
-        webm_dither(&ditherTables, last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
+        webm_dither(last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
     d->lastDecoded = index;
     return TRUE;
 }
