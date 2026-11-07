@@ -401,6 +401,91 @@ static void test_strings(void)
     CHECK(odt_GetDTTriggerMethodDataFlags(0xffffffffUL) == ODT_STMF_DATA_MASK);
 }
 
+/* ---- text or binary: OS 3.2's rule, and UTF-8 and UTF-16 (ours) ------------- */
+
+static int kind_of(const char *d, unsigned n)
+{
+    odt_u32 form;
+    return odt_classify((const odt_u8 *)d, n, &form);
+}
+#define KIND(lit) kind_of(lit, sizeof lit - 1)
+
+static void test_text_kinds(void)
+{
+    static unsigned char r[1084];
+    unsigned i, k, texts;
+    unsigned long sd = 1;
+    odt_u32 form;
+    /* UTF-8: bytes 0x80-0x9f inside characters, text when all of it is
+     * UTF-8 (OS 3.2 says binary for each of these) */
+    CHECK(KIND("na\xc3\xafve caf\xc3\xa9 \xe2\x80\x94 \xe2\x80\x9cquoted\xe2\x80\x9d \xe2\x82\xac" "5\n") == ODT_DTF_ASCII);
+    CHECK(KIND("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x81\xae\xe3\x83\x86\xe3\x82\xad\xe3\x82\xb9\xe3\x83\x88\n") == ODT_DTF_ASCII);
+    CHECK(KIND("\xef\xbb\xbf# Title\n\n\xe2\x80\xa2 item\t\xf0\x9f\x98\x80\r\n") == ODT_DTF_ASCII);     /* BOM, emoji */
+    CHECK(KIND("\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82") == ODT_DTF_ASCII);                /* Cyrillic */
+    CHECK(KIND("ends inside \xe2\x82") == ODT_DTF_ASCII);       /* cut where recognition stops looking */
+    CHECK(KIND("ends inside \xf0\x9f\x98") == ODT_DTF_ASCII);
+    /* ... and binary when it isn't UTF-8, or has what text hasn't */
+    CHECK(KIND("a\x85" "b") == ODT_DTF_BINARY);                 /* a continuation byte alone */
+    CHECK(KIND("\xc0\x80 overlong NUL") == ODT_DTF_BINARY);
+    CHECK(KIND("\xe0\x80\xaf overlong /") == ODT_DTF_BINARY);
+    CHECK(KIND("\xed\xa0\x80 a surrogate") == ODT_DTF_BINARY);
+    CHECK(KIND("\xf4\x90\x80\x80 past U+10FFFF") == ODT_DTF_BINARY);
+    CHECK(KIND("\xc2\x85 NEL, a C1 control") == ODT_DTF_BINARY);
+    CHECK(KIND("\xe2\x82\xac\xe2\x82") == ODT_DTF_ASCII);
+    CHECK(KIND("\xe2\x82\xac\xe2\x82x") == ODT_DTF_BINARY);     /* cut short, then more */
+    CHECK(KIND("\xe6\x97\xa5\0") == ODT_DTF_BINARY);            /* NUL */
+    CHECK(KIND("\xe6\x97\xa5\x01") == ODT_DTF_BINARY);          /* a C0 control text hasn't */
+    CHECK(KIND("\xe6\x97\xa5\x1a") == ODT_DTF_BINARY);
+    /* OS 3.2's rule where there is no byte 0x80-0x9f, UTF-8 or not */
+    CHECK(KIND("caf\xe9 cr\xe8me") == ODT_DTF_ASCII);           /* Latin-1 */
+    CHECK(KIND("\xc3\x28 not UTF-8, no C1 byte") == ODT_DTF_ASCII);
+    CHECK(KIND("\xff\xfe") == ODT_DTF_ASCII);                   /* a byte order mark alone */
+    /* CP1252's 0x80-0x9f (euro, curly quotes, dashes): binary, as on OS
+     * 3.2 (not UTF-8; only OS 3.2's rule decides) */
+    CHECK(KIND("\x93smart quotes\x94 cost \x80" "5 \x96 or so\n") == ODT_DTF_BINARY);
+    CHECK(KIND("it\x92s\n") == ODT_DTF_BINARY);
+    CHECK(KIND("na\xefve caf\xe9\n") == ODT_DTF_ASCII);         /* CP1252 above 0x9f only */
+    /* UTF-16 with its byte order mark */
+    CHECK(KIND("\xff\xfeh\0i\0 \0\xac\x20\n\0") == ODT_DTF_ASCII);             /* LE, a euro */
+    CHECK(KIND("\xfe\xff\0h\0i\0\n\x65\xe5\x67\x2c") == ODT_DTF_ASCII);        /* BE, CJK */
+    CHECK(KIND("\xff\xfe\x3d\xd8\x00\xde\n\0") == ODT_DTF_ASCII);              /* a surrogate pair */
+    CHECK(KIND("\xfe\xff\x65\xe5\x67\x2c\x8a\x9e") == ODT_DTF_BINARY);          /* no space or line end */
+    CHECK(KIND("\xff\xfeh\0 \0\x3d\xd8") == ODT_DTF_ASCII);                     /* cut after its first half */
+    CHECK(KIND("\xff\xfeh\0\x00\xde") == ODT_DTF_BINARY);                       /* a second half alone */
+    CHECK(KIND("\xff\xfe\x3d\xd8h\0") == ODT_DTF_BINARY);                       /* a first half alone */
+    CHECK(KIND("\xff\xfeh\0\x00\xe0") == ODT_DTF_BINARY);                       /* private use */
+    CHECK(KIND("\xff\xfeh\0\xc0\xdb\x00\xdc") == ODT_DTF_BINARY);               /* plane 16, private use */
+    CHECK(KIND("\xff\xfeh\0\0\0") == ODT_DTF_BINARY);                           /* NUL */
+    CHECK(KIND("\xff\xfeh\0\x85\0") == ODT_DTF_BINARY);                         /* C1 */
+    CHECK(KIND("\xff\xfeh\0\x01\0") == ODT_DTF_BINARY);                         /* C0 */
+    CHECK(KIND("\xfe\xff\0h\xff\xff") == ODT_DTF_BINARY);                       /* U+FFFF */
+    CHECK(KIND("\xfe\xff\x01\x02\x03\x04\0\0\x10\x11") == ODT_DTF_BINARY);     /* binary after a mark */
+    CHECK(KIND("h\0i\0") == ODT_DTF_BINARY);                    /* UTF-16 without its mark: OS 3.2's rule */
+    /* binary stays binary: 3,000 random buffers, 1,000 of them with no
+     * byte under 0x80 (OS 3.2's rule has only 0x80-0x9f to go on) and
+     * 1,000 with no C0 byte text hasn't, 1,000 after a UTF-16 mark; 16
+     * bytes and up: none that OS 3.2 calls binary is text now */
+    for (texts = 0, i = 0; i < 3000; i++) {
+        unsigned n = 16 + i % 1069;
+        for (k = 0; k < n; k++) {
+            sd = sd * 1103515245UL + 12345UL;
+            r[k] = (unsigned char)(sd >> 16);
+            if (i < 1000) r[k] |= 0x80;
+            else if (i < 2000 && r[k] < 0x20) r[k] = (unsigned char)(r[k] + 0x40);
+        }
+        if (i >= 2000) { r[0] = 0xff; r[1] = 0xfe; }
+        if (odt_classify(r, n, &form) == ODT_DTF_ASCII) {
+            int os32_binary = 0;
+            for (k = 0; k < n; k++)
+                if ((r[k] >= 0x80 && r[k] < 0xa0) ||
+                    (r[k] < 0x20 && !((r[k] >= 7 && r[k] <= 13) || r[k] == 0x11 || r[k] == 0x13 || r[k] == 0x1b)))
+                    os32_binary = 1;
+            texts += os32_binary;
+        }
+    }
+    CHECK(texts == 0);
+}
+
 /* ---- a corpus: the cached patterns against recognition from scratch ---------- */
 
 /* Recognition as the core did before it kept tokens: every pattern parsed
@@ -628,6 +713,7 @@ int main(int argc, char **argv)
         return fails != 0;
     }
     test_descriptors();
+    test_text_kinds();
     test_corpus();
     test_methods();
     test_strings();

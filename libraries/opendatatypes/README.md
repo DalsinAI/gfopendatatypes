@@ -42,7 +42,14 @@ or `guess` until then. Measured so far (labs at 1cba45a and 1ea835e):
 
 - Recognition looks at the first 1084 bytes, from a file or from memory.
 - Text is every byte but the C1 controls (0x80-0x9f) and the C0 controls
-  other than BEL to CR, DC1, DC3 and ESC.
+  other than BEL to CR, DC1, DC3 and ESC. Ours, not OS 3.2's: data with a
+  byte 0x80-0x9f is still text when all of it is valid UTF-8 with no C1
+  control in it (OS 3.2 calls most UTF-8 text binary: every CJK character,
+  the euro sign, dashes and curly quotes have such a byte), and UTF-16
+  with a byte order mark is text when every unit is a character text
+  allows and a space, tab or line end is among them. Everything else is
+  as OS 3.2 has it: CP1252's 0x80-0x9f (curly quotes, the euro) still
+  make data binary, Latin-1 above 0x9f is still text.
   Text tries only the ASCII types, binary only the binary types, IFF (FORM,
   CAT or LIST: FORM from 6 bytes on) only the IFF types; then the
   library's own type. No data gives no type and leaves IoErr alone; types
