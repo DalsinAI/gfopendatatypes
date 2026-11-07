@@ -91,8 +91,10 @@ static BOOL loadPNG(Class *cl, Object *o)
         SetIoErr(ERROR_OBJECT_WRONG_TYPE);
         return FALSE;
     }
-    if (!(h = AllocVec(sizeof(*h), MEMF_ANY)))
+    if (!(h = AllocVec(sizeof(*h), MEMF_ANY))) {
+        SetIoErr(ERROR_NO_FREE_STORE);
         return FALSE;
+    }
     if (!(file = dt_read_source(o, &size))) {
         err = IoErr();
         FreeVec(h);
