@@ -62,8 +62,10 @@ DTWM_RAW, tags)` with `OIA_WriteFormat, OIWF_MP4`. The class that can
 write that format answers it whatever the subclass: animation.datatype
 writes any film as an MP4, so anim, cdxl, webm, gfopenvideo and an
 animated GIF all save as MP4 with no writer of their own, the way they all
-save as an IFF ANIM. A subclass with a raw writer of its own (cdxl) hands
-raw mode on to its superclass when the tag is there. A format the class
+save as an IFF ANIM. A subclass with a raw writer of its own hands raw mode
+on to its superclass when the tag names a format it doesn't write itself:
+cdxl for any tag; gfopenvideo, once it writes HEVC and WMV through the
+service, for `'MP4 '`. A format the class
 can't write fails with `ERROR_NOT_IMPLEMENTED`, never writes the
 datatype's own format instead; no tag (or 0) is the datatype's own format,
 as before. Why not the other ways:
@@ -80,7 +82,7 @@ as before. Why not the other ways:
   gfopenvideo.datatype, reads through the service and has no frames of its
   own to keep.
 
-`OIA_Quality` (0 to 100) and `OIA_Compression` (0 the fastest to 9) are
+`OIA_Quality` (1 to 100) and `OIA_Compression` (0 the fastest to 9) are
 the MP4's options, and `OIA_WriteSound` FALSE leaves its sound out.
 
 A format whose encoder the Team may not ship (section 3's "no" rows) answers

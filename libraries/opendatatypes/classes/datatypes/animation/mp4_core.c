@@ -33,7 +33,7 @@ static odt_u32 mp4_scale(odt_u32 a, odt_u32 c, odt_u32 b)
 
 odt_u32 adt_mp4_qp(odt_s32 quality)
 {
-    if (quality < 0) quality = ADT_MP4_QUALITY;
+    if (quality <= 0) quality = ADT_MP4_QUALITY;
     if (quality > 100) quality = 100;
     return 10 + mp4_div((odt_u32)(100 - quality) * 41 + 50, 100);
 }

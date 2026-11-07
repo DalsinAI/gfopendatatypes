@@ -25,9 +25,9 @@
 
 #define ADT_OIA_Dummy       (ODT_TAG_USER + 0x0DA15000UL)
 #define ADT_OIA_Compression (ADT_OIA_Dummy + 4)    /* 0 (fastest) to 9 (smallest); -1 the default */
-#define ADT_OIA_WriteFormat (ADT_OIA_Dummy + 7)    /* what DTWM_RAW writes: OIWF_ */
-#define ADT_OIA_Quality     (ADT_OIA_Dummy + 8)    /* 0 to 100; -1 the default */
-#define ADT_OIA_WriteSound  (ADT_OIA_Dummy + 9)    /* FALSE: the sound left out */
+#define ADT_OIA_WriteFormat (ADT_OIA_Dummy + 16)   /* what DTWM_RAW writes: a FOURCC */
+#define ADT_OIA_Quality     (ADT_OIA_Dummy + 17)   /* 1 to 100; 0, -1 or none the default */
+#define ADT_OIA_WriteSound  (ADT_OIA_Dummy + 18)   /* FALSE: the sound left out */
 #define ADT_OIWF_MP4        0x4D503420UL           /* 'MP4 ' */
 #define ADT_ERROR_NOT_IMPLEMENTED 236UL            /* dos/dos.h: a format the class can't write */
 
@@ -35,7 +35,7 @@
 #define ADT_MP4_QUALITY 60
 #define ADT_MP4_LEVEL   0
 
-/* OIA_Quality to H.264's quantiser: 100 is QP 10, 0 is QP 51 */
+/* OIA_Quality to H.264's quantiser: 100 is QP 10, 1 is QP 51; 0 or less the default */
 odt_u32 adt_mp4_qp(odt_s32 quality);
 /* OIA_Compression to minih264e's speed: 0 is speed 10 (the fastest), 1 is
  * 9, 2 is 8, 3 to 7 are 7, 8 is 1, 9 is speed 0 (the slowest) */

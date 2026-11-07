@@ -71,6 +71,27 @@ checkobjs() { # label nm objdump size objs...
         echo "ok   $label: $# objects call only each other and libgcc; no data, FPU or 64-bit multiplies"
 }
 
+# the class's copies of the DTM_WRITE tags are datatypes/gfopenimage.h's
+python3 -I - "$cls/animation/mp4_core.h" "$here/../../Datatypes/include/datatypes/gfopenimage.h" <<'EOF' || fail=1
+import re, sys
+core, pub = (open(f).read() for f in sys.argv[1:3])
+bad = 0
+for name in ('Compression', 'WriteFormat', 'Quality', 'WriteSound'):
+    a = re.search(r'#define ADT_OIA_%s\s+\(ADT_OIA_Dummy \+ (\d+)\)' % name, core)
+    b = re.search(r'#define OIA_%s\s+\(OIA_Dummy \+ (\d+)\)' % name, pub)
+    if not a or not b or a.group(1) != b.group(1):
+        print('FAIL OIA_%s: mp4_core.h %s, gfopenimage.h %s' % (name, a and a.group(1), b and b.group(1)))
+        bad = 1
+a = re.search(r'#define ADT_OIWF_MP4\s+(0x[0-9A-F]+)UL', core)
+b = re.search(r'#define OIWF_MP4\s+(0x[0-9A-F]+)UL', pub)
+if not a or not b or a.group(1) != b.group(1):
+    print('FAIL OIWF_MP4 differs')
+    bad = 1
+if not bad:
+    print("ok   the class's OIA_ tags and OIWF_MP4 are gfopenimage.h's")
+sys.exit(bad)
+EOF
+
 stove=${STOVE:-${OS32_GCC16:-"$HOME/AmiCradle/stoves/os32-gcc16"}}
 sp=$stove/prefix/bin/m68k-amigaos-
 if [ -x "${sp}gcc" ]; then

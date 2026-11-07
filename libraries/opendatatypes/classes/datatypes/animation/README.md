@@ -96,7 +96,7 @@ CPU: the Team's ruling of 6 November 2026, "mp4 we merge in". No tag, or
   rest of the macroblocks off.
 - **Video**: H.264 Constrained Baseline in all but name (profile 66, CAVLC,
   one slice and one reference frame), from minih264e at a fixed quantiser:
-  `OIA_Quality` 0 to 100 (QP 51 to 10; default 60, QP 26) and
+  `OIA_Quality` 1 to 100 (QP 51 to 10; 0, -1 or none: 60, QP 26) and
   `OIA_Compression` 0 (the fastest, minih264e's speed 10: whole-pixel
   motion, no deblocking), 1 (deblocking), 2 (quarter-pixel motion, no
   deblocking), 3 to 7 (both; the same today), 8 (and 4x4 intra blocks in

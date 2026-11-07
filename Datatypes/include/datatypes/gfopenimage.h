@@ -38,27 +38,6 @@
  * format has no choice ignores it. */
 #define OIA_Compression (OIA_Dummy + 4)
 
-/* (ULONG, in DTM_WRITE's dtw_AttrList with DTWM_RAW) Write this format
- * instead of the datatype's own: animation.datatype (GFOpenDatatypes
- * 47.100 and up) writes any film, whatever its subclass (anim, cdxl, webm,
- * gfopenvideo, an animated GIF), as OIWF_MP4 itself, on this CPU, with no
- * service. 0 or no tag: the datatype's own format, as before. A format
- * the class can't write fails with ERROR_NOT_IMPLEMENTED; it never writes
- * its own format instead. Classes that don't know the tag (pictures,
- * sounds) ignore it, so ask an animation object for an MP4. */
-#define OIA_WriteFormat (OIA_Dummy + 7)
-#define OIWF_MP4       0x4D503420UL    /* 'MP4 ': H.264 baseline video, the sound as 8-bit PCM ('twos') */
-
-/* (LONG, in dtw_AttrList) A lossy raw write's quality: 0 the smallest file
- * to 100 the best picture, -1 or no tag the datatype's default. MP4: H.264's
- * quantiser 10 + (100 - quality) x 41 / 100, rounded (default 60, QP 26). */
-#define OIA_Quality    (OIA_Dummy + 8)
-
-/* (BOOL, in dtw_AttrList) FALSE leaves the sound out of a film's raw write
- * (default TRUE: an MP4 carries the film's sound as PCM, which browsers
- * don't play). */
-#define OIA_WriteSound (OIA_Dummy + 9)
-
 /* ---- Pictures with more than one frame (gfopengif.datatype) ----------------- */
 
 /* (ULONG, G) How many frames the picture has: 1 for a still. The object's
@@ -71,6 +50,41 @@
  * NETSCAPE2.0 loop count: browsers show that many repeats after the first
  * time through). */
 #define OIA_LoopCount  (OIA_Dummy + 6)
+
+/* ---- Raw writes in another format (DTM_WRITE, DTWM_RAW) ------------------------ */
+
+/* (ULONG, in DTM_WRITE's dtw_AttrList) The file a raw write makes, a FOURCC,
+ * for the datatypes that write more than one kind:
+ *   'MP4 '  (OIWF_MP4) any film: anim, cdxl, webm, gfopenvideo, an animated
+ *           GIF. H.264 baseline video and the sound as 8-bit PCM, written
+ *           by animation.datatype itself on this CPU, no service needed; a
+ *           subclass with a raw writer of its own hands this one to its
+ *           superclass.
+ *   'HEIC'  gfopenpicture.
+ *   'M4A ', 'AAC ' (ADTS) or 'WMA '  gfopensound.
+ *   'HEVC' (in MP4) or 'WMV '  gfopenvideo.
+ * 'HEIC' to 'WMV ' are written by the service's FFmpeg (media.encode/1),
+ * never on the 68k: with no services card or paired Cradle whose FFmpeg
+ * writes them they fail with ERROR_NOT_IMPLEMENTED. Without the tag: the
+ * object's own format when the service writes it (an AAC as M4A, unless
+ * its name ends in .aac), or for an object made with no source (DTST_RAM)
+ * the first of the list; any other datatype's own format, as before. A
+ * format the datatype doesn't write fails with ERROR_NOT_IMPLEMENTED; it
+ * never writes another instead. Datatypes that write one kind only
+ * (pictures, sounds) ignore the tag. */
+#define OIA_WriteFormat (OIA_Dummy + 16)
+#define OIWF_MP4       0x4D503420UL    /* 'MP4 ' */
+
+/* (LONG, in DTM_WRITE's dtw_AttrList) A lossy raw write's quality, 1 (the
+ * smallest file) to 100 (the best); 0, -1 or no tag: the format's default.
+ * MP4: H.264's quantiser 10 + (100 - quality) x 41 / 100, rounded; the
+ * default 60, QP 26. */
+#define OIA_Quality    (OIA_Dummy + 17)
+
+/* (BOOL, in DTM_WRITE's dtw_AttrList) FALSE leaves the sound out of a
+ * film's raw write. MP4: TRUE by default, the film's sound as 8-bit PCM,
+ * which browsers don't play. */
+#define OIA_WriteSound (OIA_Dummy + 18)
 
 /* Writes frame oirf_Frame, composited over the frames before it as web
  * browsers show it, into the program's pixels: the whole picture, four

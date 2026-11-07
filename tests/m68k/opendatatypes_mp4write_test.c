@@ -841,6 +841,19 @@ static void class_checks(void)
         check(r == 1 && tracks(&cls_out) == 1, "OIA_WriteSound FALSE leaves the sound out", name);
         check(cls_out.n > before - 5 * 800, "OIA_Quality 100 makes a bigger file", name);
     }
+    /* OIA_Quality 0 is the default, as no tag */
+    {
+        struct odt_TagItem q0[] = { { ADT_OIA_WriteFormat, ADT_OIWF_MP4 }, { ADT_OIA_Quality, 0 }, { ODT_TAG_DONE, 0 } };
+        odt_u8 *a;
+        odt_u32 an;
+        r = cls_write(&m, 1, mp4, ODT_DTWM_RAW);
+        an = cls_out.n;
+        a = malloc(an);
+        memcpy(a, cls_out.p, an);
+        r += cls_write(&m, 1, q0, ODT_DTWM_RAW);
+        check(r == 2 && an == cls_out.n && !memcmp(a, cls_out.p, an), "OIA_Quality 0 is the default", name);
+        free(a);
+    }
     /* IFF is still an ANIM */
     r = cls_write(&m, 0, mp4, ODT_DTWM_IFF);
     check(r == 1 && cls_out.n > 12 && !memcmp(cls_out.p, "FORM", 4) && !memcmp(cls_out.p + 8, "ANIM", 4),
@@ -854,7 +867,7 @@ static void class_checks(void)
 
 int main(int argc, char **argv)
 {
-    static const odt_s32 qs[] = { -1, 100, 0 };
+    static const odt_s32 qs[] = { -1, 100, 1 };
     if (argc == 9 && !strcmp(argv[1], "-speed")) {
         /* one film, for counting instructions: no checks, no files */
         int kind;

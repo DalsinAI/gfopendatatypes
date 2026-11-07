@@ -71,8 +71,20 @@ static void *mp4h_memmove(void *d, const void *s, size_t n)
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #pragma GCC diagnostic ignored "-Wpointer-arith"
 #endif
+/* No jump tables: a switch's table of 16-bit offsets sits in the code, and
+ * an offset of $F2xx or $F3xx reads as an FPU instruction to objdump (GCC
+ * 15's H264E_encode had one, the frame type's switch, read as FSAVE), so
+ * the test that the encoder has no FPU instructions could not tell. Compare
+ * chains instead, the same code as far as anything else goes. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize("no-jump-tables")
+#endif
 #define MINIH264_IMPLEMENTATION
 #include "h264/minih264e.h"
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
