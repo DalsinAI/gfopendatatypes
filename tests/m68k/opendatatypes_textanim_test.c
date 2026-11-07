@@ -863,6 +863,59 @@ static void run_apure(const char *cmd, char *args)
         printf("aremapcmp %lu cases, %lu differ from the old remap\n", cases, differ);
         return;
     }
+    if (!strcmp(cmd, "ATIME")) {
+        /* fps n secs micro: tick n's deadline, and the ticks due at a time */
+        unsigned long fps, n, sec, mic;
+        odt_u32 ds, dm;
+        sscanf(args, "%lu %lu %lu %lu", &fps, &n, &sec, &mic);
+        adt_deadline((odt_u32)n, (odt_u32)fps, &ds, &dm);
+        printf("atime %lu.%06lu due %lu\n", (unsigned long)ds, (unsigned long)dm,
+               (unsigned long)adt_due((odt_u32)sec, (odt_u32)mic, (odt_u32)fps));
+        return;
+    }
+    if (!strcmp(cmd, "ASPLIT")) {
+        unsigned long len, cyc, max, i;
+        odt_u32 st[64], pt[64], n;
+        sscanf(args, "%lu %lu %lu", &len, &cyc, &max);
+        n = adt_sound_split((odt_u32)len, (odt_u32)cyc, st, pt, (odt_u32)(max > 64 ? 64 : max));
+        printf("asplit %lu", (unsigned long)n);
+        for (i = 0; i < n; i++) printf(" %lu+%lu", (unsigned long)st[i], (unsigned long)pt[i]);
+        printf("\n");
+        return;
+    }
+    if (!strcmp(cmd, "AELAPSED")) {
+        unsigned long s0, m0, s1, m1;
+        odt_u32 es = 7, em = 7;
+        int r;
+        sscanf(args, "%lu %lu %lu %lu", &s0, &m0, &s1, &m1);
+        r = adt_elapsed((odt_u32)s0, (odt_u32)m0, (odt_u32)s1, (odt_u32)m1, &es, &em);
+        printf("aelapsed %d %lu.%06lu\n", r, (unsigned long)es, (unsigned long)em);
+        return;
+    }
+    if (!strcmp(cmd, "ASIM")) {
+        /* fps work-us seconds: the player loop on a simulated clock, each
+         * tick taking work microseconds; by absolute deadlines, and as the
+         * timer re-armed after each tick was */
+        unsigned long fps, work, secs, t = 0, done = 0, wakes = 0, end, old_t = 0, old_ticks = 0;
+        sscanf(args, "%lu %lu %lu", &fps, &work, &secs);
+        end = secs * 1000000UL;
+        for (;;) {
+            odt_u32 ds, dm, due;
+            adt_deadline((odt_u32)(done + 1), (odt_u32)fps, &ds, &dm);
+            if (t < ds * 1000000UL + dm) t = ds * 1000000UL + dm;
+            if (t > end) break;
+            due = adt_due((odt_u32)(t / 1000000UL), (odt_u32)(t % 1000000UL), (odt_u32)fps);
+            done = due;
+            wakes++;
+            t += work;
+        }
+        while ((old_t += 1000000UL / fps) <= end) {
+            old_ticks++;
+            old_t += work;
+        }
+        printf("asim %lu ticks in %lu wakes; re-armed: %lu ticks\n", done, wakes, old_ticks);
+        return;
+    }
     if (!strcmp(cmd, "APLAY")) {
         /* frames inc repeat start ticks dur... */
         struct adt_play p;
@@ -1124,6 +1177,10 @@ static void run_nclass(char *args)
         if (!strcmp(tok, "layout")) layout_obj(&env_anim, o, ODT_DTM_PROCLAYOUT);
         else if (!strcmp(tok, "render")) render_obj(&env_anim, o);
         else if (!strcmp(tok, "tick")) { printf("tick\n"); adt_tick(&env_anim, &c_animation.ic, o); }
+        else if (!strncmp(tok, "ticks", 5)) {
+            printf("%s\n", tok);
+            adt_tick_n(&env_anim, &c_animation.ic, o, (odt_u32)atol(tok + 5));
+        }
         else if (!strncmp(tok, "start", 5) || !strncmp(tok, "locate", 6)) {
             struct adt_Start s;
             s.MethodID = tok[0] == 's' ? ADT_ADTM_START : ADT_ADTM_LOCATE;

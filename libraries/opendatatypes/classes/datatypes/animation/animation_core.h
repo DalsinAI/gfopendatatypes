@@ -166,8 +166,8 @@ struct adt_ext {
                       odt_u32 cycles);
     void (*sound_stop)(const struct odt_cenv *env);
     odt_u32 (*clock)(const struct odt_cenv *env);  /* the colour clock: 3579545 NTSC, 3546895 PAL */
-    /* a process ticking fps times a second, calling adt_tick(env, cl, obj)
-     * each time until stopped */
+    /* a process ticking fps times a second by absolute deadlines (adt_due),
+     * calling adt_tick_n(env, cl, obj, the ticks due) until stopped */
     void *(*player_start)(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 fps);
     void (*player_stop)(const struct odt_cenv *env, void *player);
     /* WaitBlit, before the CPU writes into a bitmap a blit may still read */
@@ -210,6 +210,28 @@ void adt_play_start(struct adt_play *p, odt_u32 frame, odt_u32 duration, odt_u32
  * whose duration then comes in with adt_play_shown */
 int adt_play_tick(struct adt_play *p);
 void adt_play_shown(struct adt_play *p, odt_u32 duration);
+
+/* The player's clock, by absolute deadlines: tick n is due n / fps
+ * seconds after the player started, whatever each tick took, so a film
+ * plays at its rate (re-arming a timer after each tick adds the tick's
+ * work to every frame) and its sound stays in step. A tick's deadline
+ * from the start, as seconds and microseconds (fps 1 to 4294) */
+void adt_deadline(odt_u32 n, odt_u32 fps, odt_u32 *secs, odt_u32 *micro);
+/* How many ticks are due by `now` (seconds and microseconds since the
+ * start, micro < 1000000): every tick whose deadline has come */
+odt_u32 adt_due(odt_u32 secs, odt_u32 micro, odt_u32 fps);
+/* The time from s0.m0 to s1.m1 (system times, micro < 1000000) into
+ * *secs, *micro; 0 when s1.m1 is before s0.m0 (the clock was set back) */
+int adt_elapsed(odt_u32 s0, odt_u32 m0, odt_u32 s1, odt_u32 m1, odt_u32 *secs, odt_u32 *micro);
+
+/* A sample of len bytes as audio.device writes (65535 words, 131070
+ * bytes, a write at most), queued one after another on a channel: the
+ * first write's start and length go in start[0], len[0]..., cycles times
+ * over (cycles 0, for ever, and a sample that needs one write: the one
+ * write repeats itself; more than one: once). How many writes, at most
+ * max (the rest of the sample left out); len is made even. */
+#define ADT_AUDIO_MAX 131070UL
+odt_u32 adt_sound_split(odt_u32 len, odt_u32 cycles, odt_u32 *start, odt_u32 *part, odt_u32 max);
 
 /* Where in a sample frame time ticks starts, in bytes: ticks / fps
  * seconds at clock / period samples a second (or sps when given) */
@@ -311,8 +333,12 @@ struct adt_inst {
 struct adt_slot *adt_cache(const struct odt_cenv *env, struct adt_inst *in, void *obj, odt_u32 frame);
 void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj);
 
-/* The player process's tick */
+/* The player process's tick; adt_tick_n: n ticks at once (the player fell
+ * behind): the frames between are passed over (their durations as the
+ * cache knows them) and only the last is loaded and shown, its sound or
+ * the film's sound from where the frame is */
 void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj);
+void adt_tick_n(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 n);
 
 /* ---- writing: the animation as an IFF ANIM (DTM_WRITE, DTWM_IFF) ------------- */
 

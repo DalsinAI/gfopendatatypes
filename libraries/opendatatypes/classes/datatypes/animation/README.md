@@ -50,6 +50,8 @@ The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 | ADTM_START/PAUSE/STOP, STM_PLAY/PAUSE/STOP from a program | As the panel's buttons: the frame told when it moved, the gadget redrawn | ours |
 | Stopping the player | Waits until the process is gone (its start message comes back under Forbid), so the library can be expunged after | ours |
 | Sound | Started at ticks/fps x clock/period into the sample | measured |
+| A sample longer than 131070 bytes | Several audio.device writes queued on the channel at once (up to 64, 8 MB), played one after the other | ours |
+| The player's clock | Absolute deadlines: tick n at n / fps seconds from the start (timer.device UNIT_WAITUNTIL), so a frame's work never slows the film or puts the sound out of step; ticks missed (a slow frame) are done at once, the frames between passed over and only the last loaded and shown. 16 KB of stack (frames are decoded and remapped on it) | ours |
 
 ## Saving (DTM_WRITE)
 
@@ -84,7 +86,7 @@ planes, and writing to a stream that can't Seek.
 - ANIM sound chunks; ANIMs from the clipboard.
 - More than 8 planes, HAM remap.
 - Dragging the panel's knob (a click jumps), ScrollRaster, DTM_PRINT.
-- A shared audio channel; samples over 131070 bytes are cut.
+- A shared audio channel; a sample is copied whole to Chip RAM (over 8 MB: cut).
 - An ANIM is read whole on OM_NEW, not streamed.
 - The shells and ABI test are not yet built or run on the stove; the cores
   are tested under qemu (m68k-linux-gnu-gcc 13, -O0/-O2 for 68000/68020/68040).

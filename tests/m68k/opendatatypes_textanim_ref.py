@@ -1101,6 +1101,36 @@ class Play:
         return True
 
 
+def deadline(n, fps):
+    fps = min(max(fps, 1), 4294)
+    return n // fps, ((n % fps) * 1000000 + fps - 1) // fps
+
+
+def due(secs, micro, fps):
+    fps = min(max(fps, 1), 4294)
+    return (secs * fps + (min(micro, 999999) * fps) // 1000000) & 0xffffffff
+
+
+def simulate(fps, work, secs):
+    t, done, wakes, end = 0, 0, 0, secs * 1000000
+    while True:
+        ds, dm = deadline(done + 1, fps)
+        t = max(t, ds * 1000000 + dm)
+        if t > end:
+            break
+        done = due(t // 1000000, t % 1000000, fps)
+        wakes += 1
+        t += work
+    old_t, old_ticks = 0, 0
+    while True:
+        old_t += 1000000 // fps
+        if old_t > end:
+            break
+        old_ticks += 1
+        old_t += work
+    return done, wakes, old_ticks
+
+
 def sound_offset(ticks, fps, period, sps, clock, length):
     rate = sps if sps else (clock // period if period else 0)
     if not fps or not rate:
@@ -1551,13 +1581,24 @@ def expect_nclass(data, ops, truth):
             st["screen"] = True
             draw()
             out.append("render -> 1")
-        elif op == "tick":
-            out.append("tick")
-            changed = play.tick()
+        elif op == "tick" or op.startswith("ticks"):
+            out.append(op)
+            k = 1 if op == "tick" else int(op[5:])
+            changed = rnd_ = False
+            for i in range(k):
+                if not play.tick():
+                    continue
+                changed = True
+                if play.frame == 0 and play.ticks == 0:
+                    rnd_ = True
+                if i < k - 1:
+                    # a frame passed over: its duration as the cache has it
+                    c = next((t for t in st["slots"] if t is not None and not t["spare"] and t["frame"] == play.frame), None)
+                    play.left = (c["dur"] if c else 1) or 1
             if changed:
                 s = cache(play.frame)
                 play.left = (s["dur"] if s else 1) or 1
-                if play.frame == 0 and play.ticks == 0:
+                if rnd_:
                     sound_off()
                     sound_from()
             elif play.state != 1:
@@ -1823,6 +1864,39 @@ def main():
             seq.append("%d%s" % (p.frame, "p" if p.state == 1 else "s"))
         cmd("APLAY %d %d %d %d %d %s" % (frames, inc, rep, st, ticks, " ".join(map(str, durs))),
             ["aplay" + "".join(" " + s for s in seq) + " t%d" % p.ticks])
+    # the player's clock: deadlines and ticks due; each deadline is the
+    # first microsecond its tick is due
+    for _ in range(60):
+        fps = rnd.choice([1, 7, 10, 12, 15, 24, 25, 30, 50, 60, 75, 4294, 9999, 0])
+        n = rnd.choice([0, 1, rnd.randint(0, 100), rnd.randint(0, 1 << 20)])
+        sec, mic = rnd.randint(0, 100000), rnd.choice([0, 999999, rnd.randint(0, 999999), 1000001])
+        ds, dm = deadline(n, fps)
+        cmd("ATIME %d %d %d %d" % (fps, n, sec, mic), ["atime %d.%06d due %d" % (ds, dm, due(sec, mic, fps))])
+        assert due(ds, dm, fps) == n and (n == 0 or due(ds - (dm == 0), (dm - 1) % 1000000, fps) == n - 1)
+    # a sample in audio.device writes of 131070 bytes at most
+    for ln, cyc, mx in ((0, 1, 8), (1, 1, 8), (2, 0, 8), (131070, 1, 8), (131071, 1, 8), (131072, 1, 8),
+                        (262140, 1, 8), (262141, 3, 64), (1000000, 1, 64), (1000000, 0, 64), (500000, 2, 5),
+                        (4000, 3, 8), (300001, 2, 64), (999, 1, 0)):
+        L = ln & ~1
+        per = (L + 131069) // 131070
+        c = 1 if per <= 1 or not cyc else cyc
+        parts = [(a, min(131070, L - a)) for _ in range(c) for a in range(0, L, 131070)][:mx] if L and mx else []
+        cmd("ASPLIT %d %d %d" % (ln, cyc, mx), ["asplit %d%s" % (len(parts), "".join(" %d+%d" % p for p in parts))])
+    for _ in range(30):
+        s0, m0 = rnd.choice([0, 5, 4294967290, rnd.randint(0, 1 << 31)]), rnd.choice([0, 999999, rnd.randint(0, 999999)])
+        s1 = (s0 + rnd.choice([0, 0, 1, 2, rnd.randint(0, 100000), -1])) & 0xffffffff
+        m1 = rnd.choice([0, 999999, m0, rnd.randint(0, 999999)])
+        t0, t1 = s0 * 1000000 + m0, s1 * 1000000 + m1
+        exp = "aelapsed 1 %d.%06d" % divmod(t1 - t0, 1000000) if t1 >= t0 else "aelapsed 0 7.000007"
+        cmd("AELAPSED %d %d %d %d" % (s0, m0, s1, m1), [exp])
+    # 25 fps with 15 ms of work a frame: by deadlines 25 a second (the work
+    # fits); 60 ms of work: frames passed over, still in time; re-armed it
+    # was ~18 a second and ~10
+    for fps, work, secs in ((25, 15000, 60), (25, 60000, 20), (12, 0, 30), (50, 19999, 10), (60, 100000, 5)):
+        n, wakes, old = simulate(fps, work, secs)
+        # in time at every wake: by the end no further behind than the last tick's work
+        assert fps * secs - (work * fps + 999999) // 1000000 <= n <= fps * secs
+        cmd("ASIM %d %d %d" % (fps, work, secs), ["asim %d ticks in %d wakes; re-armed: %d ticks" % (n, wakes, old)])
     for _ in range(25):
         a = (rnd.randint(0, 5000), rnd.choice([0, 1, 10, 25, 60]), rnd.choice([0, 124, 394, 1000]),
              rnd.choice([0, 0, 8000, 22050]), rnd.choice([3546895, 3579545]), rnd.randint(0, 200000))
@@ -1889,6 +1963,12 @@ def main():
         (dict(op=5, w=24, h=5, depth=3, frames=9, reltime=6),
          ["cmaps", "layout", "render", "start0", "tick", "tick", "tick", "tick", "locate2", "locate0", "noremap",
           "render", "start1", "tick", "tick", "locate0", "render", "locate3", "stop", "render"]),
+        # the player behind: several ticks at once, frames passed over
+        # (durations from the cache), the sound from where the frame is
+        # after going round
+        (dict(op=5, w=16, h=3, depth=2, frames=7, reltime=6, vary=True),
+         ["sample", "layout", "start0", "ticks3", "ticks2", "tick", "ticks5", "ticks9", "ticks1", "frame",
+          "repeat0", "ticks20", "frame", "tick"]),
         # HAM, never remapped: each frame's colours to the screen
         (dict(op=5, w=16, h=4, depth=6, frames=6, camg=0x800, reltime=6),
          ["cmaps", "layout", "render", "start0", "tick", "tick", "tick", "locate1", "render", "locate0", "render"]),

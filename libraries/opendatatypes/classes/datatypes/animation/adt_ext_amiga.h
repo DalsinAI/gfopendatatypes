@@ -232,11 +232,19 @@ static odt_u32 ax_clock(const struct odt_cenv *e)
 /* ---- sound: audio.device, one channel, from any task ------------------ */
 
 /* The reply port signals nobody (PA_IGNORE), so the task that stops the
- * sound needn't be the one that started it: completion is polled. */
+ * sound needn't be the one that started it: completion is polled. A sample
+ * longer than one write (131070 bytes) is several writes queued on the
+ * channel at once (adt_sound_split), which audio.device plays one after
+ * the other without a gap. */
+#define AX_WRITES 64                    /* 8 MB of sound a play at most */
+
 struct ax_sound {
     struct SignalSemaphore sem;         /* the player and the application both play */
     struct MsgPort port;
-    struct IOAudio io;
+    struct IOAudio io;                  /* the channel, as OpenDevice gave it */
+    struct IOAudio *w;                  /* AX_WRITES writes, copies of io */
+    ULONG sent;                         /* how many of them are out */
+    odt_u32 at[AX_WRITES], part[AX_WRITES];   /* where each starts in the sample, its length */
     BYTE *chip;                         /* the data, copied to chip memory */
     ULONG chip_len;
     UBYTE open, busy;
@@ -244,12 +252,20 @@ struct ax_sound {
 
 static void ax_sound_stop_(struct ax_sound *s)
 {
+    LONG i;
     if (!s->busy) return;
-    AbortIO((struct IORequest *)&s->io);
-    while (!CheckIO((struct IORequest *)&s->io)) {}   /* audio.device ends an aborted write at once */
-    Forbid();
-    Remove(&s->io.ioa_Request.io_Message.mn_Node);
-    Permit();
+    /* the last first, so none queued behind the one aborted starts */
+    for (i = (LONG)s->sent - 1; i >= 0; i--) {
+        struct IORequest *r = (struct IORequest *)&s->w[i];
+        if (!CheckIO(r)) {
+            AbortIO(r);
+            while (!CheckIO(r)) {}      /* audio.device ends an aborted write at once */
+        }
+        Forbid();
+        Remove(&r->io_Message.mn_Node);
+        Permit();
+    }
+    s->sent = 0;
     s->busy = 0;
 }
 
@@ -283,10 +299,13 @@ static int ax_sound_play(const struct odt_cenv *e, const odt_s8 *data, odt_u32 l
 static int ax_sound_play_(struct ax_sound *s, const odt_s8 *data, odt_u32 len, odt_u32 period, odt_u32 volume,
                           odt_u32 cycles, const UBYTE *channels)
 {
+    odt_u32 *at = s->at, *part = s->part, n, i;
     ax_sound_stop_(s);
-    if (len > 131070UL) len = 131070UL;   /* one write's most: longer, not yet */
-    len &= ~1UL;
-    if (!len) return 0;
+    if (!(n = adt_sound_split(len, cycles, at, part, AX_WRITES))) return 0;
+    if (part[0] != (len & ~1UL)) cycles = 1;   /* several writes: they make the repeats */
+    for (len = 0, i = 0; i < n; i++)    /* the most of the sample a write reads */
+        if (at[i] + part[i] > len) len = at[i] + part[i];
+    if (!s->w && !(s->w = AllocVec(AX_WRITES * sizeof *s->w, MEMF_PUBLIC | MEMF_CLEAR))) return 0;
     if (!s->open) {
         s->port.mp_Node.ln_Type = NT_MSGPORT;
         s->port.mp_Flags = PA_IGNORE;
@@ -308,14 +327,19 @@ static int ax_sound_play_(struct ax_sound *s, const odt_s8 *data, odt_u32 len, o
         s->chip_len = len;
     }
     CopyMem((APTR)data, s->chip, len);
-    s->io.ioa_Request.io_Command = CMD_WRITE;
-    s->io.ioa_Request.io_Flags = ADIOF_PERVOL;
-    s->io.ioa_Data = (UBYTE *)s->chip;
-    s->io.ioa_Length = len;
-    s->io.ioa_Period = (UWORD)(period < 124 ? 124 : period);
-    s->io.ioa_Volume = (UWORD)(volume > 64 ? 64 : volume);
-    s->io.ioa_Cycles = (UWORD)cycles;
-    ax_begin_io((struct IORequest *)&s->io);
+    for (i = 0; i < n; i++) {
+        struct IOAudio *w = &s->w[i];
+        *w = s->io;                     /* the channel and its key */
+        w->ioa_Request.io_Command = CMD_WRITE;
+        w->ioa_Request.io_Flags = ADIOF_PERVOL;
+        w->ioa_Data = (UBYTE *)s->chip + at[i];
+        w->ioa_Length = part[i];
+        w->ioa_Period = (UWORD)(period < 124 ? 124 : period);
+        w->ioa_Volume = (UWORD)(volume > 64 ? 64 : volume);
+        w->ioa_Cycles = (UWORD)cycles;
+        ax_begin_io((struct IORequest *)w);
+        s->sent = i + 1;
+    }
     s->busy = 1;
     return 1;
 }
@@ -334,6 +358,7 @@ static void ax_sound_free(struct ax_sound *s)
     if (!s) return;
     ax_sound_stop_(s);
     if (s->open) CloseDevice((struct IORequest *)&s->io);
+    if (s->w) FreeVec(s->w);
     if (s->chip) FreeVec(s->chip);
     FreeVec(s);
 }
@@ -351,6 +376,19 @@ struct ax_player {
     struct Process *proc;
 };
 
+/* The system time now, through the player's own timer request (not in flight) */
+static void ax_now(struct timerequest *tr, odt_u32 *secs, odt_u32 *micro)
+{
+    tr->tr_node.io_Command = TR_GETSYSTIME;
+    DoIO((struct IORequest *)tr);
+    *secs = tr->tr_time.tv_secs;
+    *micro = tr->tr_time.tv_micro;
+}
+
+/* Ticks by absolute deadlines (adt_deadline, adt_due): tick n is due n / fps
+ * seconds after the start, on UNIT_WAITUNTIL, so the time each tick takes
+ * is not added to the next; when ticks were missed (a slow frame), they
+ * are done at once and the frames between passed over */
 static void ax_player_main(void)
 {
     struct Process *me = (struct Process *)FindTask(NULL);
@@ -361,25 +399,38 @@ static void ax_player_main(void)
     p = (struct ax_player *)GetMsg(&me->pr_MsgPort);
     if ((tport = CreateMsgPort()) != NULL &&
         (tr = (struct timerequest *)CreateIORequest(tport, sizeof *tr)) != NULL &&
-        OpenDevice((CONST_STRPTR) "timer.device", UNIT_MICROHZ, (struct IORequest *)tr, 0) == 0) {
-        ULONG us = 1000000UL / (p->fps ? p->fps : 1);
+        OpenDevice((CONST_STRPTR) "timer.device", UNIT_WAITUNTIL, (struct IORequest *)tr, 0) == 0) {
+        odt_u32 fps = p->fps ? p->fps : 1, s0, m0, done = 0;
+        ax_now(tr, &s0, &m0);
         for (;;) {
-            ULONG got;
+            odt_u32 ds, dm, ns, nm, es, em, due;
+            adt_deadline(done + 1, fps, &ds, &dm);
+            dm += m0;
             tr->tr_node.io_Command = TR_ADDREQUEST;
-            tr->tr_time.tv_secs = us / 1000000UL;
-            tr->tr_time.tv_micro = us % 1000000UL;
+            tr->tr_time.tv_secs = s0 + ds + dm / 1000000UL;
+            tr->tr_time.tv_micro = dm % 1000000UL;
             SendIO((struct IORequest *)tr);
-            got = Wait((1UL << tport->mp_SigBit) | SIGBREAKF_CTRL_C);
-            if (got & SIGBREAKF_CTRL_C) {
+            if (Wait((1UL << tport->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
                 AbortIO((struct IORequest *)tr);
-            }
             WaitIO((struct IORequest *)tr);
             ObtainSemaphore(&p->sem);
             if (p->stop) {
                 ReleaseSemaphore(&p->sem);
                 break;
             }
-            adt_tick(p->env, p->cl, p->obj);
+            ax_now(tr, &ns, &nm);
+            /* the time since the start (a clock set back: from now on) */
+            if (!adt_elapsed(s0, m0, ns, nm, &es, &em)) {
+                s0 = ns;
+                m0 = nm;
+                done = 0;
+                es = em = 0;
+            }
+            due = adt_due(es, em, fps);
+            if (due > done) {
+                adt_tick_n(p->env, p->cl, p->obj, due - done);
+                done = due;
+            }
             ReleaseSemaphore(&p->sem);
         }
         CloseDevice((struct IORequest *)tr);
@@ -402,17 +453,19 @@ static void ax_player_main(void)
 static void *ax_player_start(const struct odt_cenv *e, struct odt_IClass *cl, void *obj, odt_u32 fps)
 {
     struct ax_player *p = AllocVec(sizeof *p, MEMF_PUBLIC | MEMF_CLEAR);
-    struct TagItem t[4];
+    struct TagItem t[5];
     if (!p) return NULL;
     p->env = e;
     p->cl = cl;
     p->obj = obj;
     p->fps = fps;
     InitSemaphore(&p->sem);
-    t[0].ti_Tag = NP_Entry;    t[0].ti_Data = (ULONG)ax_player_main;
-    t[1].ti_Tag = NP_Name;     t[1].ti_Data = (ULONG) "animation.datatype player";
-    t[2].ti_Tag = NP_Priority; t[2].ti_Data = 1;
-    t[3].ti_Tag = TAG_DONE;
+    t[0].ti_Tag = NP_Entry;     t[0].ti_Data = (ULONG)ax_player_main;
+    t[1].ti_Tag = NP_Name;      t[1].ti_Data = (ULONG) "animation.datatype player";
+    t[2].ti_Tag = NP_Priority;  t[2].ti_Data = 1;
+    /* frames are loaded (decoded, by subclasses) and remapped on it */
+    t[3].ti_Tag = NP_StackSize; t[3].ti_Data = 16384;
+    t[4].ti_Tag = TAG_DONE;
     if (!(p->proc = CreateNewProc(t))) {
         FreeVec(p);
         return NULL;

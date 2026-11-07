@@ -78,6 +78,50 @@ int adt_play_tick(struct adt_play *p)
 
 void adt_play_shown(struct adt_play *p, odt_u32 duration) { p->left = duration ? duration : 1; }
 
+void adt_deadline(odt_u32 n, odt_u32 fps, odt_u32 *secs, odt_u32 *micro)
+{
+    if (!fps) fps = 1;
+    if (fps > 4294) fps = 4294;         /* (fps - 1) * 1000000 in 32 bits */
+    *secs = n / fps;
+    /* rounded up: the tick never comes before its time */
+    *micro = ((n % fps) * 1000000UL + fps - 1) / fps;
+}
+
+odt_u32 adt_due(odt_u32 secs, odt_u32 micro, odt_u32 fps)
+{
+    if (!fps) fps = 1;
+    if (fps > 4294) fps = 4294;
+    if (micro > 999999) micro = 999999;
+    return secs * fps + (micro * fps) / 1000000UL;
+}
+
+odt_u32 adt_sound_split(odt_u32 len, odt_u32 cycles, odt_u32 *start, odt_u32 *part, odt_u32 max)
+{
+    odt_u32 per, n = 0, c, at;
+    len &= ~1UL;
+    if (!len || !max) return 0;
+    per = (len + ADT_AUDIO_MAX - 1) / ADT_AUDIO_MAX;
+    if (per == 1 || !cycles) cycles = 1;
+    for (c = 0; c < cycles; c++)
+        for (at = 0; at < len && n < max; at += ADT_AUDIO_MAX) {
+            start[n] = at;
+            part[n++] = len - at > ADT_AUDIO_MAX ? ADT_AUDIO_MAX : len - at;
+        }
+    return n;
+}
+
+int adt_elapsed(odt_u32 s0, odt_u32 m0, odt_u32 s1, odt_u32 m1, odt_u32 *secs, odt_u32 *micro)
+{
+    if (s1 < s0 || (s1 == s0 && m1 < m0)) return 0;
+    if (m1 < m0) {
+        m1 += 1000000UL;
+        s1--;
+    }
+    *secs = s1 - s0;
+    *micro = m1 - m0;
+    return 1;
+}
+
 odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps, odt_u32 clock, odt_u32 len)
 {
     odt_u32 rate = sps ? sps : (period ? clock / period : 0), off;
@@ -962,18 +1006,34 @@ static odt_u32 controlled(const struct odt_cenv *env, struct adt_inst *in, void 
     return r;
 }
 
-void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj)
+/* A frame's duration as the cache has it (1 when it isn't loaded) */
+static odt_u32 cached_duration(const struct adt_inst *in, odt_u32 f)
+{
+    odt_u32 k;
+    for (k = 0; k < ADT_MAXPRELOAD; k++)
+        if (in->slots[k].used && in->slots[k].msg.alf_Frame == f)
+            return in->slots[k].msg.alf_Duration ? in->slots[k].msg.alf_Duration : 1;
+    return 1;
+}
+
+void adt_tick_n(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 n)
 {
     struct adt_inst *in = ODT_INST_DATA(cl, obj);
-    int changed;
+    int changed = 0, round = 0;
     lock(env, obj);
-    changed = adt_play_tick(&in->play);
+    while (n--) {
+        if (!adt_play_tick(&in->play)) continue;
+        changed = 1;
+        /* back to the first frame: time starts again */
+        if (in->play.frame == 0 && in->play.ticks == 0) round = 1;
+        if (n) adt_play_shown(&in->play, cached_duration(in, in->play.frame));
+    }
     if (changed) {
         struct adt_slot *s = adt_cache(env, in, obj, in->play.frame);
         adt_play_shown(&in->play, s ? s->msg.alf_Duration : 1);
         if (s && s->msg.alf_Sample) frame_sound(env, in, s);
-        else if (in->play.frame == 0 && in->play.ticks == 0) {
-            sound_off(env, in);       /* round again: the sound from its start */
+        else if (round) {
+            sound_off(env, in);       /* round again: the sound from where the frame is */
             sound_from(env, in);
         }
     } else if (in->play.state != ADT_PLAYING)
@@ -984,6 +1044,8 @@ void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj)
         redraw(env, in, obj);
     }
 }
+
+void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj) { adt_tick_n(env, cl, obj, 1); }
 
 static odt_u32 layout(const struct odt_cenv *env, struct adt_inst *in, void *obj, struct odt_GadgetInfo *gi)
 {
