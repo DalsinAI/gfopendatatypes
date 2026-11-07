@@ -50,10 +50,10 @@
 #include "zlibrary.h"
 
 const char LibName[] = "gfopenpng.datatype";
-const char LibIdString[] = "gfopenpng.datatype 47.6 (6.11.2026) AmiCradle Team";
+const char LibIdString[] = "gfopenpng.datatype 47.7 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 6;
-static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.6 (6.11.2026)";
+const UWORD LibRevision = 7;
+static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.7 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;

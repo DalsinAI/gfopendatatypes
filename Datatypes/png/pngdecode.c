@@ -3,8 +3,9 @@
  * row filters, Adam7 and the colour types, to 0xAARRGGBB.
  *
  * Inflate (RFC 1951) decodes Huffman codes of up to nine bits with one table
- * lookup and longer ones canonically a bit at a time; the bit buffer reads
- * ahead up to four bytes, which a stored block gives back. A stream that
+ * lookup and longer ones canonically a bit at a time from the ninth (codes()
+ * says how it keeps its state in registers); the bit buffer reads ahead up
+ * to four bytes, which a stored block gives back. A stream that
  * ends early or goes wrong keeps the rows it reached (the rest stay clear),
  * as web browsers show a cut-off picture.
  *
@@ -17,10 +18,19 @@
 #define FASTBITS 9
 #define FASTSIZE (1 << FASTBITS)
 
+/* fast[]: the entry for the next nine bits, reversed (as they arrive):
+ *   F_LIT | (byte << 4) | length    a literal (built with lit set)
+ *   (symbol << 4) | length          any other code of up to nine bits
+ *   F_LONG | the nine bits          the start of a longer code
+ *   0                               no code starts with these bits */
+#define F_LIT  0x8000
+#define F_LONG 0x4000
+
 typedef struct {
-    UWORD fast[FASTSIZE];               /* the next nine bits, reversed: (length << 9) | symbol; 0 = longer */
+    UWORD fast[FASTSIZE];
     UWORD count[16];                    /* codes of each length */
     UWORD symbol[288];                  /* symbols, in canonical order */
+    UWORD first9, index9;               /* the canonical walk's first and index after nine bits */
 } huff;
 
 typedef struct {
@@ -75,8 +85,9 @@ static LONG bits(inf_state *s, LONG n)
     return (LONG)v;
 }
 
-/* 0, or -1 when the lengths don't make a code (too many codes of a length). */
-static LONG build(huff *h, const UBYTE *len, LONG n)
+/* 0, or -1 when the lengths don't make a code (too many codes of a length).
+ * lit: symbols below 256 are literals (F_LIT). */
+static LONG build(huff *h, const UBYTE *len, LONG n, LONG lit)
 {
     UWORD offs[16], next[16];
     LONG i, left = 1;
@@ -97,23 +108,33 @@ static LONG build(huff *h, const UBYTE *len, LONG n)
     next[1] = 0;                        /* the first code of each length (RFC 1951, 3.2.2) */
     for (i = 2; i < 16; i++)
         next[i] = (UWORD)((next[i - 1] + h->count[i - 1]) << 1);
+    h->first9 = h->index9 = 0;
+    for (i = 1; i <= FASTBITS; i++) {
+        h->index9 = (UWORD)(h->index9 + h->count[i]);
+        h->first9 = (UWORD)((h->first9 + h->count[i]) << 1);
+    }
     for (i = 0; i < FASTSIZE; i++)
         h->fast[i] = 0;
     for (i = 0; i < n; i++) {
         LONG l = len[i];
+        ULONG c, r = 0, k, j;
         if (!l)
             continue;
         h->symbol[offs[l]++] = (UWORD)i;
-        if (l <= FASTBITS) {
-            ULONG c = next[l], r = 0, k, j;
-            for (k = 0; k < (ULONG)l; k++) {     /* the code, first bit lowest, as it arrives */
-                r = (r << 1) | (c & 1);
-                c >>= 1;
-            }
-            for (j = r; j < FASTSIZE; j += 1UL << l)
-                h->fast[j] = (UWORD)((l << FASTBITS) | i);
+        c = next[l]++;
+        if (l > FASTBITS) {             /* a longer code: its first nine bits say so */
+            c >>= l - FASTBITS;
+            for (k = 0; k < FASTBITS; k++)
+                r |= ((c >> k) & 1) << (FASTBITS - 1 - k);
+            h->fast[r] = (UWORD)(F_LONG | c);
+            continue;
         }
-        next[l]++;
+        for (k = 0; k < (ULONG)l; k++) {         /* the code, first bit lowest, as it arrives */
+            r = (r << 1) | (c & 1);
+            c >>= 1;
+        }
+        for (j = r; j < FASTSIZE; j += 1UL << l)
+            h->fast[j] = (UWORD)((lit && i < 256 ? F_LIT : 0) | (i << 4) | l);
     }
     return 0;
 }
@@ -124,9 +145,9 @@ static LONG decode(inf_state *s, const huff *h)
     UWORD e;
     fill(s);
     e = h->fast[s->bitbuf & (FASTSIZE - 1)];
-    if (e) {
-        drop(s, e >> FASTBITS);
-        return s->bad ? -1 : (LONG)(e & (FASTSIZE - 1));
+    if (e && !(e & F_LONG)) {
+        drop(s, e & 15);
+        return s->bad ? -1 : (LONG)((e >> 4) & 511);
     }
     /* longer than nine bits (or no such code): canonically, a bit at a time */
     for (len = 1; len < 16; len++) {
@@ -153,42 +174,240 @@ static const UWORD dbase[30] = { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97
                                  2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577 };
 static const UBYTE dext[30] = { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13 };
 
+/* codes() works on the bit buffer in locals: the state lives in registers
+ * for a whole block and goes back to the inf_state when the block ends.
+ * (Written through s, every output byte might alias it, and GCC stored and
+ * reloaded it for each one.) "Bad", bits used that were never there, is
+ * bitcnt < pad: once the input has run out, pad grows with bitcnt and
+ * nothing else does, so the test gives what the sticky flag gave at every
+ * point it was looked at. When the bytes are loaded makes no difference to
+ * what comes out (the bits are the same; stored() gives back whole bytes).
+ *
+ * Most symbols go through the fast loop, which runs while at least 10
+ * input bytes are left (one symbol with its extra bits and distance uses
+ * at most 48 bits, so no zero padding can be needed) and 258 bytes of
+ * output (the longest match): no end checks inside it. The rest, near
+ * either end, go through the careful loop, a symbol at a time, as before. */
+
+/* the next symbol of h when its code is longer than nine bits (e: F_LONG
+ * and the nine bits): canonically from there, a bit at a time, as the walk
+ * from the first bit would have gone; -1 when there is no such code or it
+ * runs past the input */
+#define C_LONG(h, e, sym)                                                                          \
+    do {                                                                                           \
+        LONG code_ = (LONG)((e) & (FASTSIZE - 1)) << 1, first_ = (h)->first9, index_ = (h)->index9; \
+        LONG l_;                                                                                   \
+        sym = -1;                                                                                  \
+        bitbuf >>= FASTBITS;                                                                       \
+        bitcnt -= FASTBITS;                                                                        \
+        for (l_ = FASTBITS + 1; l_ < 16 && bitcnt >= pad; l_++) {                                  \
+            LONG count_;                                                                           \
+            code_ |= (LONG)(bitbuf & 1);                                                           \
+            bitbuf >>= 1;                                                                          \
+            bitcnt--;                                                                              \
+            if (bitcnt < pad)                                                                      \
+                break;                                                                             \
+            count_ = (h)->count[l_];                                                               \
+            if (code_ - first_ < count_) {                                                         \
+                sym = (h)->symbol[index_ + (code_ - first_)];                                      \
+                break;                                                                             \
+            }                                                                                      \
+            index_ += count_;                                                                      \
+            first_ += count_;                                                                      \
+            first_ <<= 1;                                                                          \
+            code_ <<= 1;                                                                           \
+        }                                                                                          \
+    } while (0)
+
+/* at least 16 bits in the buffer: the fast loop's fill (input to spare) */
+#define C_FILL16()                                                                                 \
+    if (bitcnt < 16) {                                                                             \
+        bitbuf |= ((ULONG)in[0] | ((ULONG)in[1] << 8)) << bitcnt;                                  \
+        in += 2;                                                                                   \
+        bitcnt += 16;                                                                              \
+    }
+
+/* the careful loop's fill: fill() */
+#define C_FILL()                                                                                   \
+    while (bitcnt <= 24) {                                                                         \
+        if (in < in_end)                                                                           \
+            bitbuf |= (ULONG)*in++ << bitcnt;                                                      \
+        else                                                                                       \
+            pad += 8;                                                                              \
+        bitcnt += 8;                                                                               \
+    }
+
 /* One block's codes, to its end. 0; 1 when the output is full; -1 on a bad stream. */
 static LONG codes(inf_state *s, const huff *lencode, const huff *distcode)
 {
-    UBYTE *out = s->out;
+    const UBYTE *in = s->in, *const in_end = s->in_end, *in_lim;
+    ULONG bitbuf = s->bitbuf;
+    LONG bitcnt = s->bitcnt, pad = s->pad, r, sym;
+    UBYTE *const out = s->out, *op = out + s->outpos, *const oend = out + s->outmax, *op_lim;
+    const UWORD *const lfast = lencode->fast, *const dfast = distcode->fast;
+    ULONG len, dist, e, n;
+    const UBYTE *from;
+
+    in_lim = in_end - in > 10 ? in_end - 10 : in;
+    op_lim = oend - op > 258 ? oend - 258 : op;
     for (;;) {
-        LONG sym = decode(s, lencode);
-        if (sym < 0)
-            return -1;
-        if (sym < 256) {
-            if (s->outpos >= s->outmax)
-                return 1;
-            out[s->outpos++] = (UBYTE)sym;
-        } else if (sym == 256) {
-            return 0;
-        } else {
-            ULONG len, dist, from;
+        /* the fast loop */
+        while (in < in_lim && op < op_lim) {
+            C_FILL16();
+            e = lfast[bitbuf & (FASTSIZE - 1)];
+            if (e & F_LIT) {
+                n = e & 15;
+                bitbuf >>= n;
+                bitcnt -= n;
+                *op++ = (UBYTE)(e >> 4);
+                continue;
+            }
+            if (e & F_LONG) {
+                C_LONG(lencode, e, sym);
+                if (sym < 0)
+                    goto bad;
+                if (sym < 256) {
+                    *op++ = (UBYTE)sym;
+                    continue;
+                }
+            } else if (e) {
+                n = e & 15;
+                bitbuf >>= n;
+                bitcnt -= n;
+                sym = (LONG)(e >> 4);
+            } else
+                goto bad;
+            if (sym == 256)
+                goto end;
             sym -= 257;
             if (sym >= 29)
-                return -1;
-            len = lbase[sym] + (ULONG)bits(s, lext[sym]);
-            sym = decode(s, distcode);
-            if (sym < 0 || sym >= 30)
-                return -1;
-            dist = dbase[sym] + (ULONG)bits(s, dext[sym]);
-            if (s->bad || dist > s->outpos)
-                return -1;
-            if (s->outpos + len > s->outmax) {
-                len = s->outmax - s->outpos;
-                if (!len)
-                    return 1;
+                goto bad;
+            len = lbase[sym];
+            if ((n = lext[sym])) {
+                C_FILL16();
+                len += bitbuf & ((1UL << n) - 1);
+                bitbuf >>= n;
+                bitcnt -= n;
             }
-            from = s->outpos - dist;
+            C_FILL16();
+            e = dfast[bitbuf & (FASTSIZE - 1)];
+            if (e & F_LONG) {
+                C_LONG(distcode, e, sym);
+                if (sym < 0)
+                    goto bad;
+            } else if (e) {
+                n = e & 15;
+                bitbuf >>= n;
+                bitcnt -= n;
+                sym = (LONG)(e >> 4);
+            } else
+                goto bad;
+            if (sym >= 30)
+                goto bad;
+            dist = dbase[sym];
+            if ((n = dext[sym])) {
+                C_FILL16();
+                dist += bitbuf & ((1UL << n) - 1);
+                bitbuf >>= n;
+                bitcnt -= n;
+            }
+            if (dist > (ULONG)(op - out))
+                goto bad;
+            from = op - dist;
+            while (len >= 4) {              /* in order, so a near distance repeats */
+                op[0] = from[0];
+                op[1] = from[1];
+                op[2] = from[2];
+                op[3] = from[3];
+                op += 4;
+                from += 4;
+                len -= 4;
+            }
             while (len--)
-                out[s->outpos++] = out[from++];
+                *op++ = *from++;
         }
+
+        /* the careful loop: one symbol, near the end of the input or the output */
+        C_FILL();
+        e = lfast[bitbuf & (FASTSIZE - 1)];
+        if (e & F_LONG)
+            C_LONG(lencode, e, sym);
+        else if (e) {
+            n = e & 15;
+            bitbuf >>= n;
+            bitcnt -= n;
+            sym = bitcnt < pad ? -1 : (LONG)((e >> 4) & 511);
+        } else
+            goto bad;
+        if (sym < 256) {
+            if (sym < 0)
+                goto bad;
+            if (op >= oend) {
+                r = 1;
+                goto done;
+            }
+            *op++ = (UBYTE)sym;
+            continue;
+        }
+        if (sym == 256)
+            goto end;
+        sym -= 257;
+        if (sym >= 29)
+            goto bad;
+        len = lbase[sym];
+        if ((n = lext[sym])) {
+            C_FILL();
+            len += bitbuf & ((1UL << n) - 1);
+            bitbuf >>= n;
+            bitcnt -= n;
+        }
+        C_FILL();
+        e = dfast[bitbuf & (FASTSIZE - 1)];
+        if (e & F_LONG)
+            C_LONG(distcode, e, sym);
+        else if (e) {
+            n = e & 15;
+            bitbuf >>= n;
+            bitcnt -= n;
+            sym = bitcnt < pad ? -1 : (LONG)(e >> 4);
+        } else
+            goto bad;
+        if (sym < 0 || sym >= 30)
+            goto bad;
+        dist = dbase[sym];
+        if ((n = dext[sym])) {
+            C_FILL();
+            dist += bitbuf & ((1UL << n) - 1);
+            bitbuf >>= n;
+            bitcnt -= n;
+        }
+        if (bitcnt < pad || dist > (ULONG)(op - out))
+            goto bad;
+        if (len > (ULONG)(oend - op)) {
+            len = (ULONG)(oend - op);
+            if (!len) {
+                r = 1;
+                goto done;
+            }
+        }
+        from = op - dist;
+        while (len--)
+            *op++ = *from++;
     }
+end:
+    r = 0;
+    goto done;
+bad:
+    r = -1;
+done:
+    s->in = in;
+    s->bitbuf = bitbuf;
+    s->bitcnt = bitcnt;
+    s->pad = pad;
+    if (bitcnt < pad)
+        s->bad = 1;
+    s->outpos = (ULONG)(op - out);
+    return r;
 }
 
 static LONG stored(inf_state *s)
@@ -228,9 +447,9 @@ static LONG fixed(inf_work *w)
     for (; i < 256; i++) w->lens[i] = 9;
     for (; i < 280; i++) w->lens[i] = 7;
     for (; i < 288; i++) w->lens[i] = 8;
-    build(&w->lencode, w->lens, 288);
+    build(&w->lencode, w->lens, 288, 1);
     for (i = 0; i < 30; i++) w->lens[i] = 5;
-    build(&w->distcode, w->lens, 30);
+    build(&w->distcode, w->lens, 30, 0);
     return codes(&w->s, &w->lencode, &w->distcode);
 }
 
@@ -244,7 +463,7 @@ static LONG dynamic(inf_work *w)
         return -1;
     for (i = 0; i < 19; i++)
         len[order[i]] = (UBYTE)(i < ncode ? bits(s, 3) : 0);
-    if (s->bad || build(&w->lencode, len, 19) < 0)
+    if (s->bad || build(&w->lencode, len, 19, 0) < 0)
         return -1;
     for (i = 0; i < nlen + ndist;) {
         LONG sym = decode(s, &w->lencode), rep;
@@ -271,7 +490,7 @@ static LONG dynamic(inf_work *w)
     }
     if (!len[256])
         return -1;                      /* no end-of-block code */
-    if (build(&w->lencode, len, nlen) < 0 || build(&w->distcode, len + nlen, ndist) < 0)
+    if (build(&w->lencode, len, nlen, 1) < 0 || build(&w->distcode, len + nlen, ndist, 0) < 0)
         return -1;
     return codes(s, &w->lencode, &w->distcode);
 }
