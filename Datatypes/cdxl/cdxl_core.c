@@ -211,3 +211,121 @@ void cdxl_show(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb)
         }
     }
 }
+
+/* ---- where the frames are ------------------------------------------------- */
+
+int cdxl_same(const struct cdxl_frame *a, const struct cdxl_frame *b)
+{
+    return a->width == b->width && a->height == b->height && a->planes == b->planes && a->layout == b->layout
+           && a->ham == b->ham;
+}
+
+/* The most sound a frame of size bytes like f can hold, a channel */
+static uint32_t audio_room(const struct cdxl_frame *f, uint32_t size)
+{
+    uint32_t used = CDXL_HEAD + cdxl_image_bytes(f);
+    return size > used ? (size - used) / (f->stereo ? 2u : 1u) : 0;
+}
+
+static int index_quick(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    uint8_t head[CDXL_HEAD];
+    struct cdxl_frame last;
+    long len = io->size ? io->size(io->ctx) : -1;
+    uint32_t n, size = ix->first.size;
+    if (len < 0 || !size || (uint32_t)len < size)
+        return -1;
+    n = (uint32_t)len / size;
+    if ((uint32_t)len % size)
+        return -1;
+    if (n > 1 && (io->read(io->ctx, (n - 1) * size, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &last)
+                  || last.size != size || !cdxl_same(&last, &ix->first)))
+        return -1;
+    ix->frames = n;
+    ix->fixed = size;
+    ix->max_size = size;
+    ix->max_audio = audio_room(&ix->first, size);
+    return 0;
+}
+
+static int index_scan(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    uint8_t head[CDXL_HEAD];
+    struct cdxl_frame f;
+    uint32_t at = 0, cap = 0, n = 0;
+    ix->fixed = 0;
+    ix->max_size = ix->max_audio = 0;
+    if (ix->offsets)
+        io->free(io->ctx, ix->offsets);
+    ix->offsets = 0;
+    for (;;) {
+        if (io->read(io->ctx, at, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &f))
+            break;
+        if (n && !cdxl_same(&f, &ix->first))
+            break;
+        if (at + f.size < at)
+            break;
+        if (n + 1 >= cap) {
+            uint32_t *more, k;
+            cap = cap ? cap * 2 : 256;
+            if (!(more = io->alloc(io->ctx, cap * (uint32_t)sizeof *more)))
+                break;
+            for (k = 0; k < n; k++)
+                more[k] = ix->offsets[k];
+            if (ix->offsets)
+                io->free(io->ctx, ix->offsets);
+            ix->offsets = more;
+        }
+        if (!n)
+            ix->first = f;
+        ix->offsets[n++] = at;
+        if (f.size > ix->max_size)
+            ix->max_size = f.size;
+        if (f.audio > ix->max_audio)
+            ix->max_audio = f.audio;
+        at += f.size;
+        ix->offsets[n] = at;
+    }
+    ix->frames = n;
+    return n ? 0 : -1;
+}
+
+int cdxl_index_open(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    uint8_t head[CDXL_HEAD];
+    ix->frames = ix->fixed = ix->max_size = ix->max_audio = 0;
+    ix->offsets = 0;
+    if (io->read(io->ctx, 0, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &ix->first))
+        return -1;
+    if (!index_quick(io, ix))
+        return 0;
+    return index_scan(io, ix);
+}
+
+void cdxl_index_free(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    if (ix->offsets)
+        io->free(io->ctx, ix->offsets);
+    ix->offsets = 0;
+    ix->frames = 0;
+}
+
+int cdxl_read_frame(const struct cdxl_io *io, struct cdxl_index *ix, uint32_t i, uint8_t *buf, struct cdxl_frame *f)
+{
+    uint32_t at, size;
+    int again = ix->fixed != 0;
+    for (;;) {
+        if (i >= ix->frames)
+            return -1;
+        at = ix->fixed ? i * ix->fixed : ix->offsets[i];
+        size = ix->fixed ? ix->fixed : ix->offsets[i + 1] - at;
+        if (size >= CDXL_HEAD && size <= ix->max_size && io->read(io->ctx, at, buf, size) == (long)size
+            && !cdxl_parse(buf, f) && f->size == size && cdxl_same(f, &ix->first))
+            return 0;
+        /* a frame found in constant time and not one like the first: the
+         * frames' sizes vary; frame by frame then, once */
+        if (!again || index_scan(io, ix))
+            return -1;
+        again = 0;
+    }
+}

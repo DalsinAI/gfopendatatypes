@@ -47,10 +47,10 @@
 #include "dtservice.h"
 
 const char LibName[] = "gfopenvideo.datatype";
-const char LibIdString[] = "gfopenvideo.datatype 47.2 (20.10.2026) AmiCradle Team, decoded by media.decode/1";
+const char LibIdString[] = "gfopenvideo.datatype 47.3 (7.11.2026) AmiCradle Team, decoded by media.decode/1";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: gfopenvideo.datatype 47.2 (20.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: gfopenvideo.datatype 47.3 (7.11.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;

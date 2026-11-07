@@ -80,4 +80,46 @@ unsigned cdxl_rate(const struct cdxl_frame *f);
  * through the palette, HAM decoded, or the RGB itself. */
 void cdxl_show(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb);
 
+/* ---- where the frames are ------------------------------------------------- */
+
+/* The film, as the datatype reads it (a DOS handle) and the tests do */
+struct cdxl_io {
+    void *ctx;
+    /* n bytes at byte at into buf: how many were read, -1 on an error */
+    long (*read)(void *ctx, uint32_t at, void *buf, uint32_t n);
+    /* the film's length in bytes, -1 when it can't be told */
+    long (*size)(void *ctx);
+    void *(*alloc)(void *ctx, uint32_t n);
+    void (*free)(void *ctx, void *p);
+};
+
+/* Same picture: size, planes, layout and HAM (a frame that differs ends
+ * the film, as a cut-short file does) */
+int cdxl_same(const struct cdxl_frame *a, const struct cdxl_frame *b);
+
+struct cdxl_index {
+    uint32_t frames;
+    uint32_t fixed;         /* every frame this many bytes, frame i at i * fixed; 0: offsets */
+    uint32_t *offsets;      /* frames + 1 of them (the last: where the last frame ends) */
+    uint32_t max_size;      /* the biggest frame's bytes */
+    uint32_t max_audio;     /* the most sound a frame can have, a channel */
+    struct cdxl_frame first;
+};
+
+/* Finds the frames. In constant time when they can be (the usual film:
+ * every frame the first's size, the length a whole number of them, and
+ * the last frame's header the same as the first's): the first and last
+ * headers and the length, three reads; else frame by frame, a header
+ * read each, until one doesn't parse or differs (cdxl_same) or the film
+ * ends. 0, or -1 when there is no frame. */
+int cdxl_index_open(const struct cdxl_io *io, struct cdxl_index *ix);
+void cdxl_index_free(const struct cdxl_io *io, struct cdxl_index *ix);
+
+/* Frame i, whole, into buf (ix->max_size bytes), in one read, its header
+ * into *f. A frame found in constant time whose header turns out not to
+ * be one like the first's (a film whose frames' sizes vary yet add up)
+ * has the film indexed frame by frame and is read again. 0, or -1 (no
+ * such frame, a read error, a header that doesn't parse or differs). */
+int cdxl_read_frame(const struct cdxl_io *io, struct cdxl_index *ix, uint32_t i, uint8_t *buf, struct cdxl_frame *f);
+
 #endif

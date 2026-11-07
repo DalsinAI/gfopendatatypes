@@ -41,10 +41,10 @@
 #include "cdxl_core.h"
 
 const char LibName[] = "cdxl.datatype";
-const char LibIdString[] = "cdxl.datatype 47.2 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "cdxl.datatype 47.3 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.3 (7.11.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
@@ -55,18 +55,38 @@ const UWORD dt_superversion = 40;
  * loads a few ahead, never this many. */
 #define RING 64
 
+/* GFOpenDatatypes' animation.datatype shows frames from any memory (it
+ * remaps them, or copies them to Chip RAM first): OM_GET answers TRUE */
+#define ADT_GFA_FramesAnyMem (TAG_USER + 0x47460001UL)
+
 typedef struct {
     BPTR fh;                       /* our own handle on the film */
-    struct SignalSemaphore lock;   /* the loader and OM_NEW take turns with it */
-    ULONG *offsets, frames, maxSize;
+    struct SignalSemaphore lock;   /* the loader and OM_NEW take turns with it (the handle, chunky) */
+    struct cdxl_index ix;          /* where the frames are (cdxl_index_open) */
+    struct cdxl_io io;             /* over fh */
+    LONG pos;                      /* where fh is, -1 not known: no Seek when a read follows the last */
     struct cdxl_frame first;
     UBYTE palette[256 * 3];        /* the first frame's */
-    UBYTE depth;
+    UBYTE depth, anyMem;           /* anyMem: the superclass shows frames from any memory */
     struct BitMap *keyFrame;
     BYTE *ring;                    /* RING slots of soundSlot bytes in chip RAM, by frame */
     ULONG soundSlot, period;
     struct ColorMap *cmaps[RING];  /* frames whose palette is not the first's */
+    struct ColorMap *firstMap;     /* the first's palette, for frames with it */
+    UBYTE *chunky;                 /* a chunky film's frame as cube indices, width x height */
 } CdxlData;
+
+/* A frame handed out (alf_UserData): the frame read whole into buf, whose
+ * bitplanes are bm's planes as they lie in the file (no copy), in Chip RAM
+ * unless the superclass remaps the frame anyway; or a chunky film's frame,
+ * dithered into an 8-plane bitmap. animation.datatype hands it back to be
+ * read into again. */
+struct CdxlFrame {
+    struct BitMap bm;
+    UBYTE *buf;
+    ULONG size, memf;
+    struct BitMap *chunky;
+};
 
 ULONG dt_instsize = sizeof(CdxlData);
 
@@ -117,25 +137,52 @@ static void setPalette(Object *o, const UBYTE *pal, ULONG n)
     }
 }
 
-/* Frame index read from the film, whole; NULL when it can't be. */
-static UBYTE *readFrame(CdxlData *d, ULONG index, struct cdxl_frame *f)
+/* The film through fh, for cdxl_core: a read where the last one ended
+ * needs no Seek (one DOS packet a frame in order) */
+static long dosRead(void *ctx, uint32_t at, void *buf, uint32_t n)
 {
-    UBYTE *frame = AllocVec(d->maxSize, MEMF_ANY);
-    BOOL ok = FALSE;
-
-    if (!frame)
-        return NULL;
-    ObtainSemaphore(&d->lock);
-    if (Seek(d->fh, d->offsets[index], OFFSET_BEGINNING) >= 0 && Read(d->fh, frame, CDXL_HEAD) == CDXL_HEAD
-        && !cdxl_parse(frame, f) && f->size <= d->maxSize
-        && Read(d->fh, frame + CDXL_HEAD, f->size - CDXL_HEAD) == (LONG)(f->size - CDXL_HEAD))
-        ok = TRUE;
-    ReleaseSemaphore(&d->lock);
-    if (!ok) {
-        FreeVec(frame);
-        frame = NULL;
+    CdxlData *d = ctx;
+    LONG got;
+    if ((LONG)at != d->pos && Seek(d->fh, at, OFFSET_BEGINNING) < 0) {
+        d->pos = -1;
+        return -1;
     }
-    return frame;
+    got = Read(d->fh, buf, n);
+    d->pos = got < 0 ? -1 : (LONG)(at + got);
+    return got;
+}
+
+static long dosSize(void *ctx)
+{
+    CdxlData *d = ctx;
+    LONG len;
+    d->pos = -1;
+    if (Seek(d->fh, 0, OFFSET_END) < 0 || (len = Seek(d->fh, 0, OFFSET_BEGINNING)) < 0)
+        return -1;
+    d->pos = 0;
+    return len;
+}
+
+static void *dosAlloc(void *ctx, uint32_t n)
+{
+    (void)ctx;
+    return AllocVec(n, MEMF_ANY);
+}
+
+static void dosFree(void *ctx, void *p)
+{
+    (void)ctx;
+    FreeVec(p);
+}
+
+/* Frame index read from the film, whole, into buf (d->ix.max_size bytes) */
+static BOOL readFrame(CdxlData *d, ULONG index, UBYTE *buf, struct cdxl_frame *f)
+{
+    BOOL ok;
+    ObtainSemaphore(&d->lock);
+    ok = !cdxl_read_frame(&d->io, &d->ix, index, buf, f);
+    ReleaseSemaphore(&d->lock);
+    return ok;
 }
 
 /* The frame's picture into bm: bitplanes copied row by row into a standard
@@ -171,7 +218,77 @@ static BOOL drawFrame(CdxlData *d, const UBYTE *frame, const struct cdxl_frame *
     return TRUE;
 }
 
-/* The frame's palette, when it is not the first's: into its slot's colour map. */
+/* The slot's bitmap made over its buffer: the frame's planes where they
+ * are, one after another (CDXL_PLANAR) or each row's in turn (CDXL_LINE,
+ * an interleaved bitmap) */
+static void frameBitMap(struct CdxlFrame *s, const struct cdxl_frame *f)
+{
+    ULONG row = cdxl_rowbytes(f), p;
+    UBYTE *img = s->buf + cdxl_image_at(f);
+    InitBitMap(&s->bm, f->planes, f->width, f->height);
+    if (f->layout == CDXL_LINE)
+        s->bm.BytesPerRow = (UWORD)(row * f->planes);
+    for (p = 0; p < 8; p++)
+        s->bm.Planes[p] = p < f->planes ? img + (f->layout == CDXL_LINE ? p * row : p * f->height * row) : NULL;
+}
+
+static void freeFrame(struct CdxlFrame *s)
+{
+    if (!s)
+        return;
+    WaitBlit();
+    if (s->chunky)
+        FreeBitMap(s->chunky);
+    if (s->buf)
+        FreeVec(s->buf);
+    FreeVec(s);
+}
+
+/* Frame index into the slot s: read whole into its buffer (one DOS read in
+ * order); a chunky film's dithered into its 8-plane bitmap. Its header
+ * into *f. */
+static BOOL loadInto(CdxlData *d, Object *o, struct CdxlFrame *s, ULONG index, struct cdxl_frame *f)
+{
+    ULONG remap = FALSE, memf = MEMF_CHIP;
+    BOOL ok;
+    /* Fast RAM when it is only read by the CPU: animation.datatype ours,
+     * and remapping (no HAM) or a chunky film's */
+    if (d->first.layout == CDXL_CHUNKY
+        || (d->anyMem && !d->first.ham && GetDTAttrs(o, ADTA_Remap, (ULONG)&remap, TAG_DONE) == 1 && remap))
+        memf = MEMF_ANY;
+    if (!s->buf || s->size < d->ix.max_size || (s->memf != memf && memf == MEMF_CHIP)) {
+        WaitBlit();
+        if (s->buf)
+            FreeVec(s->buf);
+        s->size = 0;
+        if (!(s->buf = AllocVec(d->ix.max_size, memf)))
+            return FALSE;
+        s->size = d->ix.max_size;
+        s->memf = memf;
+    } else
+        WaitBlit();                     /* a blit of the frame before may still read it */
+    if (d->first.layout == CDXL_CHUNKY && !s->chunky
+        && !(s->chunky = AllocBitMap(d->first.width, d->first.height, 8, 0, NULL)))
+        return FALSE;
+    ObtainSemaphore(&d->lock);
+    ok = !cdxl_read_frame(&d->io, &d->ix, index, s->buf, f);
+    if (ok && f->layout == CDXL_CHUNKY) {
+        struct RastPort rp;
+        cdxl_rgb_to_cube(s->buf, f, d->chunky);
+        InitRastPort(&rp);
+        rp.BitMap = s->chunky;
+        WriteChunkyPixels(&rp, 0, 0, f->width - 1, f->height - 1, d->chunky, f->width);
+    }
+    ReleaseSemaphore(&d->lock);
+    if (ok && f->layout != CDXL_CHUNKY)
+        frameBitMap(s, f);
+    return ok;
+}
+
+/* The frame's palette as a colour map, for every frame that has one: the
+ * first's for a frame with the first's palette (not NULL: a frame after
+ * one with other colours, going back, must get them back), else its own,
+ * in its slot. */
 static struct ColorMap *frameColours(CdxlData *d, ULONG index, const UBYTE *frame, const struct cdxl_frame *f)
 {
     UBYTE pal[256 * 3];
@@ -182,7 +299,7 @@ static struct ColorMap *frameColours(CdxlData *d, ULONG index, const UBYTE *fram
         return NULL;
     cdxl_palette(frame, f, pal);
     if (f->colours == d->first.colours && !memcmp(pal, d->palette, f->colours * 3))
-        return NULL;
+        return d->firstMap;
     if (!*cm && !(*cm = GetColorMap(256)))
         return NULL;
     for (i = 0; i < f->colours; i++)
@@ -207,55 +324,22 @@ static void freeData(CdxlData *d)
             FreeColorMap(d->cmaps[i]);
             d->cmaps[i] = NULL;
         }
-    if (d->offsets)
-        FreeVec(d->offsets);
-    d->offsets = NULL;
+    if (d->firstMap)
+        FreeColorMap(d->firstMap);
+    d->firstMap = NULL;
+    if (d->chunky)
+        FreeVec(d->chunky);
+    d->chunky = NULL;
+    cdxl_index_free(&d->io, &d->ix);
     if (d->fh)
         Close(d->fh);
     d->fh = 0;
 }
 
-/* Walks the film's headers, noting where each frame starts. Frames that
- * change size, depth or layout end it, as a cut-short file does. */
-static BOOL scanFilm(CdxlData *d, ULONG *maxAudio)
-{
-    UBYTE head[CDXL_HEAD];
-    struct cdxl_frame f;
-    ULONG at = 0, cap = 0;
-
-    *maxAudio = 0;
-    for (;;) {
-        if (Seek(d->fh, at, OFFSET_BEGINNING) < 0 || Read(d->fh, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &f))
-            break;
-        if (d->frames && (f.width != d->first.width || f.height != d->first.height || f.planes != d->first.planes
-                          || f.layout != d->first.layout || f.ham != d->first.ham))
-            break;
-        if (d->frames == cap) {
-            ULONG *more = AllocVec((cap = cap ? cap * 2 : 256) * sizeof *more, MEMF_ANY);
-            if (!more)
-                break;
-            if (d->offsets) {
-                CopyMem(d->offsets, more, d->frames * sizeof *more);
-                FreeVec(d->offsets);
-            }
-            d->offsets = more;
-        }
-        if (!d->frames)
-            d->first = f;
-        d->offsets[d->frames++] = at;
-        if (f.size > d->maxSize)
-            d->maxSize = f.size;
-        if (f.audio > *maxAudio)
-            *maxAudio = f.audio;
-        at += f.size;
-    }
-    return d->frames != 0;
-}
-
 static BOOL loadFilm(Class *cl, Object *o)
 {
     CdxlData *d = INST_DATA(cl, o);
-    ULONG sourceType = DTST_FILE, maxAudio, mode = 0, n;
+    ULONG sourceType = DTST_FILE, mode = 0, n, any = 0, i;
     BPTR given = 0, lock;
     STRPTR name = NULL;
     struct cdxl_frame f;
@@ -264,6 +348,12 @@ static BOOL loadFilm(Class *cl, Object *o)
 
     memset(d, 0, sizeof *d);
     InitSemaphore(&d->lock);
+    d->io.ctx = d;
+    d->io.read = dosRead;
+    d->io.size = dosSize;
+    d->io.alloc = dosAlloc;
+    d->io.free = dosFree;
+    d->anyMem = GetDTAttrs(o, ADT_GFA_FramesAnyMem, (ULONG)&any, TAG_DONE) == 1 && any == 1;
     GetDTAttrs(o, DTA_Name, (ULONG)&name, DTA_SourceType, (ULONG)&sourceType, DTA_Handle, (ULONG)&given, TAG_DONE);
     if (sourceType != DTST_FILE || !given) {
         SetIoErr(ERROR_OBJECT_WRONG_TYPE);
@@ -277,23 +367,37 @@ static BOOL loadFilm(Class *cl, Object *o)
         SetIoErr(ERROR_OBJECT_WRONG_TYPE);
         return FALSE;
     }
-    if (!scanFilm(d, &maxAudio))
+    /* in constant time when the frames are all one size (cdxl_core.c) */
+    d->pos = 0;
+    if (cdxl_index_open(&d->io, &d->ix))
         goto out;
+    d->first = d->ix.first;
     d->depth = d->first.layout == CDXL_CHUNKY ? 8 : d->first.planes;
-    if (!(frame = readFrame(d, 0, &f)))
+    if (!(frame = AllocVec(d->ix.max_size, MEMF_ANY))) {
+        err = ERROR_NO_FREE_STORE;
         goto out;
+    }
+    if (!readFrame(d, 0, frame, &f)) {
+        FreeVec(frame);
+        goto out;
+    }
     if (f.layout != CDXL_CHUNKY)
         cdxl_palette(frame, &f, d->palette);
-    if (!(d->keyFrame = AllocBitMap(f.width, f.height, d->depth, BMF_CLEAR, NULL))) {
+    if (!(d->keyFrame = AllocBitMap(f.width, f.height, d->depth, BMF_CLEAR, NULL))
+        || (f.layout == CDXL_CHUNKY && !(d->chunky = AllocVec((ULONG)f.width * f.height, MEMF_ANY)))) {
         FreeVec(frame);
         err = ERROR_NO_FREE_STORE;
         goto out;
     }
     drawFrame(d, frame, &f, d->keyFrame);
     FreeVec(frame);
+    if (f.layout != CDXL_CHUNKY && f.colours && (d->firstMap = GetColorMap(256)) != NULL)
+        for (i = 0; i < f.colours; i++)
+            SetRGB32CM(d->firstMap, i, d->palette[i * 3] * 0x01010101UL, d->palette[i * 3 + 1] * 0x01010101UL,
+                       d->palette[i * 3 + 2] * 0x01010101UL);
 
-    if (maxAudio) {
-        d->soundSlot = (maxAudio + 1) & ~1UL;
+    if (d->ix.max_audio) {
+        d->soundSlot = (d->ix.max_audio + 1) & ~1UL;
         if ((d->ring = AllocVec(RING * d->soundSlot, MEMF_CHIP | MEMF_CLEAR)) != NULL) {
             d->period = PAL_CLOCK / cdxl_rate(&d->first);
             SetDTAttrs(o, NULL, NULL, ADTA_Period, d->period, ADTA_Volume, 64, ADTA_Cycles, 1, TAG_DONE);
@@ -312,7 +416,7 @@ static BOOL loadFilm(Class *cl, Object *o)
         ADTA_Width, f.width,
         ADTA_Height, f.height,
         ADTA_Depth, d->depth,
-        ADTA_Frames, d->frames,
+        ADTA_Frames, d->ix.frames,
         ADTA_FramesPerSecond, cdxl_fps(&d->first),
         ADTA_KeyFrame, (ULONG)d->keyFrame,
         TAG_DONE);
@@ -331,10 +435,11 @@ static LONG writeFilm(CdxlData *d, BPTR out)
     BPTR a, b;
     ULONG i;
     LONG err = 0;
+    UBYTE *frame = NULL;
 
     if (!out)
         return ERROR_REQUIRED_ARG_MISSING;
-    if (!d->fh || !d->frames)
+    if (!d->fh || !d->ix.frames)
         return ERROR_OBJECT_WRONG_TYPE;
     /* never onto the film it plays from (AmigaDOS's locks stop most of these
      * already; a handle opened with MODE_READWRITE would not be stopped) */
@@ -346,16 +451,16 @@ static LONG writeFilm(CdxlData *d, BPTR out)
         UnLock(a);
     if (b)
         UnLock(b);
-    for (i = 0; !err && i < d->frames; i++) {
-        UBYTE *frame = readFrame(d, i, &f);
-        if (!frame)
+    if (!err && !(frame = AllocVec(d->ix.max_size, MEMF_ANY)))
+        err = ERROR_NO_FREE_STORE;
+    for (i = 0; !err && i < d->ix.frames; i++) {
+        if (!readFrame(d, i, frame, &f))
             err = IoErr() ? IoErr() : ERROR_SEEK_ERROR;
-        else {
-            if (Write(out, frame, f.size) != (LONG)f.size)
-                err = IoErr() ? IoErr() : ERROR_DISK_FULL;
-            FreeVec(frame);
-        }
+        else if (Write(out, frame, f.size) != (LONG)f.size)
+            err = IoErr() ? IoErr() : ERROR_DISK_FULL;
     }
+    if (frame)
+        FreeVec(frame);
     return err;
 }
 
@@ -392,51 +497,54 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         return rc;
     }
     case ADTM_LOADFRAME: {
-        /* As gfopenvideo.datatype: animation.datatype 47 hands bitmaps back
-         * in alf_BitMap to be drawn again; alf_UserData follows a bitmap
-         * and it is freed once, when the frame holding it last unloads. */
+        /* As gfopenvideo.datatype: animation.datatype 47 hands frames back
+         * in alf_BitMap (alf_UserData, our CdxlFrame, with it) to be read
+         * into again; each is freed once, when the frame holding it last
+         * unloads. */
         CdxlData *d = INST_DATA(cl, o);
         struct adtFrame *alf = (struct adtFrame *)msg;
         ULONG index = alf->alf_TimeStamp;
-        struct BitMap *bm = alf->alf_BitMap;
+        struct BitMap *given = alf->alf_BitMap;
+        struct CdxlFrame *s = alf->alf_UserData;
         struct cdxl_frame f;
-        UBYTE *frame;
-        BOOL drawn = FALSE;
-        if (index >= d->frames)
-            index = d->frames - 1;
+        BOOL drawn;
+        if (index >= d->ix.frames)
+            index = d->ix.frames - 1;
         alf->alf_Frame = index;
         alf->alf_Duration = 1;
         alf->alf_CMap = NULL;
         alf->alf_Sample = NULL;
         alf->alf_SampleLength = 0;
-        if (!bm)
-            bm = AllocBitMap(d->first.width, d->first.height, d->depth, BMF_CLEAR, NULL);
-        if (!bm) {
+        if (!given || !s || (given != &s->bm && given != s->chunky))
+            s = NULL;                   /* none of ours handed back */
+        if (!s && !(s = AllocVec(sizeof *s, MEMF_PUBLIC | MEMF_CLEAR))) {
             SetIoErr(ERROR_NO_FREE_STORE);
             return 0;
         }
-        if ((frame = readFrame(d, index, &f)) != NULL) {
-            drawn = drawFrame(d, frame, &f, bm);
-            alf->alf_CMap = frameColours(d, index, frame, &f);
+        drawn = loadInto(d, o, s, index, &f);
+        if (!drawn && !given) {
+            freeFrame(s);
+            alf->alf_BitMap = NULL;
+            alf->alf_UserData = NULL;
+            return 0;
+        }
+        if (drawn) {
+            alf->alf_CMap = frameColours(d, index, s->buf, &f);
             if (d->ring && f.audio && f.audio <= d->soundSlot) {
                 BYTE *at = d->ring + (index % RING) * d->soundSlot;
-                cdxl_mono(frame, &f, (int8_t *)at);
+                cdxl_mono(s->buf, &f, (int8_t *)at);
                 alf->alf_Sample = at;          /* ours, in the ring: freed with the object */
                 alf->alf_SampleLength = f.audio;
                 alf->alf_Period = d->period;
             }
-            FreeVec(frame);
         }
-        alf->alf_BitMap = bm;
-        alf->alf_UserData = bm;
+        alf->alf_BitMap = d->first.layout == CDXL_CHUNKY ? s->chunky : &s->bm;
+        alf->alf_UserData = s;
         return drawn ? 1 : 0;
     }
     case ADTM_UNLOADFRAME: {
         struct adtFrame *alf = (struct adtFrame *)msg;
-        if (alf->alf_UserData) {
-            WaitBlit();
-            FreeBitMap((struct BitMap *)alf->alf_UserData);
-        }
+        freeFrame(alf->alf_UserData);
         alf->alf_UserData = NULL;
         alf->alf_BitMap = NULL;
         return 0;

@@ -41,10 +41,10 @@
 #include "vpx/vp8dx.h"
 
 const char LibName[] = "webm.datatype";
-const char LibIdString[] = "webm.datatype 47.1 (4.10.2026) AmiCradle Team, libvpx 1.17.0";
+const char LibIdString[] = "webm.datatype 47.2 (7.11.2026) AmiCradle Team, libvpx 1.17.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.1 (4.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
