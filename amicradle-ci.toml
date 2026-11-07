@@ -28,6 +28,7 @@ host = [
   "sh Datatypes/tests/test-webm.sh",
   "sh Datatypes/tests/test-stream.sh",
   "sh Datatypes/tests/test-webm-read.sh",
+  "QEMU_M68K=qemu-m68k sh Datatypes/tests/test-pngdec.sh",
   "sh Datatypes/tests/test-pngenc.sh",
   "sh Datatypes/tests/test-tgaenc.sh",
   "sh Datatypes/tests/test-gifenc.sh",
