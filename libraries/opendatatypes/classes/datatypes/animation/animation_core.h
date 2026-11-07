@@ -166,6 +166,12 @@ struct adt_ext {
     void (*player_stop)(const struct odt_cenv *env, void *player);
     /* WaitBlit, before the CPU writes into a bitmap a blit may still read */
     void (*wait_blit)(const struct odt_cenv *env);
+    /* a struct ColorMap's colours (GetRGB32) as R, G, B bytes into rgb, at
+     * most max of them: how many */
+    odt_u32 (*cmap_rgb)(const struct odt_cenv *env, void *cmap, odt_u8 *rgb, odt_u32 max);
+    /* fn(arg) on at least bytes of stack: the caller's when it has that
+     * much free, else one of its own (exec's StackSwap) */
+    odt_u32 (*call_on_stack)(const struct odt_cenv *env, odt_u32 bytes, odt_u32 (*fn)(void *arg), void *arg);
 };
 
 /* ---- playing: frames against time -------------------------------------------- */
@@ -275,6 +281,7 @@ void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj)
 void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj);
 
 /* ---- writing: the animation as an IFF ANIM (DTM_WRITE, DTWM_IFF) ------------- */
+/* (and as an MP4, DTWM_RAW with OIA_WriteFormat OIWF_MP4: mp4_core.h) */
 
 /* What adt_anim_write writes */
 struct adt_aw_spec {

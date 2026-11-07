@@ -20,6 +20,7 @@
 #include <dos/dostags.h>
 #include <exec/ports.h>
 #include <exec/io.h>
+#include <exec/tasks.h>
 #include <datatypes/animationclass.h>
 #include "animation_core.h"
 
@@ -387,6 +388,69 @@ static void ax_player_stop(const struct odt_cenv *e, void *pp)
         WaitPort(&port);
     SetSignal(0, SIGF_SINGLE);          /* none left over for a semaphore's wait */
     FreeVec(p);
+}
+
+/* ---- writing an MP4: a frame's colour map, and stack enough --------------- */
+
+static odt_u32 ax_cmap_rgb(const struct odt_cenv *e, void *cmap, odt_u8 *rgb, odt_u32 max)
+{
+    struct ColorMap *cm = cmap;
+    ULONG t[3 * 16];
+    odt_u32 n, i, k, c;
+    (void)e;
+    if (!cm || !rgb) return 0;
+    n = cm->Count;
+    if (n > max) n = max;
+    for (i = 0; i < n; i += k) {
+        k = n - i > 16 ? 16 : n - i;
+        GetRGB32(cm, i, k, t);
+        for (c = 0; c < 3 * k; c++) rgb[3 * i + c] = (odt_u8)(t[c] >> 24);
+    }
+    return n;
+}
+
+/* ULONG ax_swapcall(struct StackSwapStruct *sss (a0), ULONG (*fn)(APTR) (a1),
+ * APTR arg (d0)): fn(arg) on sss's stack. What it needs after the swap is in
+ * registers fn keeps (d2, d3, a2, a3), as common/dtstack.c in Datatypes/. */
+__asm__(
+    "    .text\n"
+    "    .even\n"
+    "    .globl _ax_swapcall\n"
+    "_ax_swapcall:\n"
+    "    movem.l d2-d3/a2-a3/a6,-(sp)\n"
+    "    move.l  a0,a2\n"
+    "    move.l  a1,a3\n"
+    "    move.l  d0,d2\n"
+    "    move.l  _SysBase,a6\n"
+    "    jsr     -732(a6)\n"           /* StackSwap(a2): onto the new stack */
+    "    move.l  d2,-(sp)\n"
+    "    jsr     (a3)\n"
+    "    addq.l  #4,sp\n"
+    "    move.l  d0,d3\n"
+    "    move.l  a2,a0\n"
+    "    move.l  _SysBase,a6\n"
+    "    jsr     -732(a6)\n"           /* StackSwap(a2): back */
+    "    move.l  d3,d0\n"
+    "    movem.l (sp)+,d2-d3/a2-a3/a6\n"
+    "    rts\n");
+ULONG ax_swapcall(REG(a0, struct StackSwapStruct *sss), REG(a1, odt_u32 (*fn)(void *)), REG(d0, void *arg));
+
+static odt_u32 ax_call_on_stack(const struct odt_cenv *e, odt_u32 bytes, odt_u32 (*fn)(void *), void *arg)
+{
+    struct Task *me = FindTask(NULL);
+    struct StackSwapStruct *sss;
+    odt_u32 r;
+    ULONG sp;
+    (void)e;
+    __asm__ volatile("move.l sp,%0" : "=r"(sp));
+    if (sp > (ULONG)me->tc_SPLower && sp - (ULONG)me->tc_SPLower >= bytes) return fn(arg);
+    if (!(sss = AllocVec(sizeof *sss + bytes, MEMF_ANY))) return fn(arg);
+    sss->stk_Lower = sss + 1;
+    sss->stk_Upper = (ULONG)((UBYTE *)(sss + 1) + bytes);
+    sss->stk_Pointer = (APTR)sss->stk_Upper;
+    r = ax_swapcall(sss, fn, arg);
+    FreeVec(sss);
+    return r;
 }
 
 #endif /* ADT_EXT_BITMAPS_ONLY */

@@ -32,9 +32,32 @@
 /* (LONG, in DTM_WRITE's dtw_AttrList) How much a raw write compresses: 0
  * stores (gfopentga.datatype: no run-length encoding; gfopenpng.datatype:
  * deflate level 0), 1 to 9 a deflate level where the format has one, -1 or
- * no tag the datatype's default. A datatype whose format has no choice
- * ignores it. */
+ * no tag the datatype's default. For an encoder that trades time for size
+ * (webp's effort) 0 is the fastest and 9 the smallest; an MP4's H.264 is
+ * fastest at 0, its default, and searches most at 9. A datatype whose
+ * format has no choice ignores it. */
 #define OIA_Compression (OIA_Dummy + 4)
+
+/* (ULONG, in DTM_WRITE's dtw_AttrList with DTWM_RAW) Write this format
+ * instead of the datatype's own: animation.datatype (GFOpenDatatypes
+ * 47.100 and up) writes any film, whatever its subclass (anim, cdxl, webm,
+ * gfopenvideo, an animated GIF), as OIWF_MP4 itself, on this CPU, with no
+ * service. 0 or no tag: the datatype's own format, as before. A format
+ * the class can't write fails with ERROR_NOT_IMPLEMENTED; it never writes
+ * its own format instead. Classes that don't know the tag (pictures,
+ * sounds) ignore it, so ask an animation object for an MP4. */
+#define OIA_WriteFormat (OIA_Dummy + 7)
+#define OIWF_MP4       0x4D503420UL    /* 'MP4 ': H.264 baseline video, the sound as 8-bit PCM ('twos') */
+
+/* (LONG, in dtw_AttrList) A lossy raw write's quality: 0 the smallest file
+ * to 100 the best picture, -1 or no tag the datatype's default. MP4: H.264's
+ * quantiser 10 + (100 - quality) x 41 / 100, rounded (default 60, QP 26). */
+#define OIA_Quality    (OIA_Dummy + 8)
+
+/* (BOOL, in dtw_AttrList) FALSE leaves the sound out of a film's raw write
+ * (default TRUE: an MP4 carries the film's sound as PCM, which browsers
+ * don't play). */
+#define OIA_WriteSound (OIA_Dummy + 9)
 
 /* ---- Pictures with more than one frame (gfopengif.datatype) ----------------- */
 
