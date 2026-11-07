@@ -87,12 +87,20 @@ void adt_deadline(odt_u32 n, odt_u32 fps, odt_u32 *secs, odt_u32 *micro)
     *micro = ((n % fps) * 1000000UL + fps - 1) / fps;
 }
 
+/* A divisor GCC can't see is constant: a division by a constant would be
+ * a 64-bit MULU.L, which the 68060 traps (a 32-bit DIVU.L it doesn't) */
+static inline odt_u32 adt_opaque(odt_u32 v)
+{
+    __asm__("" : "+d"(v));
+    return v;
+}
+
 odt_u32 adt_due(odt_u32 secs, odt_u32 micro, odt_u32 fps)
 {
     if (!fps) fps = 1;
     if (fps > 4294) fps = 4294;
     if (micro > 999999) micro = 999999;
-    return secs * fps + (micro * fps) / 1000000UL;
+    return secs * fps + (micro * fps) / adt_opaque(1000000UL);
 }
 
 odt_u32 adt_sound_split(odt_u32 len, odt_u32 cycles, odt_u32 *start, odt_u32 *part, odt_u32 max)
@@ -100,7 +108,7 @@ odt_u32 adt_sound_split(odt_u32 len, odt_u32 cycles, odt_u32 *start, odt_u32 *pa
     odt_u32 per, n = 0, c, at;
     len &= ~1UL;
     if (!len || !max) return 0;
-    per = (len + ADT_AUDIO_MAX - 1) / ADT_AUDIO_MAX;
+    per = (len + ADT_AUDIO_MAX - 1) / adt_opaque(ADT_AUDIO_MAX);
     if (per == 1 || !cycles) cycles = 1;
     for (c = 0; c < cycles; c++)
         for (at = 0; at < len && n < max; at += ADT_AUDIO_MAX) {
