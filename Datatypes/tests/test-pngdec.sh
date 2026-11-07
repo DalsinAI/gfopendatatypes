@@ -11,7 +11,9 @@
 # plain picture cut short keeps the rows it reached and clears the rest.
 # With QEMU_M68K set (qemu-m68k), the decoder is built for the 68040 with
 # m68k-linux-gnu-gcc (big-endian) and must give the same pictures and the
-# same damaged-stream hashes there.
+# same damaged-stream hashes there, and hold no 64-bit multiply or divide
+# (a 68060 traps on them). The decoder must build as C99 -pedantic with no
+# writable data.
 # MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC          the host compiler (default cc)
@@ -55,5 +57,16 @@ if [ -n "${QEMU_M68K:-}" ]; then
     "$QEMU_M68K" -cpu m68040 ./pngdectest-m68k -damage $DAMAGE . $(cat damage.txt) > damage-m68k.txt
     diff -u damage-got.txt damage-m68k.txt
     echo "68040 under qemu-m68k: the same pictures, and the same from every damaged stream"
+    # A 68060 has no 64-bit MULU.L/MULS.L/DIVU.L/DIVS.L (68060.library traps
+    # and emulates them, 100+ cycles each); GCC makes a constant division one.
+    sites=$(m68k-linux-gnu-gcc -std=c99 -m68040 -O2 -I"$HERE/tests/host" -I"$HERE/png" -S -o - \
+        "$HERE/png/pngdecode.c" | grep -E '^[[:space:]]+(mul|div)[su]\.?l[[:space:]].*:' || true)
+    [ -z "$sites" ] || { echo "FAIL pngdecode.c: 64-bit multiply or divide (traps on a 68060):"; echo "$sites"; exit 1; }
+    echo "pngdecode.c: no 64-bit multiply or divide as 68040 code"
 fi
+o="$OUT/pngdecode.o"
+$CC -std=c99 -Os -Wall -Wextra -Werror -pedantic -I"$HERE/tests/host" -I"$HERE/png" -c "$HERE/png/pngdecode.c" -o "$o"
+data=$(size -A "$o" | awk '$1 ~ /^\.(data|bss)/ && $2 > 0 {print $1}' | tr '\n' ' ')
+[ -z "$data" ] || { echo "FAIL pngdecode.c: writable data ($data)"; exit 1; }
+echo "pngdecode.c: C99 -Wall -Wextra -Werror -pedantic, no writable data"
 echo "gfopenpng decoder: all pictures as made"

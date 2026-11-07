@@ -495,13 +495,23 @@ static LONG dynamic(inf_work *w)
     return codes(s, &w->lencode, &w->distcode);
 }
 
+/* x % 31 with no division (32 is 1 more than 31: add up the 5-bit
+ * digits). A constant division is a 64-bit multiply to GCC, which a 68060
+ * does not have (its library traps and emulates it). */
+static ULONG mod31(ULONG x)
+{
+    while (x > 31)
+        x = (x & 31) + (x >> 5);
+    return x == 31 ? 0 : x;
+}
+
 /* A zlib stream (RFC 1950) inflated into out: the bytes it gave, as many as
  * it reached before any fault. */
 static ULONG zlib_inflate(inf_work *w, const UBYTE *in, ULONG inlen, UBYTE *out, ULONG outmax)
 {
     inf_state *s = &w->s;
     LONG last, r;
-    if (inlen < 2 || (in[0] & 15) != 8 || (in[0] >> 4) > 7 || ((in[0] << 8) | in[1]) % 31 || (in[1] & 0x20))
+    if (inlen < 2 || (in[0] & 15) != 8 || (in[0] >> 4) > 7 || mod31(((ULONG)in[0] << 8) | in[1]) || (in[1] & 0x20))
         return 0;
     s->in = in + 2;
     s->in_end = in + inlen;
@@ -607,7 +617,8 @@ LONG png_read_head(const UBYTE *file, ULONG len, struct png_head *h)
             break;                      /* cut off: what came before still counts */
         d = file + pos + 8;
         if (type == CK_PLTE && !seen_idat) {
-            pal_n = n / 3 > 256 ? 256 : n / 3;
+            for (pal_n = 0; pal_n < 256 && pal_n * 3 + 3 <= n; pal_n++)
+                ;                       /* n / 3 entries, at most 256 (no division: see mod31()) */
             for (i = 0; i < pal_n; i++)
                 h->palette[i] = 0xff000000UL | ((ULONG)d[i * 3] << 16) | ((ULONG)d[i * 3 + 1] << 8) | d[i * 3 + 2];
         } else if (type == CK_tRNS && !seen_idat) {
