@@ -337,12 +337,16 @@ void H264E_set_vbv_state(
 #define MAX_LONG_TERM_FRAMES 8 // Max long-term frames count
 #endif
 
-#if !defined(MINIH264_ONLY_SIMD) && (defined(_M_X64) || defined(_M_ARM64) || defined(__x86_64__) || defined(__aarch64__))
+/* GFOpenDatatypes: MINIH264_NO_SIMD builds the plain C code alone on any
+ * host (the tests compare it, byte for byte, with the m68k build) */
+#if defined(MINIH264_NO_SIMD)
+#elif !defined(MINIH264_ONLY_SIMD) && (defined(_M_X64) || defined(_M_ARM64) || defined(__x86_64__) || defined(__aarch64__))
 /* x64 always have SSE2, arm64 always have neon, no need for generic code */
 #define MINIH264_ONLY_SIMD
 #endif /* SIMD checks... */
 
-#if (defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))) || ((defined(__i386__) || defined(__x86_64__)) && defined(__SSE2__))
+#if defined(MINIH264_NO_SIMD)
+#elif (defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))) || ((defined(__i386__) || defined(__x86_64__)) && defined(__SSE2__))
 #define H264E_ENABLE_SSE2 1
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -375,6 +379,10 @@ void H264E_set_vbv_state(
 #define __BIG_ENDIAN BIG_ENDIAN
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
 #include <sys/endian.h>
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__)
+/* GFOpenDatatypes: AmigaOS (and any GCC target) from GCC's own macros */
+#define __BYTE_ORDER __BYTE_ORDER__
+#define __BIG_ENDIAN __ORDER_BIG_ENDIAN__
 #else
 #error platform not supported
 #endif
@@ -473,6 +481,9 @@ typedef int int_u;
 
 // bit-stream
 #if __BYTE_ORDER == __BIG_ENDIAN
+/* GFOpenDatatypes: intra 4x4 prediction builds its words of four pixels with
+ * the first pixel in the low byte; LE32 turns such a word to and from memory */
+#   define LE32(x) (uint32_t)((((x) >> 24) & 0xFF) | (((x) >> 8) & 0xFF00) | (((x) << 8) & 0xFF0000) | (((x) & 0xFF) << 24))
 #   define SWAP32(x) (uint32_t)(x)
 #else
 #ifdef _MSC_VER
@@ -482,6 +493,9 @@ typedef int int_u;
 #else
 #   define SWAP32(x) (uint32_t)((((x) >> 24) & 0xFF) | (((x) >> 8) & 0xFF00) | (((x) << 8) & 0xFF0000) | ((x & 0xFF) << 24))
 #endif
+#endif
+#ifndef LE32
+#   define LE32(x) (uint32_t)(x)
 #endif
 
 #define BS_OPEN(bs) uint32_t cache = bs->cache; int shift = bs->shift; uint32_t *buf = bs->buf;
@@ -6051,7 +6065,7 @@ static void h264e_deblock_luma(uint8_t *pix, int32_t stride, const deblock_param
     for (x = 0; x < 16; x += 4)
     {
         uint32_t str = *(uint32_t*)&strength[x];
-        if ((uint8_t)str == 4)
+        if (strength[x] == 4)  /* GFOpenDatatypes: either byte order */
         {
             deblock_luma_v_s4(pix + x, stride, a, b);
         } else if (str && a)
@@ -6068,7 +6082,7 @@ static void h264e_deblock_luma(uint8_t *pix, int32_t stride, const deblock_param
     for (y = 0; y < 16; y += 4)
     {
         uint32_t str = *(uint32_t*)&strength[y];
-        if ((uint8_t)str == 4)
+        if (strength[y] == 4)  /* GFOpenDatatypes: either byte order */
         {
             deblock_luma_h_s4(pix, stride, a, b);
         } else if (str && a)
@@ -6359,19 +6373,19 @@ static int h264e_intra_choose_4x4(const pix_t *blockin, pix_t *blockpred, int av
     uint32_t r0, r1, r2, r3;
     uint32_t x0, x1, x2, x3, x;
 
-    r0 = ((uint32_t *)blockin)[ 0];
-    r1 = ((uint32_t *)blockin)[ 4];
-    r2 = ((uint32_t *)blockin)[ 8];
-    r3 = ((uint32_t *)blockin)[12];
+    r0 = LE32(((uint32_t *)blockin)[ 0]);
+    r1 = LE32(((uint32_t *)blockin)[ 4]);
+    r2 = LE32(((uint32_t *)blockin)[ 8]);
+    r3 = LE32(((uint32_t *)blockin)[12]);
 #undef TEST
 #define TEST(mode) sad = pix_sad_4(r0, r1, r2, r3, x0, x1, x2, x3); \
         if (mode != mpred) sad += penalty;    \
         if (sad < best_sad)                   \
         {                                     \
-            ((uint32_t *)blockpred)[ 0] = x0; \
-            ((uint32_t *)blockpred)[ 4] = x1; \
-            ((uint32_t *)blockpred)[ 8] = x2; \
-            ((uint32_t *)blockpred)[12] = x3; \
+            ((uint32_t *)blockpred)[ 0] = LE32(x0); \
+            ((uint32_t *)blockpred)[ 4] = LE32(x1); \
+            ((uint32_t *)blockpred)[ 8] = LE32(x2); \
+            ((uint32_t *)blockpred)[12] = LE32(x3); \
             best_sad = sad;                   \
             best_m = mode;                    \
         }
@@ -6383,10 +6397,10 @@ static int h264e_intra_choose_4x4(const pix_t *blockin, pix_t *blockpred, int av
     {
         best_sad += penalty;
     }
-    ((uint32_t *)blockpred)[ 0] = x0;
-    ((uint32_t *)blockpred)[ 4] = x1;
-    ((uint32_t *)blockpred)[ 8] = x2;
-    ((uint32_t *)blockpred)[12] = x3;
+    ((uint32_t *)blockpred)[ 0] = LE32(x0);
+    ((uint32_t *)blockpred)[ 4] = LE32(x1);
+    ((uint32_t *)blockpred)[ 8] = LE32(x2);
+    ((uint32_t *)blockpred)[12] = LE32(x3);
 
 
     if (avail & AVAIL_T)
@@ -6397,7 +6411,7 @@ static int h264e_intra_choose_4x4(const pix_t *blockin, pix_t *blockpred, int av
             *(uint32_t*)&U4 = U3*0x01010101u;
         }
 
-        x0 = x1 = x2 = x3 = *(uint32_t*)&U0;
+        x0 = x1 = x2 = x3 = LE32(*(uint32_t*)&U0);
         TEST(0)
 
         x  = ((U6 + 3u*U7      + 2u) >> 2) << 24;
@@ -7801,7 +7815,12 @@ static void h264e_intra_upsampling(int srcw, int srch, int dstw, int dsth, int i
 #define MVPRED_L        2
 #define MVPRED_U        3
 #define MVPRED_UR       4
+#if __BYTE_ORDER == __BIG_ENDIAN
+/* GFOpenDatatypes: x = -32768 and y = 0 in point_t's u32, as on little-endian */
+#define MV_NA           0x80000000u
+#else
 #define MV_NA           0x8000
+#endif
 #define AVAIL(mv)       ((mv).u32 != MV_NA)
 
 #define SLICE_TYPE_P    0
@@ -8223,7 +8242,9 @@ static uint32_t div_q16(uint32_t numer, uint32_t denum)
 static point_t point(int x, int y)
 {
     point_t p;
-    p.u32 = ((unsigned)y << 16) | ((unsigned)x & 0xFFFF);    // assumes little-endian
+    /* GFOpenDatatypes: by field, so x is s.x on either byte order */
+    p.s.x = (int16_t)x;
+    p.s.y = (int16_t)y;
     return p;
 }
 
@@ -9360,7 +9381,7 @@ l_skip:
                     pred_mode_chroma ^= 2;
                 }
                 UE(pred_mode_chroma);
-                me_mv_medianpredictor_put(enc, 0, 0, 4, 4, point(MV_NA,0));
+                me_mv_medianpredictor_put(enc, 0, 0, 4, 4, point(-32768, 0) /* MV_NA */);
             } else
             {
                 int part, x = 0, y = 0;
@@ -10082,7 +10103,7 @@ static void inter_choose_mode(h264e_enc_t *enc)
     int prefered_modes[4] = { 1, 0, 0, 0 };
     point_t mv_skip, mv_skip_a, mv_cand[MAX_MV_CAND];
     point_t mv_pred_16x16 = me_mv_medianpredictor_get_skip(enc);
-    point_t mv_best = point(MV_NA, 0); // avoid warning
+    point_t mv_best = point(-32768, 0) /* MV_NA */; // avoid warning
 
     int sad, sad_skip = 0x7FFFFFFF, sad_best = 0x7FFFFFFF;
     int off, i, j = 0, ncand = 0;
@@ -11073,12 +11094,18 @@ static int enc_check_create_params(const H264E_create_param_t *par)
     {
         return H264E_STATUS_SIZE_NOT_MULTIPLE_2; // frame size must be multiple of 2
     }
+#ifndef MINIH264_PADDED_INPUT
+    /* GFOpenDatatypes: MINIH264_PADDED_INPUT promises input planes of whole
+     * macroblocks (rows and row lengths rounded up to 16), so the frame
+     * written over them as the reconstruction stays inside even when the
+     * picture is cropped */
     if (((par->width | par->height) & 15) && !par->const_input_flag)
     {
         // if input buffer reused as scratch (par->const_input_flag == 0)
         // frame size must be multiple of 16
         return H264E_STATUS_SIZE_NOT_MULTIPLE_16;
     }
+#endif
     return H264E_STATUS_SUCCESS;
 };
 
