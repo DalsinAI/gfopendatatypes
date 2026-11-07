@@ -259,6 +259,15 @@ struct col_step {
     }
 };
 
+/* n ARGB pixels to pens through the cube: t holds red's, green's and blue's
+ * places in it (256 longs each). On its own, so the loop has registers. */
+__attribute__((noinline)) void cube_row(const u8 *s, u8 *d, u32 n, const u32 *t, const u8 *cube)
+{
+    const u32 *tg = t + 256, *tb = t + 512;
+    for (; n; n--, s += 4)
+        *d++ = cube[t[s[1]] + tg[s[2]] + tb[s[3]]];
+}
+
 bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *gi)
 {
     void *screen = p->screen ? p->screen : gi ? gi->gi_Screen : nullptr;
@@ -292,7 +301,8 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
     bool fits = n && (!truecolour || n <= 0x3fffffffUL);
     /* ARGB pixels shown at their own size are written as they are: no copy */
     bool direct = truecolour && p->store == PIC_STORE_ARGB && dw == sw && dh == sh;
-    u8 *buf = fits && !direct ? static_cast<u8 *>(env->alloc(env, truecolour ? n * 4 : n)) : nullptr;
+    /* every byte of buf is written below: not cleared */
+    u8 *buf = fits && !direct ? static_cast<u8 *>(alloc_raw(env, truecolour ? n * 4 : n)) : nullptr;
     if (!fits || (!buf && !direct) || !x->alloc_bitmap) {
         env->free(env, buf);
         set_err(env, DTC_ERROR_NO_FREE_STORE);
@@ -304,8 +314,14 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
         /* p->pixels go to write_argb below */
     } else if (truecolour) {
         u8 *d = buf;
-        for (u32 y = 0; y < dh; y++) {
-            u32 row = (y * sh / dh) * sw;
+        for (u32 y = 0, prev = 0xffffffffUL; y < dh; y++) {
+            u32 sy = y * sh / dh, row = sy * sw;
+            if (sy == prev) {
+                copy(d, d - dw * 4, dw * 4); /* an upscale's repeated row */
+                d += dw * 4;
+                continue;
+            }
+            prev = sy;
             col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++, d += 4)
                 argb_of(p, row + c.next(), d);
@@ -351,42 +367,75 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
                 p->colortable[c] = p->colortable2[c] = static_cast<u8>(c);
             depth = p->bmhd.bmh_Depth >= 1 && p->bmhd.bmh_Depth <= 8 ? p->bmhd.bmh_Depth : 8;
         }
+        const u8 *ct = p->colortable;
         u8 *d = buf;
-        for (u32 y = 0; y < dh; y++) {
-            const u8 *row = p->pixels + (y * sh / dh) * sw;
+        for (u32 y = 0, prev = 0xffffffffUL; y < dh; y++) {
+            u32 sy = y * sh / dh;
+            const u8 *row = p->pixels + sy * sw;
+            if (sy == prev) {
+                copy(d, d - dw, dw);    /* an upscale's repeated row */
+                d += dw;
+                continue;
+            }
+            prev = sy;
+            if (dw == sw) {
+                for (u32 xx = 0; xx < dw; xx++)
+                    *d++ = ct[row[xx]];
+                continue;
+            }
             col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++)
-                *d++ = p->colortable[row[c.next()]];
+                *d++ = ct[row[c.next()]];
         }
     } else {
         /* true colour onto pens: through a cube of pens. ABI test: OS 3.2
          * may dither (PDTA_DitherQuality); ours takes the nearest. */
         L = cube_levels(depth);
-        cube = static_cast<u8 *>(env->alloc(env, L * L * L));
-        if (!cube) {
+        /* each 8-bit level's place in the cube for red, green and blue,
+         * pre-scaled, so a pixel's pen is three lookups and two adds (longs:
+         * the sum needs no widening); the cube after them */
+        u32 *tr = static_cast<u32 *>(env->alloc(env, 3 * 256 * 4 + L * L * L));
+        if (!tr) {
             env->free(env, buf);
             set_err(env, DTC_ERROR_NO_FREE_STORE);
             return false;
         }
+        u32 *tg = tr + 256, *tb = tg + 256;
+        cube = reinterpret_cast<u8 *>(tb + 256);
         for (u32 r = 0; r < L; r++)
             for (u32 g = 0; g < L; g++)
                 for (u32 b = 0; b < L; b++)
                     cube[(r * L + g) * L + b] = static_cast<u8>(obtain(env, p, cm, level_value(r, L) * 0x01010101UL,
                                                                        level_value(g, L) * 0x01010101UL,
                                                                        level_value(b, L) * 0x01010101UL));
-        u8 lv[256];                     /* each 8-bit level's place in the cube */
-        for (u32 v = 0; v < 256; v++)
-            lv[v] = static_cast<u8>(level_of(v, L));
+        for (u32 v = 0; v < 256; v++) {
+            u32 l = level_of(v, L);
+            tr[v] = l * L * L;
+            tg[v] = l * L;
+            tb[v] = l;
+        }
         u8 *d = buf;
-        for (u32 y = 0; y < dh; y++) {
-            const u8 *row = p->pixels + (y * sh / dh) * sw * 4;
+        for (u32 y = 0, prev = 0xffffffffUL; y < dh; y++) {
+            u32 sy = y * sh / dh;
+            const u8 *row = p->pixels + sy * sw * 4;
+            if (sy == prev) {
+                copy(d, d - dw, dw);    /* an upscale's repeated row */
+                d += dw;
+                continue;
+            }
+            prev = sy;
+            if (dw == sw) {
+                cube_row(row, d, dw, tr, cube);
+                d += dw;
+                continue;
+            }
             col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++) {
                 const u8 *s = row + c.next() * 4;
-                *d++ = cube[(lv[s[1]] * L + lv[s[2]]) * L + lv[s[3]]];
+                *d++ = cube[tr[s[1]] + tg[s[2]] + tb[s[3]]];
             }
         }
-        env->free(env, cube);
+        env->free(env, tr);
     }
     if (truecolour && !remap)
         depth = 24;
@@ -423,8 +472,13 @@ bool layout(env_t *env, odt_IClass *cl, void *obj, pic_inst *p, odt_GadgetInfo *
             set_err(env, DTC_ERROR_NO_FREE_STORE);
             return false;
         }
-        for (u32 y = 0; y < dh; y++) {
-            u32 row = (y * sh / dh) * sw;
+        for (u32 y = 0, prev = 0xffffffffUL; y < dh; y++) {
+            u32 sy = y * sh / dh, row = sy * sw;
+            if (sy == prev) {
+                copy(p->mask + y * rb, p->mask + (y - 1) * rb, rb);
+                continue;
+            }
+            prev = sy;
             col_step c(sw, dw);
             for (u32 xx = 0; xx < dw; xx++)
                 if (opaque(p, row + c.next()))

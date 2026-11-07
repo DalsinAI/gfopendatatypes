@@ -835,6 +835,16 @@ def main():
         ({"w": 8, "h": 3, "depth": 2, "cmap": pal(4), "nobody": True}, 0, 1, 0, 0, 0, 0),
         ({"w": 8, "h": 3, "depth": 2, "cmap": pal(4), "notform": True}, 0, 1, 0, 0, 0, 0),
         ({"w": 32768, "h": 32768, "depth": 32, "body": b"\x00" * 8}, 0, 1, 0, 0, 0, 0),  # BODY size past 32 bits
+        # layouts scaled up (rows repeated) and down: the cube of pens, true
+        # colour, pens, and masks
+        ({"w": 8, "h": 3, "depth": 24}, 8, 1, 0, 20, 7, 0),
+        ({"w": 13, "h": 9, "depth": 24}, 5, 1, 0, 6, 4, 0),
+        ({"w": 9, "h": 5, "depth": 24}, 7, 1, 0, 9, 11, 0),
+        ({"w": 8, "h": 3, "depth": 24}, 24, 1, 1, 17, 8, 0),
+        ({"w": 14, "h": 6, "depth": 3, "cmap": pal(8), "masking": 2, "transparent": 5}, 4, 1, 0, 30, 13, 0),
+        ({"w": 14, "h": 6, "depth": 4, "cmap": pal(16), "masking": 1}, 8, 1, 0, 14, 20, 0),
+        ({"w": 9, "h": 6, "depth": 4, "cmap": pal(16)}, 0, 1, 0, 20, 14, 0),
+        ({"w": 7, "h": 3, "depth": 32}, 0, 1, 0, 15, 9, 0),
         # widths about a byte of pixels and a row's word, for the BODY written
         ({"w": 1, "h": 2, "depth": 1, "cmap": pal(2)}, 0, 1, 0, 0, 0, 0),
         ({"w": 7, "h": 3, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
