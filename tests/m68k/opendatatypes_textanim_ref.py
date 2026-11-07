@@ -1304,7 +1304,7 @@ def expect_nclass(data, ops, truth):
     remap_ok = not (mode_id(info) & 0x800)
     table = [pen_of(col[3 * i], col[3 * i + 1], col[3 * i + 2]) for i in range(ncol)]
     st = dict(preload=4, repeat=1, remap=True, panel=True, newformat=0, slots=[], sample=False, sound_on=False,
-              have_gi=False, pens=False, screen=False, chipframes=False, noreuse=False)
+              have_gi=False, pens=False, screen=False, chipframes=False, noreuse=False, cmaps=False)
     play = Play(n)
     fps = info["fps"]
     box = (2, 3, 120, 50)
@@ -1326,7 +1326,60 @@ def expect_nclass(data, ops, truth):
         return st["remap"] and st["screen"] and ncol and remap_ok and depth <= 8
 
     kept = []                           # each slot's own bitmap (its depth), kept from frame to frame
-    ident = depth == 4 and table == list(range(16))
+    xpens = []                          # pens obtained for frames' own colours: (rgb, pen), in order
+    shown_cm = [None]                   # a frame's own colours in the screen's palette (not remapping)
+
+    def fcol(f):
+        # the frame's own colours (after "cmaps": see the C side), or None
+        if not st["cmaps"]:
+            return None
+        k = f % 4
+        if k == 0:
+            return None
+        if k == 1:
+            return bytes(c ^ 0x55 for c in col)
+        if k == 2:
+            return bytes(col)
+        return bytes(c ^ 0x33 for c in col[:3 * max(1, ncol // 2)])
+
+    def xpen(rgb):
+        for key, pen in xpens:
+            if key == rgb:
+                return pen
+        assert len(xpens) < 256
+        pen = pen_of(*rgb)
+        xpens.append((rgb, pen))
+        return pen
+
+    def frame_table(f):
+        c = fcol(f)
+        if c is None:
+            return table
+        n = len(c) // 3
+        same = [i < ncol and c[3 * i:3 * i + 3] == col[3 * i:3 * i + 3] for i in range(n)]
+        if all(same):
+            return table
+        return [table[i] if i < ncol and (i >= n or same[i]) else (xpen(tuple(c[3 * i:3 * i + 3])) if i < n else 0)
+                for i in range(256)]
+
+    def show_colors(s):
+        if not st["screen"]:
+            return
+        c = fcol(s["frame"]) if s else None
+        if c:
+            if shown_cm[0] != c:
+                out.append("loadcolors 0 %d %s" % (len(c) // 3, c.hex()))
+                shown_cm[0] = c
+        elif shown_cm[0] is not None:
+            out.append("loadcolors 0 %d %s" % (ncol, bytes(col).hex()))
+            shown_cm[0] = None
+
+    def release():
+        for i in range(ncol):
+            out.append("releasepen %d" % table[i])
+        for _, pen in xpens:
+            out.append("releasepen %d" % pen)
+        del xpens[:]
 
     def own(j, d):
         # the slot's bitmap from an earlier frame is drawn over, after a
@@ -1356,7 +1409,8 @@ def expect_nclass(data, ops, truth):
                 drop(j)
             return
         st["pens"] = True
-        if ident and not s["fast"]:
+        s["table"] = frame_table(s["frame"])
+        if depth == 4 and list(s["table"][:16]) == list(range(16)) and not s["fast"]:
             # every pen the colour it has in the frame, as deep as the
             # screen: the frame is shown as it is
             drop(j)
@@ -1439,13 +1493,16 @@ def expect_nclass(data, ops, truth):
         s = cache(play.frame)
         if s and (s["remapped"] is None or (s["remapped"] == "copy" and can_remap())):
             remap(s)                    # a screen known since the frame was loaded
+        if not can_remap():
+            show_colors(s)
         p = panel_layout(box[0], box[1], box[2], box[3], 8) if st["panel"] else None
         ph = p["h"] if p else 0
         pic = (box[0], box[1], box[2], box[3] - ph)
         ww, hh = min(w, pic[2]), min(h, pic[3])
         frame_px = pix[s["frame"]] if s else pix[0]
         if s and s["remapped"] == "remap":
-            frame_px = [[table[v] if v < len(table) else 0 for v in row] for row in frame_px]
+            tb = s["table"]
+            frame_px = [[tb[v] if v < len(tb) else 0 for v in row] for row in frame_px]
             dep = 4
         else:
             dep = depth
@@ -1561,8 +1618,7 @@ def expect_nclass(data, ops, truth):
             if st["remap"]:
                 # remapped frames go: the pens back, the cache loaded again
                 if st["pens"]:
-                    for i in range(ncol):
-                        out.append("releasepen %d" % table[i])
+                    release()
                     st["pens"] = False
                 flush()
             st["remap"] = False
@@ -1613,7 +1669,7 @@ def expect_nclass(data, ops, truth):
             out.append("goactive -> %d" % (2 if hit else 0))
         elif op == "frame":
             out.append("frame %d" % play.frame)
-        elif op in ("chipframes", "noreuse"):
+        elif op in ("chipframes", "noreuse", "cmaps"):
             st[op] = True
             out.append(op)
     # dispose: anim's own first (the key frame), then animation.datatype's
@@ -1623,8 +1679,7 @@ def expect_nclass(data, ops, truth):
     sound_off()
     flush()
     if st["pens"]:
-        for i in range(ncol):
-            out.append("releasepen %d" % table[i])
+        release()
     out.append("allocs 0 sem 0")
     return out
 
@@ -1828,6 +1883,15 @@ def main():
         (dict(op=5, w=40, h=7, depth=3, frames=7, reltime=6),
          ["start0", "tick", "render", "tick", "tick", "noreuse", "tick", "tick", "locate5", "render", "locate1",
           "stop"]),
+        # frames with colours of their own (alf_CMap): remapped through pens
+        # for them; then not remapped, their colours loaded into the
+        # screen, and the object's back for a frame without (going back)
+        (dict(op=5, w=24, h=5, depth=3, frames=9, reltime=6),
+         ["cmaps", "layout", "render", "start0", "tick", "tick", "tick", "tick", "locate2", "locate0", "noremap",
+          "render", "start1", "tick", "tick", "locate0", "render", "locate3", "stop", "render"]),
+        # HAM, never remapped: each frame's colours to the screen
+        (dict(op=5, w=16, h=4, depth=6, frames=6, camg=0x800, reltime=6),
+         ["cmaps", "layout", "render", "start0", "tick", "tick", "tick", "locate1", "render", "locate0", "render"]),
     ]
     for j, (sp, ops) in enumerate(runs):
         data, truth = make_anim(rnd, sp)

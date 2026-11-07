@@ -177,6 +177,13 @@ struct adt_ext {
     /* A bitmap for frames whose planes may be in Fast RAM (free_bitmap
      * frees it); NULL: alloc_bitmap. Its contents are not cleared. */
     struct adt_BitMap *(*alloc_any)(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth);
+    /* A frame's alf_CMap (a struct ColorMap): up to n of its colours as
+     * 8-bit R, G, B into rgb; how many */
+    odt_u32 (*cmap_colors)(const struct odt_cenv *env, void *cmap, odt_u32 n, odt_u8 *rgb);
+    /* n colours (8-bit R, G, B) into the screen's palette from colour
+     * first (LoadRGB32), where the screen is the film's own (not the
+     * Workbench's) */
+    void (*load_colors)(const struct odt_cenv *env, void *screen, odt_u32 first, odt_u32 n, const odt_u8 *rgb);
 };
 
 /* ---- playing: frames against time -------------------------------------------- */
@@ -251,7 +258,16 @@ struct adt_slot {
     odt_u16 remapped_w;                 /* the width remapped was made for */
     odt_u8 copied;                      /* remapped is the frame copied to Chip RAM, not on pens */
     odt_u8 pad[3];
+    odt_u8 *table;                      /* 256: the pens for this frame's own colours (alf_CMap), or 0 */
 };
+
+/* A pen obtained for a colour some frame's alf_CMap has */
+struct adt_xpen {
+    odt_u32 rgb;                        /* 0x00RRGGBB */
+    odt_u8 pen;
+    odt_u8 pad[3];
+};
+#define ADT_MAXXPENS 256
 
 struct adt_inst {
     struct odt_IClass *cl;              /* for the player process */
@@ -281,8 +297,13 @@ struct adt_inst {
     void *player;
     struct odt_GadgetInfo gi;           /* a copy, for drawing from the player */
     odt_u8 have_gi;
-    odt_u8 pad2[3];
+    odt_u8 cm_loaded;                   /* a frame's own colours are in the screen's palette */
+    odt_u8 pad2[2];
     struct adt_panel pnl;
+    odt_u8 *cm_rgb;                     /* 768: a frame's colours as read; 768 more: those last loaded */
+    odt_u32 cm_last_n;
+    struct adt_xpen *xpens;             /* ADT_MAXXPENS: pens for frames' own colours, given back with the rest */
+    odt_u32 nxpens;
 };
 
 /* The frames wanted from the shown one on (preload of them): unloads the

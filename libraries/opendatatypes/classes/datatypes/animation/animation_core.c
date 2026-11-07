@@ -365,8 +365,93 @@ static void release_pens(const struct odt_cenv *env, struct adt_inst *in)
     if (!in->pens_got) return;
     for (i = 0; i < in->num_alloc; i++)
         if (EXT(env)->release_pen) EXT(env)->release_pen(env, in->pens_screen, in->allocated[i]);
+    for (i = 0; i < in->nxpens; i++)
+        if (EXT(env)->release_pen) EXT(env)->release_pen(env, in->pens_screen, in->xpens[i].pen);
     in->num_alloc = 0;
+    in->nxpens = 0;
     in->pens_got = 0;
+}
+
+/* The frame's own colours (alf_CMap), into in->cm_rgb: how many, 0 when
+ * it has none */
+static odt_u32 frame_colors(const struct odt_cenv *env, struct adt_inst *in, const struct adt_slot *s)
+{
+    const struct adt_ext *x = EXT(env);
+    if (!s->msg.alf_CMap || !x->cmap_colors) return 0;
+    if (!in->cm_rgb && !(in->cm_rgb = env->alloc(env, 2 * 768))) return 0;
+    return x->cmap_colors(env, s->msg.alf_CMap, 256, in->cm_rgb);
+}
+
+static int same_color(const struct adt_inst *in, odt_u32 i, const odt_u8 *rgb)
+{
+    return i < in->num_colors && in->colregs[i].red == rgb[0] && in->colregs[i].green == rgb[1] &&
+           in->colregs[i].blue == rgb[2];
+}
+
+/* A pen for a colour of a frame's own: one obtained for it before, else
+ * obtained now (given back with the object's), else the nearest of the
+ * object's colours when ADT_MAXXPENS are out */
+static odt_u8 frame_pen(const struct odt_cenv *env, struct adt_inst *in, const odt_u8 *rgb)
+{
+    const struct adt_ext *x = EXT(env);
+    odt_u32 key = (odt_u32)rgb[0] << 16 | (odt_u32)rgb[1] << 8 | rgb[2], i, best = 0, bd = ~0UL;
+    odt_s32 pen;
+    for (i = 0; i < in->nxpens; i++)
+        if (in->xpens[i].rgb == key) return in->xpens[i].pen;
+    if (in->nxpens < ADT_MAXXPENS && x->obtain_pen &&
+        (in->xpens || (in->xpens = env->alloc(env, ADT_MAXXPENS * sizeof *in->xpens))) &&
+        (pen = x->obtain_pen(env, in->screen, rgb[0] * 0x01010101UL, rgb[1] * 0x01010101UL, rgb[2] * 0x01010101UL)) >= 0) {
+        in->xpens[in->nxpens].rgb = key;
+        in->xpens[in->nxpens++].pen = (odt_u8)pen;
+        return (odt_u8)pen;
+    }
+    for (i = 0; i < in->num_colors && i < 256; i++) {
+        odt_s32 dr = (odt_s32)in->colregs[i].red - rgb[0], dg = (odt_s32)in->colregs[i].green - rgb[1];
+        odt_s32 db = (odt_s32)in->colregs[i].blue - rgb[2];
+        odt_u32 dd = (odt_u32)(dr * dr + dg * dg + db * db);
+        if (dd < bd) { bd = dd; best = i; }
+    }
+    return in->color_table[best];
+}
+
+/* The pen table for the slot's frame: the object's, or, when the frame has
+ * colours of its own that differ from the object's, one of the slot's
+ * with pens for them (the object's pens for the colours that are the same) */
+static const odt_u8 *frame_table(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
+{
+    odt_u32 n = frame_colors(env, in, s), i;
+    const odt_u8 *rgb = in->cm_rgb;
+    for (i = 0; i < n && same_color(in, i, rgb + 3 * i); i++)
+        ;
+    if (i == n) return in->color_table;
+    if (!s->table && !(s->table = env->alloc(env, 256))) return in->color_table;
+    for (i = 0; i < 256; i++)
+        s->table[i] = i >= n || same_color(in, i, rgb + 3 * i) ? in->color_table[i] : frame_pen(env, in, rgb + 3 * i);
+    return s->table;
+}
+
+/* Not remapped (HAM, the film's own screen): the shown frame's own colours
+ * into the screen's palette when they are not there already, and the
+ * object's back when a frame without them follows one with them */
+static void show_colors(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
+{
+    const struct adt_ext *x = EXT(env);
+    odt_u32 n;
+    if (!x->load_colors || !in->screen) return;
+    if ((n = s ? frame_colors(env, in, s) : 0) != 0) {
+        odt_u8 *last = in->cm_rgb + 768;
+        odt_u32 i;
+        for (i = 0; in->cm_loaded && n == in->cm_last_n && i < 3 * n && last[i] == in->cm_rgb[i]; i++)
+            ;
+        if (in->cm_loaded && n == in->cm_last_n && i == 3 * n) return;
+        x->load_colors(env, in->screen, 0, n, in->cm_rgb);
+        for (i = 0; i < 3 * n; i++) last[i] = in->cm_rgb[i];
+        in->cm_last_n = n;
+        in->cm_loaded = 1;
+    } else if (in->cm_loaded) {
+        x->load_colors(env, in->screen, 0, in->num_colors, (const odt_u8 *)in->colregs);
+        in->cm_loaded = 0;
+    }
 }
 
 static int can_remap(const struct adt_inst *in)
@@ -408,6 +493,7 @@ static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct a
     const struct adt_ext *x = EXT(env);
     const struct adt_BitMap *f = s->msg.alf_BitMap;
     struct adt_BitMap *bm;
+    const odt_u8 *table;
     odt_u32 d;
     if (!f || !x->alloc_bitmap) {
         drop_remapped(env, s);
@@ -426,14 +512,15 @@ static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct a
     obtain_pens(env, in);
     d = x->screen_depth ? x->screen_depth(env, in->screen) : 8;
     if (d > 8) d = 8;                   /* deeper screens: pens up to 255 */
+    table = frame_table(env, in, s);
     /* every pen the colour it is in the frame (the film's own screen, or
      * one with its colours), as deep as the screen: shown as it is */
-    if (f->Depth == d && adt_identity(in->color_table, d) && (!x->in_chip || x->in_chip(env, f))) {
+    if (f->Depth == d && adt_identity(table, d) && (!x->in_chip || x->in_chip(env, f))) {
         drop_remapped(env, s);
         return;
     }
     if ((bm = slot_bitmap(env, in, s, f, d)) != 0)
-        adt_remap(f, in->width, in->height, in->color_table, bm);
+        adt_remap(f, in->width, in->height, table, bm);
 }
 
 /* Frame f into slot s. A spare slot hands its bitmap back to the subclass
@@ -548,6 +635,8 @@ void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj)
     for (k = 0; k < ADT_MAXPRELOAD; k++) {
         if (in->slots[k].used || in->slots[k].spare) unload(env, in, obj, &in->slots[k]);
         drop_remapped(env, &in->slots[k]);
+        env->free(env, in->slots[k].table);
+        in->slots[k].table = 0;
     }
 }
 
@@ -756,6 +845,7 @@ static void draw_frame(const struct odt_cenv *env, struct adt_inst *in, void *ob
     struct adt_BitMap *bm;
     if (s && (!s->remapped || (s->copied && can_remap(in))))
         remap_slot(env, in, s);         /* a screen known since it was loaded */
+    if (!can_remap(in)) show_colors(env, in, s);
     bm = s ? (s->remapped ? s->remapped : s->msg.alf_BitMap) : in->key_frame;
     odt_s32 back = x->pen ? x->pen(env, gi, 7) : 0, w, h;
     struct odt_IBox pic = panel ? picture_box(env, in, gi, box) : box;
@@ -1386,6 +1476,10 @@ odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *ob
         sound_off(env, in);
         adt_cache_flush(env, in, obj);
         free_colors(env, in);
+        env->free(env, in->cm_rgb);
+        env->free(env, in->xpens);
+        in->cm_rgb = 0;
+        in->xpens = 0;
         /* ADTA_KeyFrame stays the subclass's to free (ABI test) */
         return env->do_super(env, cl, obj, msg);
     case ODT_OM_SET:

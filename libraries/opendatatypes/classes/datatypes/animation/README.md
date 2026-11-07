@@ -43,6 +43,7 @@ The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 | Frames in Fast RAM | OM_GET of `ADT_GFA_FramesAnyMem` (TAG_USER + 0x47460001) answers TRUE (OS 3.2's class: FALSE): a frame not in Chip RAM is remapped, or copied to Chip RAM when it can't be, before it is shown. anim.datatype puts its frames there when they are remapped anyway (no HAM, ADTA_Remap on); the key frame stays in Chip RAM | ours |
 | A frame loaded before the screen is known | Remapped when it is first drawn | ours |
 | Bitmaps | Not cleared: every frame and every remap is drawn whole | ours |
+| A frame's own colours (alf_CMap) | Remapped: through pens obtained for the colours that differ from the object's (each colour once, given back with the object's pens; past 256 of them, the nearest of the object's). Not remapped (HAM, the film's own screen): loaded into the screen's palette when the frame is shown, and the object's colours back for a frame with none; never into the Workbench's | ours |
 | A colour no pen could take | Shown as pen 0, not in ADTA_Allocated, never released | ours |
 | ADTA_Remap, ADTA_Screen or ADTA_NumColors changed | The pens released and the frame cache loaded again (remapped afresh) | ours |
 | DTA_TriggerMethods | Play, Pause, Stop, Rewind, Fast Forward (labels ours) | ABI test |

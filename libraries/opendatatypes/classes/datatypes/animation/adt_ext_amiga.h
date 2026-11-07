@@ -112,6 +112,37 @@ static void ax_release_pen(const struct odt_cenv *e, void *scr, odt_u32 pen)
     ReleasePen(((struct Screen *)scr)->ViewPort.ColorMap, pen);
 }
 
+/* A frame's ColorMap, 16 colours a GetRGB32 (little stack: the player's) */
+static odt_u32 ax_cmap_colors(const struct odt_cenv *e, void *cmap, odt_u32 n, odt_u8 *rgb)
+{
+    struct ColorMap *cm = cmap;
+    ULONG t[3 * 16], i, k, got;
+    (void)e;
+    got = cm->Count < n ? cm->Count : n;
+    for (i = 0; i < got; i += k) {
+        k = got - i > 16 ? 16 : got - i;
+        GetRGB32(cm, i, k, t);
+        for (n = 0; n < 3 * k; n++) rgb[3 * i + n] = (UBYTE)(t[n] >> 24);
+    }
+    return got;
+}
+
+/* Colours into a screen's palette, 16 a LoadRGB32; never the Workbench's */
+static void ax_load_colors(const struct odt_cenv *e, void *scr, odt_u32 first, odt_u32 n, const odt_u8 *rgb)
+{
+    struct Screen *s = scr;
+    ULONG t[1 + 3 * 16 + 1], i, k, j;
+    (void)e;
+    if ((s->Flags & SCREENTYPE) == WBENCHSCREEN) return;
+    for (i = 0; i < n; i += k) {
+        k = n - i > 16 ? 16 : n - i;
+        t[0] = k << 16 | (first + i);
+        for (j = 0; j < 3 * k; j++) t[1 + j] = rgb[3 * i + j] * 0x01010101UL;
+        t[1 + 3 * k] = 0;
+        LoadRGB32(&s->ViewPort, t);
+    }
+}
+
 static odt_u32 ax_screen_depth(const struct odt_cenv *e, void *scr)
 {
     (void)e;

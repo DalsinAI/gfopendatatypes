@@ -304,7 +304,11 @@ static void a_player_stop(const struct odt_cenv *env, void *p) { (void)env; (voi
 static void a_wait_blit(const struct odt_cenv *env) { (void)env; printf("waitblit\n"); }
 /* frames in "Fast RAM": marked in the pad, as adt_ext_amiga.h's are (in
  * Chip RAM, as alloc_bitmap's, after NCLASS's chipframes) */
-static int chip_frames, no_reuse;
+static int chip_frames, no_reuse, cmaps_on;
+/* after NCLASS's cmaps, frame f has alf_CMap: f % 4 = 1 the object's
+ * colours each byte ^ 0x55, 2 the object's own, 3 its first half ^ 0x33,
+ * 0 none */
+static struct mcmap cm_a, cm_b, cm_c;
 static struct adt_BitMap *a_alloc_any(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth)
 {
     struct adt_BitMap *bm;
@@ -321,11 +325,28 @@ static struct adt_BitMap *a_alloc_any(const struct odt_cenv *env, odt_u32 w, odt
     return bm;
 }
 static int a_in_chip(const struct odt_cenv *env, const struct adt_BitMap *bm) { (void)env; return bm->pad != 0x4746; }
+/* a frame's ColorMap: how many colours, then their R, G, B */
+struct mcmap { odt_u32 count; odt_u8 rgb[768]; };
+static odt_u32 a_cmap_colors(const struct odt_cenv *env, void *cm, odt_u32 n, odt_u8 *rgb)
+{
+    const struct mcmap *c = cm;
+    odt_u32 k = c->count < n ? c->count : n;
+    (void)env;
+    memcpy(rgb, c->rgb, 3 * k);
+    return k;
+}
+static void a_load_colors(const struct odt_cenv *env, void *scr, odt_u32 first, odt_u32 n, const odt_u8 *rgb)
+{
+    (void)env; (void)scr;
+    printf("loadcolors %lu %lu ", (unsigned long)first, (unsigned long)n);
+    hex(rgb, 3 * n);
+    printf("\n");
+}
 
 static const struct adt_ext anim_ext = {
     a_alloc_bitmap, a_free_bitmap, a_obtain_pen, a_release_pen, a_screen_depth, a_blit, t_fill, a_bevel, a_glyph,
     t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit,
-    a_in_chip, a_alloc_any
+    a_in_chip, a_alloc_any, a_cmap_colors, a_load_colors
 };
 
 static struct odt_cenv env_text, env_anim;
@@ -1157,10 +1178,22 @@ static void run_nclass(char *args)
         } else if (!strcmp(tok, "noreuse")) {
             no_reuse = 1;
             printf("noreuse\n");
+        } else if (!strcmp(tok, "cmaps")) {
+            const odt_u8 *cr = (const odt_u8 *)mget(&env_anim, o, ADT_ADTA_ColorRegisters);
+            odt_u32 n = mget(&env_anim, o, ADT_ADTA_NumColors), i;
+            cm_a.count = cm_b.count = n;
+            cm_c.count = n / 2 ? n / 2 : 1;
+            for (i = 0; i < 3 * n; i++) {
+                cm_a.rgb[i] = (odt_u8)(cr[i] ^ 0x55);
+                cm_b.rgb[i] = cr[i];
+                cm_c.rgb[i] = (odt_u8)(cr[i] ^ 0x33);
+            }
+            cmaps_on = 1;
+            printf("cmaps\n");
         }
     }
     mdispose(&env_anim, o);
-    chip_frames = no_reuse = 0;
+    chip_frames = no_reuse = cmaps_on = 0;
     free(data);
     printf("allocs %ld sem %d\n", outstanding - base, sem_depth);
 }
@@ -1174,6 +1207,10 @@ static odt_u32 spy_anim(const struct odt_cenv *env, struct odt_IClass *cl, void 
     if (no_reuse && (id == ADT_ADTM_LOADFRAME || id == ADT_ADTM_LOADNEWFORMATFRAME))
         ((struct adt_Frame *)msg)->alf_BitMap = 0;
     r = anm_dispatch(env, cl, obj, msg);
+    if (cmaps_on && (id == ADT_ADTM_LOADFRAME || id == ADT_ADTM_LOADNEWFORMATFRAME)) {
+        odt_u32 k = ((struct adt_Frame *)msg)->alf_Frame % 4;
+        ((struct adt_Frame *)msg)->alf_CMap = k == 1 ? &cm_a : k == 2 ? &cm_b : k == 3 ? &cm_c : 0;
+    }
     if (id == ADT_ADTM_LOADFRAME || id == ADT_ADTM_LOADNEWFORMATFRAME)
         printf("load %lu %lu dur %lu -> %lu\n", (unsigned long)(id & 0xff), (unsigned long)((struct adt_Frame *)msg)->alf_Frame,
                (unsigned long)((struct adt_Frame *)msg)->alf_Duration, (unsigned long)r);
