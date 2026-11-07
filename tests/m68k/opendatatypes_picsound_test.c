@@ -12,6 +12,7 @@
  * the log python's own models expect. The words:
  *   ilbm FILE SCREEN REMAP DESTMODE SW SH KEEP   load, read, lay out, draw, write, reload
  *   pixw FILE [LUT0 [L T W H]]                   PDTM_WRITEPIXELARRAY then READPIXELARRAY
+ *   v42 W H DEPTH BMW BMH SW SH KEEP             a V42 picture (PDTA_BitMap): write, read, scale, lay out
  *   svx FILE PANEL                               load an 8SVX, play, draw, click, write, reload
  *   snd LEN STEREO CYCLES PAN TYPE               a sound made in memory, played
  */
@@ -691,6 +692,75 @@ static void cmd_pixw(char **a, int n)
     free(d);
 }
 
+/* v42 W H DEPTH BMW BMH SW SH KEEP: a V42 picture, its BitMapHeader W x H
+ * and a PDTA_BitMap of BMW x BMH (pixel (x, y) = x * 3 + y * 5): a
+ * WRITEPIXELARRAY into it, its pixels, PDTM_SCALE and a layout */
+static void cmd_v42(char **a)
+{
+    odt_u32 w = (odt_u32)atoi(a[0]), h = (odt_u32)atoi(a[1]), depth = (odt_u32)atoi(a[2]);
+    odt_u32 bw = (odt_u32)atoi(a[3]), bh = (odt_u32)atoi(a[4]), sw = (odt_u32)atoi(a[5]), sh = (odt_u32)atoi(a[6]);
+    odt_u32 keep = (odt_u32)atoi(a[7]), x, y, d, i, rw = w ? w : 32, rh = h ? h : 32;
+    long base = live;
+    void *o = new_obj(&cl_pic, ODT_DTST_RAM, NULL, 0);
+    struct pic_BitMapHeader *b = (void *)get(o, PIC_PDTA_BitMapHeader);
+    odt_u32 *cregs = (void *)get(o, PIC_PDTA_CRegs);
+    struct odt_BitMap bm;
+    static odt_u8 one[4] = { 1, 1, 1, 1 };
+    struct pic_pdtBlitPixelArray m = { PIC_PDTM_WRITEPIXELARRAY, one, PIC_PBPAFMT_LUT8, 4, 0, 0, 4, 1 };
+    struct odt_gpLayout lay;
+    struct odt_GadgetInfo gi;
+    memset(&bm, 0, sizeof bm);
+    bm.BytesPerRow = (odt_u16)(((bw + 15) >> 4) << 1);
+    bm.Rows = (odt_u16)bh;
+    bm.Depth = (odt_u8)depth;
+    for (d = 0; d < depth; d++) bm.Planes[d] = calloc(1, (size_t)bm.BytesPerRow * bh);
+    for (y = 0; y < bh; y++)
+        for (x = 0; x < bw; x++)
+            for (d = 0; d < depth; d++)
+                if (((x * 3 + y * 5) >> d) & 1) bm.Planes[d][y * bm.BytesPerRow + x / 8] |= (odt_u8)(0x80 >> (x % 8));
+    b->bmh_Width = (odt_u16)w;
+    b->bmh_Height = (odt_u16)h;
+    b->bmh_Depth = (odt_u8)depth;
+    for (i = 0; i < (1u << depth) * 3; i++) cregs[i] = ((i * 41 + 7) & 0xff) * 0x01010101UL;
+    {
+        struct odt_TagItem t[3] = { { PIC_PDTA_NumColors, 1u << depth }, { PIC_PDTA_BitMap, (odt_u32)&bm },
+                                    { ODT_TAG_DONE, 0 } };
+        struct odt_opSet set = { ODT_OM_SET, t, NULL };
+        m_do_method(&env, o, &set);
+    }
+    printf("write %lu\n", (unsigned long)m_do_method(&env, o, &m));
+    print_px("lut", o, PIC_PBPAFMT_LUT8, rw, rh);
+    if (sw) {
+        struct pic_pdtScale sc = { PIC_PDTM_SCALE, sw, sh, keep ? PIC_PScale_KeepAspect : 0 };
+        printf("scale %lu\n", (unsigned long)m_do_method(&env, o, &sc));
+    }
+    memset(&gi, 0, sizeof gi);
+    lay.MethodID = ODT_DTM_PROCLAYOUT; lay.gpl_GInfo = &gi; lay.gpl_Initial = 1;
+    {
+        odt_u32 r = m_do_method(&env, o, &lay);
+        struct odt_BitMap *dbm = (void *)get(o, PIC_PDTA_DestBitMap);
+        struct fdt *f = FDT(o);
+        printf("layout %lu %lu %lu depth=%u\n", (unsigned long)r, (unsigned long)f->tot_h, (unsigned long)f->tot_v,
+               dbm ? dbm->Depth : 0);
+        if (dbm) {
+            odt_u8 *row = malloc(f->tot_h + 1);
+            for (y = 0; y < f->tot_v; y++) {
+                for (x = 0; x < f->tot_h; x++) {
+                    odt_u8 v = 0;
+                    for (d = 0; d < dbm->Depth; d++)
+                        if (dbm->Planes[d][y * dbm->BytesPerRow + x / 8] & (0x80 >> (x % 8))) v |= (odt_u8)(1 << d);
+                    row[x] = v;
+                }
+                hexrow("dest", row, f->tot_h);
+            }
+            free(row);
+        }
+    }
+    dispose(o);
+    for (d = 0; d < depth; d++) free(bm.Planes[d]);
+    printf("live %ld\n", live - base);
+}
+
 static odt_u32 trig(void *o, odt_u32 fn)
 {
     struct odt_dtTrigger t = { ODT_DTM_TRIGGER, NULL, fn, NULL };
@@ -912,6 +982,7 @@ int main(int argc, char **argv)
         printf("\n");
         if (!strcmp(a[0], "ilbm")) cmd_ilbm(a + 1);
         else if (!strcmp(a[0], "pixw")) cmd_pixw(a + 1, n - 1);
+        else if (!strcmp(a[0], "v42")) cmd_v42(a + 1);
         else if (!strcmp(a[0], "svx")) cmd_svx(a + 1);
         else if (!strcmp(a[0], "snd")) cmd_snd(a + 1);
         else if (!strcmp(a[0], "sndvh")) cmd_sndvh(a + 1);

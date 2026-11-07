@@ -536,6 +536,41 @@ def expect_pixw(name, w, h, pal, store_lut, pix, args=""):
     return out
 
 
+# ---- a V42 picture (PDTA_BitMap) ----------------------------------------------------
+
+def expect_v42(w, h, depth, bw, bh, sw, sh, keep):
+    """picture.datatype with a V42 subclass's bitmap: WRITEPIXELARRAY is
+    refused and leaves the picture as it is; the pixels are the bitmap's,
+    the BitMapHeader's size cut to the bitmap's; PDTM_SCALE and the
+    layout (no screen: the picture's own indexes) scale that size."""
+    out = ["== v42 %d %d %d %d %d %d %d %d" % (w, h, depth, bw, bh, sw, sh, keep), "write 0"]
+    rb = rowbytes(bw)
+    pw = min(w or rb * 8, rb * 8)
+    ph = min(h or bh, bh)
+    mask = (1 << depth) - 1
+
+    def px(x, y):
+        return (x * 3 + y * 5) & mask if x < bw else 0     # the row's padding reads as 0
+
+    rw, rh = w or 32, h or 32
+    for y in range(rh):
+        out.append("lut " + hx(px(x, y) if x < pw and y < ph else 0 for x in range(rw)))
+    dw, dh = pw, ph
+    if sw:
+        out.append("scale 1")
+        dw, dh = sw, sh
+        if keep:
+            if dw * ph > dh * pw:
+                dw = max(dh * pw // ph, 1)
+            else:
+                dh = max(dw * ph // pw, 1)
+    out.append("layout 1 %d %d depth=%d" % (dw, dh, depth))
+    for y in range(dh):
+        out.append("dest " + hx(px(x * pw // dw, y * ph // dh) for x in range(dw)))
+    out.append("live 0")
+    return out
+
+
 # ---- 8SVX and sound.datatype --------------------------------------------------------------
 
 FIB = [-34, -21, -13, -8, -5, -3, -2, -1, 0, 1, 2, 3, 5, 8, 13, 21]
@@ -898,6 +933,13 @@ def main():
         args = " %d %d %d %d %d" % ((1 if lut0 else 0,) + (rect or (0, 0, w, h)))
         script.append("pixw " + name + args)
         expected += expect_pixw(name, w, h, p, store_lut, pix, args)
+
+    # V42 pictures: the BitMapHeader the bitmap's size, larger (cut to the
+    # bitmap's), none (the bitmap's own); scaled with and without aspect
+    for args in [(13, 5, 3, 13, 5, 0, 0, 0), (20, 10, 4, 16, 6, 32, 32, 1), (20, 10, 4, 16, 6, 9, 30, 0),
+                 (0, 0, 2, 12, 3, 40, 40, 1), (9, 4, 8, 9, 4, 27, 13, 1)]:
+        script.append("v42 %d %d %d %d %d %d %d %d" % args)
+        expected += expect_v42(*args)
 
     svx_cases = [
         ({"n": 50}, 0), ({"n": 51, "rate": 22050, "vol": 0x8000, "name": "beep"}, 1),

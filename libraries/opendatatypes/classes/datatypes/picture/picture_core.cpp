@@ -711,6 +711,8 @@ u32 write_pixels(env_t *env, pic_inst *p, pic_pdtBlitPixelArray *m)
     u32 fmt = m->pbpa_PixelFormat;
     if (fmt > PIC_PBPAFMT_GREY8 || !m->pbpa_PixelData)
         return 0;
+    if (p->srcbm)
+        return 0;                       /* a V42 picture: its bitmap is the picture */
     u32 store = p->store;
     if (!p->pixels) {
         if (!p->bmhd.bmh_Width || !p->bmhd.bmh_Height)
@@ -746,10 +748,6 @@ u32 write_pixels(env_t *env, pic_inst *p, pic_pdtBlitPixelArray *m)
         p->store = store;
         p->pw = w;
         p->ph = h;
-    }
-    if (p->srcbm) {
-        env->free(env, tab);
-        return 0;
     }
     fix_cregs(p);
     /* ABI test: a rectangle partly outside: ours clips it */
