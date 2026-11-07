@@ -302,10 +302,30 @@ static void *a_player_start(const struct odt_cenv *env, struct odt_IClass *cl, v
 { (void)env; (void)cl; (void)obj; printf("player %lu\n", (unsigned long)fps); return (void *)0x9000; }
 static void a_player_stop(const struct odt_cenv *env, void *p) { (void)env; (void)p; printf("playerstop\n"); }
 static void a_wait_blit(const struct odt_cenv *env) { (void)env; printf("waitblit\n"); }
+/* frames in "Fast RAM": marked in the pad, as adt_ext_amiga.h's are (in
+ * Chip RAM, as alloc_bitmap's, after NCLASS's chipframes) */
+static int chip_frames, no_reuse;
+static struct adt_BitMap *a_alloc_any(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth)
+{
+    struct adt_BitMap *bm;
+    odt_u32 p, bpr = ((w + 15) >> 4) << 1;
+    if (chip_frames) return a_alloc_bitmap(env, w, h, depth, 0);
+    bm = xalloc(sizeof *bm);
+    (void)env;
+    bm->BytesPerRow = (odt_u16)bpr;
+    bm->Rows = (odt_u16)h;
+    bm->Depth = (odt_u8)depth;
+    bm->pad = 0x4746;
+    for (p = 0; p < depth && p < 8; p++) bm->Planes[p] = xalloc(bpr * h);
+    printf("allocany %lu %lu %lu\n", (unsigned long)w, (unsigned long)h, (unsigned long)depth);
+    return bm;
+}
+static int a_in_chip(const struct odt_cenv *env, const struct adt_BitMap *bm) { (void)env; return bm->pad != 0x4746; }
 
 static const struct adt_ext anim_ext = {
     a_alloc_bitmap, a_free_bitmap, a_obtain_pen, a_release_pen, a_screen_depth, a_blit, t_fill, a_bevel, a_glyph,
-    t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit
+    t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit,
+    a_in_chip, a_alloc_any
 };
 
 static struct odt_cenv env_text, env_anim;
@@ -711,9 +731,67 @@ static odt_u32 cmp_rnd(void)
     return (odt_u32)(cmp_seed >> 16) & 0x7fff;
 }
 
+/* anm_copy_out as it was, a byte at a time: ACOPYCMP checks the one that
+ * replaced it writes every byte the same */
+static void old_copy_out(const struct anm_dec *d, odt_u8 *const *planes, odt_u32 dst_depth, odt_u32 modulo)
+{
+    const odt_u8 *src = anm_planes(d);
+    odt_u32 p, row, x, rows = d->info->bmhd.h, bpr = d->info->bpr, n = bpr < modulo ? bpr : modulo;
+    for (p = 0; p < dst_depth; p++) {
+        odt_u8 *dst = planes[p];
+        if (!dst) continue;
+        for (row = 0; row < rows; row++)
+            for (x = 0; x < n; x++)
+                dst[row * modulo + x] = (src && p < d->info->depth) ? src[(p * rows + row) * bpr + x] : 0;
+    }
+}
+
 /* animation pure */
 static void run_apure(const char *cmd, char *args)
 {
+    if (!strcmp(cmd, "ACOPYCMP")) {
+        /* frames of random sizes and depths into BitMaps of random depths
+         * and modulos (interleaved too), planes missing, at odd addresses */
+        unsigned long seed, cases, k, differ = 0;
+        sscanf(args, "%lu %lu", &seed, &cases);
+        cmp_seed = seed;
+        for (k = 0; k < cases; k++) {
+            struct anm_info info;
+            struct anm_dec dec;
+            odt_u32 w = 1 + cmp_rnd() % (k & 1 ? 400 : 40), h = 1 + cmp_rnd() % 7, depth = 1 + cmp_rnd() % 8;
+            odt_u32 bpr = ((w + 15) >> 4) << 1, dd = 1 + cmp_rnd() % 8, i, p, mod, size, off = cmp_rnd() % 4 == 0;
+            odt_u8 *buf, *a, *b, *pa[8], *pb[8];
+            int same;
+            mod = cmp_rnd() % 3 == 0 ? bpr * dd : bpr + (cmp_rnd() % 3 ? 0 : 2 * (cmp_rnd() % 3)) - (cmp_rnd() % 5 == 0 && bpr > 2 ? 2 : 0);
+            memset(&info, 0, sizeof info);
+            memset(&dec, 0, sizeof dec);
+            info.bmhd.w = (odt_u16)w; info.bmhd.h = (odt_u16)h; info.depth = (odt_u8)depth; info.bpr = (odt_u16)bpr;
+            dec.info = &info;
+            dec.size = depth * h * bpr;
+            buf = malloc(dec.size + 1);
+            for (i = 0; i < dec.size + 1; i++) buf[i] = (odt_u8)cmp_rnd();
+            dec.buf[0] = dec.buf[1] = buf + off;   /* odd: not word aligned */
+            dec.cur = cmp_rnd() % 8 ? 0 : -1;     /* -1: no frame, every plane cleared */
+            size = mod * h + bpr * dd + 2;
+            a = malloc(size); b = malloc(size);
+            for (i = 0; i < size; i++) a[i] = b[i] = (odt_u8)cmp_rnd();
+            for (p = 0; p < 8; p++) {
+                odt_u32 at = mod == bpr * dd ? p * bpr : 0;   /* interleaved, or one plane each */
+                int miss = cmp_rnd() % 7 == 0;
+                pa[p] = miss ? 0 : (mod == bpr * dd ? a + at : (p == 0 ? a : 0));
+                pb[p] = miss ? 0 : (mod == bpr * dd ? b + at : (p == 0 ? b : 0));
+            }
+            old_copy_out(&dec, pa, mod == bpr * dd ? dd : 1, mod);
+            anm_copy_out(&dec, pb, mod == bpr * dd ? dd : 1, mod);
+            same = !memcmp(a, b, size);
+            if (!same && differ++ < 5)
+                printf("acopycmp case %lu differs: %lux%lux%lu modulo %lu into %lu\n", k, (unsigned long)w, (unsigned long)h,
+                       (unsigned long)depth, (unsigned long)mod, (unsigned long)dd);
+            free(buf); free(a); free(b);
+        }
+        printf("acopycmp %lu cases, %lu differ from the old copy\n", cases, differ);
+        return;
+    }
     if (!strcmp(cmd, "AREMAPCMP")) {
         /* seed cases: bitmaps of random sizes, depths, modulos and missing
          * planes, destinations full of other bits, a table or none */
@@ -1073,17 +1151,28 @@ static void run_nclass(char *args)
             printf("goactive -> %lu\n", (unsigned long)m_do_method(&env_anim, o, &gp));
         } else if (!strcmp(tok, "frame")) {
             printf("frame %lu\n", (unsigned long)mget(&env_anim, o, ADT_ADTA_Frame));
+        } else if (!strcmp(tok, "chipframes")) {
+            chip_frames = 1;
+            printf("chipframes\n");
+        } else if (!strcmp(tok, "noreuse")) {
+            no_reuse = 1;
+            printf("noreuse\n");
         }
     }
     mdispose(&env_anim, o);
+    chip_frames = no_reuse = 0;
     free(data);
     printf("allocs %ld sem %d\n", outstanding - base, sem_depth);
 }
 
-/* animation.datatype logs the frame loads it asks for: a spy between it and anim */
+/* animation.datatype logs the frame loads it asks for: a spy between it and
+ * anim (after NCLASS's noreuse, one that drops the bitmap handed back, as a
+ * subclass that always makes its own would) */
 static odt_u32 spy_anim(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, void *msg)
 {
     odt_u32 id = *(odt_u32 *)msg, r;
+    if (no_reuse && (id == ADT_ADTM_LOADFRAME || id == ADT_ADTM_LOADNEWFORMATFRAME))
+        ((struct adt_Frame *)msg)->alf_BitMap = 0;
     r = anm_dispatch(env, cl, obj, msg);
     if (id == ADT_ADTM_LOADFRAME || id == ADT_ADTM_LOADNEWFORMATFRAME)
         printf("load %lu %lu dur %lu -> %lu\n", (unsigned long)(id & 0xff), (unsigned long)((struct adt_Frame *)msg)->alf_Frame,

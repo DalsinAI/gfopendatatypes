@@ -265,7 +265,9 @@ static struct BitMap *fetchFrame(VideoData *d, struct dt_service *svc, ULONG ind
 
     /* The chip RAM first: when it has run out, no frame is decoded for nothing. */
     *nomem = TRUE;
-    if (!(bm = into ? into : AllocBitMap(d->width, d->height, 8, BMF_CLEAR, NULL)))
+    /* not cleared: WriteChunkyPixels fills every pixel, and a frame that
+     * can't be had frees a new bitmap */
+    if (!(bm = into ? into : AllocBitMap(d->width, d->height, 8, 0, NULL)))
         return NULL;
     if (!(chunky = AllocVec(skip + d->width * d->height, MEMF_ANY))) {
         if (!into)

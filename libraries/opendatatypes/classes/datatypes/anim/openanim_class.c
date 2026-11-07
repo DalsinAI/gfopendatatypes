@@ -41,7 +41,8 @@ static const char ver[] __attribute__((used)) =
     "\0$VER: " LIBNAME " 47.100 (13.10.2026) GFOpenDatatypes, AmiCradle Team";
 
 /* a subclass only makes and frees its frames' bitmaps */
-static const struct adt_ext anim_ext = { .alloc_bitmap = ax_alloc_bitmap, .free_bitmap = ax_free_bitmap };
+static const struct adt_ext anim_ext = { .alloc_bitmap = ax_alloc_bitmap, .free_bitmap = ax_free_bitmap,
+                                         .alloc_any = ax_alloc_any };
 
 static int anim_ext_init(struct DTCBase *base)
 {

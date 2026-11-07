@@ -84,6 +84,11 @@
 #define ADT_ADTA_RightSample     ADT_SDTA_RightSample
 #define ADT_ADTA_SamplesPerSec   ADT_SDTA_SamplesPerSec
 
+/* GFOpenDatatypes' own (OM_GET, TRUE from this class, FALSE from OS 3.2's):
+ * the class shows a frame from any memory (remapped, or copied to Chip RAM
+ * first), so a subclass may put its frames' planes in Fast RAM */
+#define ADT_GFA_FramesAnyMem     (ODT_TAG_USER + 0x47460001UL)
+
 #define ADT_ADTM_Dummy                0x700UL
 #define ADT_ADTM_LOADFRAME            0x701UL
 #define ADT_ADTM_UNLOADFRAME          0x702UL
@@ -136,7 +141,8 @@ struct adt_ColorRegister { odt_u8 red, green, blue; };
 #define ADT_GLYPH_STOP  3
 
 struct adt_ext {
-    /* AllocBitMap(w, h, depth, BMF_CLEAR, friend) and FreeBitMap */
+    /* AllocBitMap(w, h, depth, 0, friend) (not cleared: every frame is
+     * drawn whole) and FreeBitMap */
     struct adt_BitMap *(*alloc_bitmap)(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth, void *friend_bm);
     void (*free_bitmap)(const struct odt_cenv *env, struct adt_BitMap *bm);
     /* ObtainBestPen on the screen's ColorMap (32-bit guns, PRECISION_IMAGE)
@@ -166,6 +172,11 @@ struct adt_ext {
     void (*player_stop)(const struct odt_cenv *env, void *player);
     /* WaitBlit, before the CPU writes into a bitmap a blit may still read */
     void (*wait_blit)(const struct odt_cenv *env);
+    /* Is every plane of bm in Chip RAM (where the blitter reads)? NULL: yes */
+    int (*in_chip)(const struct odt_cenv *env, const struct adt_BitMap *bm);
+    /* A bitmap for frames whose planes may be in Fast RAM (free_bitmap
+     * frees it); NULL: alloc_bitmap. Its contents are not cleared. */
+    struct adt_BitMap *(*alloc_any)(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth);
 };
 
 /* ---- playing: frames against time -------------------------------------------- */
@@ -234,10 +245,12 @@ odt_s32 adt_knob_x(const struct adt_panel *p, odt_u32 frame, odt_u32 frames);
 
 struct adt_slot {
     struct adt_Frame msg;               /* as the subclass filled it */
-    struct adt_BitMap *remapped;        /* ours, on the screen's pens; kept for the slot's next frame */
+    struct adt_BitMap *remapped;        /* ours, on the screen's pens (or a Chip RAM copy); kept for the slot's next frame */
     odt_u8 used;
-    odt_u8 pad;
+    odt_u8 spare;                       /* not used, its frame's bitmap kept to be handed back */
     odt_u16 remapped_w;                 /* the width remapped was made for */
+    odt_u8 copied;                      /* remapped is the frame copied to Chip RAM, not on pens */
+    odt_u8 pad[3];
 };
 
 struct adt_inst {

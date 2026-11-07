@@ -31,17 +31,61 @@ static struct adt_BitMap *ax_alloc_bitmap(const struct odt_cenv *e, odt_u32 w, o
 {
     (void)e;
     /* planar, as the cores read and write it: no friend (ABI test: OS
-     * 3.2's frames on an RTG screen) */
+     * 3.2's frames on an RTG screen); not cleared, as every frame and
+     * every remap is drawn whole */
     (void)fr;
-    return (struct adt_BitMap *)AllocBitMap(w, h, depth, BMF_CLEAR, NULL);
+    return (struct adt_BitMap *)AllocBitMap(w, h, depth, 0, NULL);
+}
+
+/* A frame bitmap in any memory (Fast RAM when there is some): the BitMap
+ * and its planes in one block, its pad marked, which is how
+ * ax_free_bitmap knows it from AllocBitMap's */
+#define AX_ANY_MARK 0x4746
+
+struct ax_any {
+    struct BitMap bm;
+    ULONG size;                         /* the block's */
+};
+
+static struct adt_BitMap *ax_alloc_any(const struct odt_cenv *e, odt_u32 w, odt_u32 h, odt_u32 depth)
+{
+    ULONG bpr = ((w + 15) >> 4) << 1, plane = bpr * h, size, p;
+    struct ax_any *a;
+    (void)e;
+    if (!w || !h || !depth || depth > 8 || plane / bpr != h) return NULL;
+    size = sizeof *a + depth * plane;
+    if (!(a = AllocVec(size, MEMF_ANY))) return NULL;
+    InitBitMap(&a->bm, depth, w, h);
+    for (p = 0; p < depth; p++) a->bm.Planes[p] = (PLANEPTR)((UBYTE *)(a + 1) + p * plane);
+    a->bm.pad = AX_ANY_MARK;
+    a->size = size;
+    return (struct adt_BitMap *)&a->bm;
+}
+
+static int ax_is_any(const struct BitMap *bm)
+{
+    return bm->pad == AX_ANY_MARK && bm->Planes[0] == (PLANEPTR)((UBYTE *)bm + sizeof(struct ax_any));
 }
 
 static void ax_free_bitmap(const struct odt_cenv *e, struct adt_BitMap *bm)
 {
     (void)e;
     if (!bm) return;
+    if (ax_is_any((struct BitMap *)bm)) {
+        FreeVec(bm);                    /* the CPU's alone: no blit reads it */
+        return;
+    }
     WaitBlit();
     FreeBitMap((struct BitMap *)bm);
+}
+
+static int ax_in_chip(const struct odt_cenv *e, const struct adt_BitMap *bm)
+{
+    ULONG p;
+    (void)e;
+    for (p = 0; p < bm->Depth && p < 8; p++)
+        if (bm->Planes[p] && bm->Planes[p] != (odt_u8 *)~0UL && !(TypeOfMem(bm->Planes[p]) & MEMF_CHIP)) return 0;
+    return 1;
 }
 
 #ifndef ADT_EXT_BITMAPS_ONLY

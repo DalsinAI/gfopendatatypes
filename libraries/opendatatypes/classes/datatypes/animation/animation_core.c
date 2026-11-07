@@ -333,6 +333,7 @@ static void unload(const struct odt_cenv *env, struct adt_inst *in, void *obj, s
     s->msg.MethodID = in->newformat == NF_NEW ? ADT_ADTM_UNLOADNEWFORMATFRAME : ADT_ADTM_UNLOADFRAME;
     env->do_method(env, obj, &s->msg);
     s->used = 0;
+    s->spare = 0;
 }
 
 static void drop_remapped(const struct odt_cenv *env, struct adt_slot *s)
@@ -375,14 +376,51 @@ static int can_remap(const struct adt_inst *in)
            in->depth <= 8;
 }
 
+/* A bitmap of the slot's own for the frame (the size, the depth d): the
+ * one from an earlier frame when it would be the same, after a WaitBlit
+ * (a blit of the earlier frame may still read it) */
+static struct adt_BitMap *slot_bitmap(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s,
+                                      const struct adt_BitMap *f, odt_u32 d)
+{
+    const struct adt_ext *x = EXT(env);
+    struct adt_BitMap *bm = s->remapped;
+    if (bm && (s->remapped_w != in->width || bm->Rows != in->height || bm->Depth != d || f->Rows < in->height ||
+               (odt_u32)f->BytesPerRow * 8 < in->width)) {
+        drop_remapped(env, s);
+        bm = 0;
+    }
+    if (bm) {
+        if (x->wait_blit) x->wait_blit(env);
+    } else if (!(bm = x->alloc_bitmap(env, in->width, in->height, d, 0)))
+        return 0;
+    s->remapped = bm;
+    s->remapped_w = (odt_u16)in->width;
+    return bm;
+}
+
+/* The slot's frame as it is to be shown: remapped to the screen's pens into
+ * a bitmap of the slot's own; or the frame itself (none of our own) when it
+ * needs no remap and is where the display can read it; else copied into
+ * Chip RAM (a frame a subclass made in Fast RAM). Done when the frame is
+ * loaded, and again when it is drawn and has none (a screen known since). */
 static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
 {
     const struct adt_ext *x = EXT(env);
     const struct adt_BitMap *f = s->msg.alf_BitMap;
-    struct adt_BitMap *bm = s->remapped;
+    struct adt_BitMap *bm;
     odt_u32 d;
-    if (!can_remap(in) || !f || !x->alloc_bitmap) {
+    if (!f || !x->alloc_bitmap) {
         drop_remapped(env, s);
+        return;
+    }
+    s->copied = 0;
+    if (!can_remap(in)) {
+        d = f->Depth > 8 ? 8 : f->Depth;
+        if (!x->in_chip || x->in_chip(env, f) || !d) drop_remapped(env, s);
+        else if ((bm = slot_bitmap(env, in, s, f, d)) != 0) {
+            adt_remap(f, in->width, in->height, 0, bm);
+            s->copied = 1;
+        }
         return;
     }
     obtain_pens(env, in);
@@ -390,48 +428,63 @@ static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct a
     if (d > 8) d = 8;                   /* deeper screens: pens up to 255 */
     /* every pen the colour it is in the frame (the film's own screen, or
      * one with its colours), as deep as the screen: shown as it is */
-    if (f->Depth == d && adt_identity(in->color_table, d)) {
+    if (f->Depth == d && adt_identity(in->color_table, d) && (!x->in_chip || x->in_chip(env, f))) {
         drop_remapped(env, s);
         return;
     }
-    /* the slot's bitmap from an earlier frame is written over when a new
-     * one would be the same (the size, the depth, every pixel remapped) */
-    if (bm && (s->remapped_w != in->width || bm->Rows != in->height || bm->Depth != d || f->Rows < in->height ||
-               (odt_u32)f->BytesPerRow * 8 < in->width)) {
-        drop_remapped(env, s);
-        bm = 0;
-    }
-    if (bm) {
-        if (x->wait_blit) x->wait_blit(env); /* a blit of the earlier frame may still read it */
-    } else if (!(bm = x->alloc_bitmap(env, in->width, in->height, d, 0)))
-        return;
-    s->remapped = bm;
-    s->remapped_w = (odt_u16)in->width;
-    adt_remap(f, in->width, in->height, in->color_table, bm);
+    if ((bm = slot_bitmap(env, in, s, f, d)) != 0)
+        adt_remap(f, in->width, in->height, in->color_table, bm);
 }
 
+/* Frame f into slot s. A spare slot hands its bitmap back to the subclass
+ * in alf_BitMap (alf_UserData with it), as OS 3.2's animation.datatype
+ * does, to draw the frame into: no bitmap made and cleared a frame. A
+ * subclass that makes a new one anyway gets the old one back with an
+ * unload. 1 when the frame is loaded; else the slot is empty, or spare
+ * when it still holds a bitmap. */
 static int load(const struct odt_cenv *env, struct adt_inst *in, void *obj, struct adt_slot *s, odt_u32 f)
 {
     odt_u8 *z = (odt_u8 *)&s->msg;
-    odt_u32 i, r = 0;
+    void *given = s->spare ? s->msg.alf_BitMap : 0, *data = s->spare ? s->msg.alf_UserData : 0;
+    odt_u32 i, r = 0, was = s->msg.alf_Frame;
+    int ok;
+    if (given && EXT(env)->wait_blit) EXT(env)->wait_blit(env);   /* a blit of the old frame may still read it */
     for (i = 0; i < sizeof s->msg; i++) z[i] = 0;
     s->msg.alf_TimeStamp = f;           /* timestamps count frames (ABI test) */
     s->msg.alf_Frame = f;
     s->msg.alf_Size = sizeof s->msg;
+    s->msg.alf_BitMap = given;
+    s->msg.alf_UserData = data;
     if (in->newformat != NF_OLD) {
         s->msg.MethodID = ADT_ADTM_LOADNEWFORMATFRAME;
         r = env->do_method(env, obj, &s->msg);
-        if (r || s->msg.alf_BitMap) in->newformat = NF_NEW;
+        if (r || s->msg.alf_BitMap != given) in->newformat = NF_NEW;
         else if (in->newformat == NF_UNKNOWN) in->newformat = NF_OLD;
     }
     if (in->newformat == NF_OLD) {
         for (i = 0; i < sizeof s->msg; i++) z[i] = 0;
         s->msg.alf_TimeStamp = f;
         s->msg.alf_Frame = f;
+        s->msg.alf_BitMap = given;
+        s->msg.alf_UserData = data;
         s->msg.MethodID = ADT_ADTM_LOADFRAME;
         r = env->do_method(env, obj, &s->msg);
     }
-    if (!r && !s->msg.alf_BitMap) return 0;
+    if (given && s->msg.alf_BitMap != given) {
+        struct adt_Frame old = s->msg;
+        old.alf_Frame = old.alf_TimeStamp = was;
+        old.alf_BitMap = given;
+        old.alf_UserData = data;
+        old.MethodID = in->newformat == NF_NEW ? ADT_ADTM_UNLOADNEWFORMATFRAME : ADT_ADTM_UNLOADFRAME;
+        env->do_method(env, obj, &old);
+        given = 0;
+    }
+    ok = r || (s->msg.alf_BitMap && s->msg.alf_BitMap != given);
+    s->spare = 0;
+    if (!ok) {
+        s->spare = s->msg.alf_BitMap != 0;
+        return 0;
+    }
     s->used = 1;
     remap_slot(env, in, s);
     return 1;
@@ -460,22 +513,32 @@ struct adt_slot *adt_cache(const struct odt_cenv *env, struct adt_inst *in, void
     odt_u32 n = window(in), i, k;
     struct adt_slot *shown = 0;
     if (!in->frames || frame >= in->frames) return 0;
+    /* frames no longer wanted keep their bitmaps, for the frames to come */
     for (k = 0; k < ADT_MAXPRELOAD; k++)
-        if (in->slots[k].used && !wanted(in, frame, n, in->slots[k].msg.alf_Frame)) unload(env, in, obj, &in->slots[k]);
+        if (in->slots[k].used && !wanted(in, frame, n, in->slots[k].msg.alf_Frame)) {
+            in->slots[k].used = 0;
+            in->slots[k].spare = 1;
+        }
     for (i = 0; i < n; i++) {
         odt_u32 f = frame + i;
-        struct adt_slot *s = 0, *fr = 0;
+        struct adt_slot *s = 0, *fr = 0, *sp = 0;
         if (f >= in->frames) {
             if (!in->play.repeat) break;
             f -= in->frames;
         }
         for (k = 0; k < ADT_MAXPRELOAD; k++) {
-            if (in->slots[k].used && in->slots[k].msg.alf_Frame == f) { s = &in->slots[k]; break; }
-            if (!in->slots[k].used && !fr) fr = &in->slots[k];
+            struct adt_slot *t = &in->slots[k];
+            if (t->used && t->msg.alf_Frame == f) { s = t; break; }
+            if (t->spare && !sp) sp = t;
+            else if (!t->used && !t->spare && !fr) fr = t;
         }
-        if (!s && fr && load(env, in, obj, fr, f)) s = fr;
+        if (!s && sp && load(env, in, obj, sp, f)) s = sp;
+        else if (!s && !sp && fr && load(env, in, obj, fr, f)) s = fr;
         if (i == 0) shown = s;
     }
+    /* what no frame took goes back to the subclass */
+    for (k = 0; k < ADT_MAXPRELOAD; k++)
+        if (in->slots[k].spare) unload(env, in, obj, &in->slots[k]);
     return shown;
 }
 
@@ -483,7 +546,7 @@ void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj)
 {
     odt_u32 k;
     for (k = 0; k < ADT_MAXPRELOAD; k++) {
-        if (in->slots[k].used) unload(env, in, obj, &in->slots[k]);
+        if (in->slots[k].used || in->slots[k].spare) unload(env, in, obj, &in->slots[k]);
         drop_remapped(env, &in->slots[k]);
     }
 }
@@ -654,6 +717,7 @@ static int get_attr(struct adt_inst *in, odt_u32 tag, odt_u32 *v)
     case ADT_ADTA_LeftSample: *v = (odt_u32)in->left; return 1;
     case ADT_ADTA_RightSample: *v = (odt_u32)in->right; return 1;
     case ADT_ADTA_SamplesPerSec: *v = in->sps; return 1;
+    case ADT_GFA_FramesAnyMem: *v = 1; return 1;
     case ODT_DTA_Methods: *v = (odt_u32)adt_methods; return 1;
     case ODT_DTA_TriggerMethods: *v = (odt_u32)adt_triggers; return 1;
     default: return 0;
@@ -689,7 +753,10 @@ static void draw_frame(const struct odt_cenv *env, struct adt_inst *in, void *ob
 {
     const struct adt_ext *x = EXT(env);
     struct adt_slot *s = adt_cache(env, in, obj, in->play.frame);
-    struct adt_BitMap *bm = s ? (s->remapped ? s->remapped : s->msg.alf_BitMap) : in->key_frame;
+    struct adt_BitMap *bm;
+    if (s && (!s->remapped || (s->copied && can_remap(in))))
+        remap_slot(env, in, s);         /* a screen known since it was loaded */
+    bm = s ? (s->remapped ? s->remapped : s->msg.alf_BitMap) : in->key_frame;
     odt_s32 back = x->pen ? x->pen(env, gi, 7) : 0, w, h;
     struct odt_IBox pic = panel ? picture_box(env, in, gi, box) : box;
     if (top_vert < 0) top_vert = 0;

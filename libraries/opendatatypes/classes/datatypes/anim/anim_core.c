@@ -516,16 +516,40 @@ int anm_goto(struct anm_dec *d, odt_u32 n)
     return r;
 }
 
+/* n bytes from src to dst (0: cleared), longwords at a time when both are
+ * word aligned (BitMap rows always are) */
+typedef odt_u32 __attribute__((aligned(2), may_alias)) anm_l2;
+
+static void copy_row(odt_u8 *dst, const odt_u8 *src, odt_u32 n)
+{
+    if (!(((odt_u32)dst | (odt_u32)src) & 1)) {
+        anm_l2 *dl = (anm_l2 *)dst;
+        const anm_l2 *sl = (const anm_l2 *)src;
+        odt_u32 k = n >> 2;
+        if (src)
+            while (k >= 4) { dl[0] = sl[0]; dl[1] = sl[1]; dl[2] = sl[2]; dl[3] = sl[3]; dl += 4; sl += 4; k -= 4; }
+        else
+            while (k >= 4) { dl[0] = dl[1] = dl[2] = dl[3] = 0; dl += 4; k -= 4; }
+        while (k--) *dl++ = src ? *sl++ : 0;
+        dst = (odt_u8 *)dl;
+        src = src ? (const odt_u8 *)sl : 0;
+        n &= 3;
+    }
+    while (n--) *dst++ = src ? *src++ : 0;
+}
+
 void anm_copy_out(const struct anm_dec *d, odt_u8 *const *planes, odt_u32 dst_depth, odt_u32 modulo)
 {
     const odt_u8 *src = anm_planes(d);
-    odt_u32 p, row, x, rows = d->info->bmhd.h, bpr = d->info->bpr, n = bpr < modulo ? bpr : modulo;
+    odt_u32 p, row, rows = d->info->bmhd.h, bpr = d->info->bpr, n = bpr < modulo ? bpr : modulo;
     for (p = 0; p < dst_depth; p++) {
         odt_u8 *dst = planes[p];
+        const odt_u8 *sp = (src && p < d->info->depth) ? src + p * rows * bpr : 0;
         if (!dst) continue;
-        for (row = 0; row < rows; row++)
-            for (x = 0; x < n; x++)
-                dst[row * modulo + x] = (src && p < d->info->depth) ? src[(p * rows + row) * bpr + x] : 0;
+        if (n == bpr && n == modulo)    /* rows end to end on both sides: the plane at once */
+            copy_row(dst, sp, rows * n);
+        else
+            for (row = 0; row < rows; row++) copy_row(dst + row * modulo, sp ? sp + row * bpr : 0, n);
     }
 }
 
@@ -615,11 +639,21 @@ odt_s32 anm_read_source(const struct odt_cenv *env, void *obj, odt_u8 **data, od
     return 0;
 }
 
-static struct adt_BitMap *frame_bitmap(const struct odt_cenv *env, struct anm_inst *in, struct adt_BitMap *bm)
+/* The frame into bm, or into a new bitmap (not cleared: the frame fills it).
+ * Frames go in Fast RAM when animation.datatype is ours and remaps them
+ * anyway (no HAM, ADTA_Remap on); the key frame, which the class may
+ * show as it is, always in Chip RAM. */
+static struct adt_BitMap *frame_bitmap(const struct odt_cenv *env, struct anm_inst *in, void *obj,
+                                       struct adt_BitMap *bm, int key)
 {
     if (!bm) {
-        if (!AEXT(env)->alloc_bitmap) return 0;
-        bm = AEXT(env)->alloc_bitmap(env, in->info.bmhd.w, in->info.bmhd.h, in->info.depth, 0);
+        const struct adt_ext *x = AEXT(env);
+        odt_u32 remap = 0;
+        if (!key && in->anymem && x->alloc_any && !(anm_mode_id(&in->info) & ADT_HAM) &&
+            dtc_get(env, obj, ADT_ADTA_Remap, &remap) && remap)
+            bm = x->alloc_any(env, in->info.bmhd.w, in->info.bmhd.h, in->info.depth);
+        else if (x->alloc_bitmap)
+            bm = x->alloc_bitmap(env, in->info.bmhd.w, in->info.bmhd.h, in->info.depth, 0);
         if (!bm) return 0;
     }
     anm_copy_out(&in->dec, bm->Planes, bm->Depth > 8 ? 8 : bm->Depth, bm->BytesPerRow);
@@ -652,7 +686,7 @@ static odt_s32 open_anim(const struct odt_cenv *env, struct odt_IClass *cl, void
     if ((err = anm_scan(&in->aenv, in->data, in->len, &in->info)) != ANM_OK) return err;
     if ((err = anm_dec_init(&in->aenv, &in->dec, &in->info, in->data, in->len)) != ANM_OK) return err;
     if ((err = anm_goto(&in->dec, 0)) != ANM_OK) return err;
-    if (!(in->key = frame_bitmap(env, in, 0))) return DTC_ERROR_NO_FREE_STORE;
+    if (!(in->key = frame_bitmap(env, in, obj, 0, 1))) return DTC_ERROR_NO_FREE_STORE;
     ncol = anm_colors(&in->info, in->data, 0, rgb);
     in->ready = 1;
     t[0].ti_Tag = ADT_ADTA_Width;           t[0].ti_Data = in->info.bmhd.w;
@@ -704,6 +738,10 @@ odt_u32 anm_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *ob
         if (!o) return 0;
         in = ODT_INST_DATA(cl, o);
         if (env->sem_init) env->sem_init(env, &in->lock);
+        {
+            odt_u32 any = 0;
+            in->anymem = dtc_get(env, o, ADT_GFA_FramesAnyMem, &any) && any == 1;
+        }
         if ((err = open_anim(env, cl, o, in, ops->ops_GInfo)) != 0) {
             struct odt_dtGeneral d;
             free_all(env, in);
@@ -729,7 +767,7 @@ odt_u32 anm_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *ob
         if (!in->ready || f->alf_Frame >= in->info.nframes) return 0;
         if (env->sem_obtain) env->sem_obtain(env, &in->lock);
         r = anm_goto(&in->dec, f->alf_Frame);
-        bm = frame_bitmap(env, in, (struct adt_BitMap *)f->alf_BitMap);
+        bm = frame_bitmap(env, in, obj, (struct adt_BitMap *)f->alf_BitMap, 0);
         if (env->sem_release) env->sem_release(env, &in->lock);
         (void)r;                        /* a frame that couldn't be made shows the one before it */
         if (!bm) return 0;

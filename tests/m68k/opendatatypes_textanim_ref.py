@@ -1304,7 +1304,7 @@ def expect_nclass(data, ops, truth):
     remap_ok = not (mode_id(info) & 0x800)
     table = [pen_of(col[3 * i], col[3 * i + 1], col[3 * i + 2]) for i in range(ncol)]
     st = dict(preload=4, repeat=1, remap=True, panel=True, newformat=0, slots=[], sample=False, sound_on=False,
-              have_gi=False, pens=False, screen=False)
+              have_gi=False, pens=False, screen=False, chipframes=False, noreuse=False)
     play = Play(n)
     fps = info["fps"]
     box = (2, 3, 120, 50)
@@ -1325,31 +1325,64 @@ def expect_nclass(data, ops, truth):
     def can_remap():
         return st["remap"] and st["screen"] and ncol and remap_ok and depth <= 8
 
-    kept = []                           # each slot's remapped bitmap, kept from frame to frame
+    kept = []                           # each slot's own bitmap (its depth), kept from frame to frame
+    ident = depth == 4 and table == list(range(16))
 
-    def load(f, i):
-        # first ask with ADTM_LOADNEWFORMATFRAME (anim knows it)
-        out.append("allocbm %d %d %d" % (w, h, depth))
-        out.append("load 7 %d dur %d -> 1" % (f, duration(info, f)))
-        st["newformat"] = 1
-        s = dict(frame=f, dur=duration(info, f), remapped=False)
-        while len(kept) <= i:
-            kept.append(False)
-        if can_remap() and not (depth == 4 and table == list(range(16))):
-            st["pens"] = True
-            # the slot's bitmap from an earlier frame is drawn over, after a WaitBlit
-            out.append("waitblit" if kept[i] else "allocbm %d %d 4" % (w, h))
-            kept[i] = True
-            s["remapped"] = True
-        elif kept[i] or can_remap():
+    def own(j, d):
+        # the slot's bitmap from an earlier frame is drawn over, after a
+        # WaitBlit, when it is as deep; else a new one
+        if kept[j] == d:
+            out.append("waitblit")
+            return
+        if kept[j]:
+            out.append("freebm")
+        out.append("allocbm %d %d %d" % (w, h, d))
+        kept[j] = d
+
+    def drop(j):
+        if kept[j]:
+            out.append("freebm")
+            kept[j] = None
+
+    def remap(s):
+        j = s["slot"]
+        s["remapped"] = None
+        if not can_remap():
+            # a frame in Fast RAM is copied to Chip RAM to be shown
+            if s["fast"]:
+                own(j, depth)
+                s["remapped"] = "copy"
+            else:
+                drop(j)
+            return
+        st["pens"] = True
+        if ident and not s["fast"]:
             # every pen the colour it has in the frame, as deep as the
             # screen: the frame is shown as it is
-            if can_remap():
-                st["pens"] = True
-            if not kept[i]:
-                return s
-            out.append("freebm")
-            kept[i] = False
+            drop(j)
+            return
+        own(j, 4)
+        s["remapped"] = "remap"
+
+    def load(f, j, given):
+        # the frame's bitmap: the one handed back (after a WaitBlit), else
+        # anim makes one, in Fast RAM when the class remaps anyway; asked
+        # first with ADTM_LOADNEWFORMATFRAME (anim knows it)
+        if given is not None:
+            out.append("waitblit")
+        if given is not None and not st["noreuse"]:
+            fast = given["fast"]
+        else:
+            fast = bool(st["remap"]) and remap_ok and not st["chipframes"]
+            out.append("%s %d %d %d" % ("allocany" if fast else "allocbm", w, h, depth))
+        out.append("load 7 %d dur %d -> 1" % (f, duration(info, f)))
+        if given is not None and st["noreuse"]:
+            unload(given)               # a new bitmap made anyway: the old one goes back
+        st["newformat"] = 1
+        s = dict(frame=f, dur=duration(info, f), remapped=None, slot=j, fast=fast, spare=False)
+        while len(kept) <= j:
+            kept.append(None)
+        remap(s)
         return s
 
     def unload(s):
@@ -1357,25 +1390,23 @@ def expect_nclass(data, ops, truth):
         out.append("unload 8 %d" % s["frame"])
 
     def flush():
-        # every frame back to anim, and each slot's remapped bitmap freed
+        # every frame back to anim, and each slot's own bitmap freed
         for i in range(max(len(st["slots"]), len(kept))):
             sl = st["slots"][i] if i < len(st["slots"]) else None
             if sl is not None:
                 unload(sl)
                 st["slots"][i] = None
-            if i < len(kept) and kept[i]:
-                out.append("freebm")
-                kept[i] = False
+            if i < len(kept):
+                drop(i)
 
     def cache(frame):
         k = window()
         if not n or frame >= n:
             return None
-        keep = []
+        # frames no longer wanted keep their bitmaps for the ones to come
         for s in st["slots"]:
-            if s is not None and not wanted(frame, k, s["frame"]):
-                unload(s)
-                st["slots"][st["slots"].index(s)] = None
+            if s is not None and not s["spare"] and not wanted(frame, k, s["frame"]):
+                s["spare"] = True
         shown = None
         for i in range(k):
             f = frame + i
@@ -1383,27 +1414,37 @@ def expect_nclass(data, ops, truth):
                 if not play.repeat:
                     break
                 f -= n
-            s = next((s for s in st["slots"] if s is not None and s["frame"] == f), None)
+            s = next((s for s in st["slots"] if s is not None and not s["spare"] and s["frame"] == f), None)
             if s is None:
-                if None in st["slots"]:
-                    j = st["slots"].index(None)
+                sp = next((j for j, t in enumerate(st["slots"]) if t is not None and t["spare"]), None)
+                if sp is not None:
+                    j, given = sp, st["slots"][sp]
+                elif None in st["slots"]:
+                    j, given = st["slots"].index(None), None
                 else:
-                    j = len(st["slots"])
+                    j, given = len(st["slots"]), None
                     st["slots"].append(None)
-                s = load(f, j)
+                s = load(f, j, given)
                 st["slots"][j] = s
             if i == 0:
                 shown = s
+        # what no frame took goes back to anim
+        for j, t in enumerate(st["slots"]):
+            if t is not None and t["spare"]:
+                unload(t)
+                st["slots"][j] = None
         return shown
 
     def draw():
         s = cache(play.frame)
+        if s and (s["remapped"] is None or (s["remapped"] == "copy" and can_remap())):
+            remap(s)                    # a screen known since the frame was loaded
         p = panel_layout(box[0], box[1], box[2], box[3], 8) if st["panel"] else None
         ph = p["h"] if p else 0
         pic = (box[0], box[1], box[2], box[3] - ph)
         ww, hh = min(w, pic[2]), min(h, pic[3])
         frame_px = pix[s["frame"]] if s else pix[0]
-        if s and s["remapped"]:
+        if s and s["remapped"] == "remap":
             frame_px = [[table[v] if v < len(table) else 0 for v in row] for row in frame_px]
             dep = 4
         else:
@@ -1572,6 +1613,9 @@ def expect_nclass(data, ops, truth):
             out.append("goactive -> %d" % (2 if hit else 0))
         elif op == "frame":
             out.append("frame %d" % play.frame)
+        elif op in ("chipframes", "noreuse"):
+            st[op] = True
+            out.append(op)
     # dispose: anim's own first (the key frame), then animation.datatype's
     out.append("freebm")
     if player[0]:
@@ -1736,6 +1780,8 @@ def main():
             [remap(w, h, sd, dd, table, planes)])
     # the remap against the one it replaced, on bitmaps the test makes
     cmd("AREMAPCMP 2026 6000", ["aremapcmp 6000 cases, 0 differ from the old remap"])
+    # anim's frame into a BitMap against the byte loop it replaced
+    cmd("ACOPYCMP 1985 4000", ["acopycmp 4000 cases, 0 differ from the old copy"])
     for _ in range(10):
         l, t, w, h, ys, fr = (rnd.randint(0, 30), rnd.randint(0, 30), rnd.randint(0, 200), rnd.randint(0, 40),
                               rnd.choice([6, 8, 11]), rnd.randint(0, 40))
@@ -1772,7 +1818,16 @@ def main():
         # every pen the colour's own number (the mock screen's pen for
         # (r, g, b) is (3r + 5g + 7b) % 16): no remap, the frames as they are
         (dict(op=5, w=32, h=6, depth=4, frames=4, reltime=6, cmap=bytes(v for i in range(16) for v in (0, 0, 7 * i % 16))),
-         ["layout", "render", "start0", "tick", "tick", "locate1", "render"]),
+         ["chipframes", "layout", "render", "start0", "tick", "tick", "locate1", "render"]),
+        # the same in Fast RAM: copied through the identity
+        (dict(op=5, w=32, h=6, depth=4, frames=4, reltime=6, cmap=bytes(v for i in range(16) for v in (0, 0, 7 * i % 16))),
+         ["layout", "render", "start0", "tick", "locate1", "render"]),
+        # frames loaded before the screen is known (Fast RAM: copied to Chip
+        # RAM), remapped when drawn; then a subclass that makes a new
+        # bitmap for every frame: each one handed back is unloaded
+        (dict(op=5, w=40, h=7, depth=3, frames=7, reltime=6),
+         ["start0", "tick", "render", "tick", "tick", "noreuse", "tick", "tick", "locate5", "render", "locate1",
+          "stop"]),
     ]
     for j, (sp, ops) in enumerate(runs):
         data, truth = make_anim(rnd, sp)

@@ -39,6 +39,10 @@ The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 | Remap | ObtainBestPen per colour, planar to planar | measured |
 | Remapping a frame | 32 pixels a turn: a longword of each plane read, turned into pixels, through the pen table, turned back and written whole (a byte at a time only at a row's end, keeping the bits past the width); each cache slot keeps its remapped bitmap for the next frame loaded there, after a WaitBlit | ours |
 | Pens that are the frame's own colour numbers, frame as deep as the screen | Not remapped: the frame is shown as it is | ours |
+| A frame leaves the preload window | Its bitmap is kept and handed to the next frame loaded, in alf_BitMap (alf_UserData with it), to draw into after a WaitBlit, as OS 3.2's class does: no bitmap made and cleared a frame. A subclass that makes a new one anyway gets the old one back with ADTM_UNLOADFRAME; one no frame takes is unloaded | ours (OS 3.2's way: gfopenvideo's notes) |
+| Frames in Fast RAM | OM_GET of `ADT_GFA_FramesAnyMem` (TAG_USER + 0x47460001) answers TRUE (OS 3.2's class: FALSE): a frame not in Chip RAM is remapped, or copied to Chip RAM when it can't be, before it is shown. anim.datatype puts its frames there when they are remapped anyway (no HAM, ADTA_Remap on); the key frame stays in Chip RAM | ours |
+| A frame loaded before the screen is known | Remapped when it is first drawn | ours |
+| Bitmaps | Not cleared: every frame and every remap is drawn whole | ours |
 | A colour no pen could take | Shown as pen 0, not in ADTA_Allocated, never released | ours |
 | ADTA_Remap, ADTA_Screen or ADTA_NumColors changed | The pens released and the frame cache loaded again (remapped afresh) | ours |
 | DTA_TriggerMethods | Play, Pause, Stop, Rewind, Fast Forward (labels ours) | ABI test |
