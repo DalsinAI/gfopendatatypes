@@ -139,6 +139,24 @@ void fix_cregs(pic_inst *p)
     }
 }
 
+/* The size of the source: of its pixels; of a V42 subclass's PDTA_BitMap,
+ * the BitMapHeader's (or the bitmap's when it has none) cut to the
+ * bitmap's; else the BitMapHeader's */
+void source_size(const pic_inst *p, u32 *w, u32 *h)
+{
+    if (p->pixels) {
+        *w = p->pw;
+        *h = p->ph;
+    } else if (p->srcbm) {
+        *w = min<u32>(p->bmhd.bmh_Width ? p->bmhd.bmh_Width : p->srcbm->BytesPerRow * 8U,
+                      p->srcbm->BytesPerRow * 8U);
+        *h = min<u32>(p->bmhd.bmh_Height ? p->bmhd.bmh_Height : p->srcbm->Rows, p->srcbm->Rows);
+    } else {
+        *w = p->bmhd.bmh_Width;
+        *h = p->bmhd.bmh_Height;
+    }
+}
+
 /* The V42 subclass's PDTA_BitMap read into LUT8 pixels */
 bool ensure_pixels(env_t *env, pic_inst *p)
 {
@@ -146,10 +164,8 @@ bool ensure_pixels(env_t *env, pic_inst *p)
         return true;
     if (!p->srcbm)
         return false;
-    u32 w = p->bmhd.bmh_Width ? p->bmhd.bmh_Width : p->srcbm->BytesPerRow * 8U;
-    u32 h = p->bmhd.bmh_Height ? p->bmhd.bmh_Height : p->srcbm->Rows;
-    h = min<u32>(h, p->srcbm->Rows);
-    w = min<u32>(w, p->srcbm->BytesPerRow * 8U);
+    u32 w, h;
+    source_size(p, &w, &h);
     if (!w || !h)
         return false;
     if (w > 0xffffUL || h > 0xffffUL) {
@@ -1269,7 +1285,10 @@ extern "C" odt_u32 pic_dispatch(const odt_cenv *env, odt_IClass *cl, void *obj, 
     case PIC_PDTM_SCALE: {
         pic_inst *p = inst(cl, obj);
         pic_pdtScale *s = static_cast<pic_pdtScale *>(msg);
-        u32 w = s->ps_NewWidth, h = s->ps_NewHeight, sw = p->bmhd.bmh_Width, sh = p->bmhd.bmh_Height;
+        /* the source as a layout scales it: a V42 bitmap smaller than its
+         * BitMapHeader says is scaled at its own size */
+        u32 w = s->ps_NewWidth, h = s->ps_NewHeight, sw, sh;
+        source_size(p, &sw, &sh);
         /* a BitMap's sizes are 16 bits: larger would overflow the pixels' sizes */
         if (!w || !h || !sw || !sh || w > 0xffffUL || h > 0xffffUL)
             return 0;
