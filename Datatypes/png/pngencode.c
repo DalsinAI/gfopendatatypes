@@ -75,43 +75,75 @@ static void chunk(struct out *o, const char *type, const UBYTE *data, ULONG n)
     put(o, crc, 4);
 }
 
-static ULONG absum(const UBYTE *p, ULONG n)
-{
-    ULONG s = 0, i;
-    for (i = 0; i < n; i++)
-        s += p[i] < 128 ? p[i] : 256 - p[i];
-    return s;
-}
-
-static UBYTE paeth(UBYTE a, UBYTE b, UBYTE c)
-{
-    LONG p = (LONG)a + b - c, pa = p - a, pb = p - b, pc = p - c;
-    if (pa < 0) pa = -pa;
-    if (pb < 0) pb = -pb;
-    if (pc < 0) pc = -pc;
-    if (pa <= pb && pa <= pc)
-        return a;
-    return pb <= pc ? b : c;
-}
+/* |v| of a filtered byte taken as signed */
+#define ABS8(v) ((v) < 128 ? (v) : 256 - (v))
 
 /* Filter f of row cur (prev above it, bpp bytes a pixel) into dst, the
- * filter type byte first. */
-static void filter(UBYTE *dst, const UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp, ULONG f)
+ * filter type byte first, and the sum of its bytes taken as signed: one
+ * loop a filter, the first pixel (no left neighbour) apart. Stops once the
+ * sum reaches limit (returning it): a filter is chosen only when its sum is
+ * less than the best so far, so one that gets there can't be, and what it
+ * left in dst is never used. */
+static ULONG filter(UBYTE *dst, const UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp, ULONG f, ULONG limit)
 {
-    ULONG i;
+    ULONG i, v, s = 0, first = bpp < n ? bpp : n;
     dst[0] = (UBYTE)f;
     dst++;
-    for (i = 0; i < n; i++) {
-        UBYTE a = i >= bpp ? cur[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
-        UBYTE x = cur[i];
-        switch (f) {
-        case 0: dst[i] = x; break;
-        case 1: dst[i] = (UBYTE)(x - a); break;
-        case 2: dst[i] = (UBYTE)(x - b); break;
-        case 3: dst[i] = (UBYTE)(x - (UBYTE)(((ULONG)a + b) >> 1)); break;
-        default: dst[i] = (UBYTE)(x - paeth(a, b, c)); break;
+    switch (f) {
+    case 0:
+        for (i = 0; i < n; i++) {
+            v = dst[i] = cur[i];
+            if ((s += ABS8(v)) >= limit)
+                return s;
         }
+        break;
+    case 1:
+        for (i = 0; i < first; i++) {
+            v = dst[i] = cur[i];
+            s += ABS8(v);
+        }
+        for (; i < n; i++) {
+            v = dst[i] = (UBYTE)(cur[i] - cur[i - bpp]);
+            if ((s += ABS8(v)) >= limit)
+                return s;
+        }
+        break;
+    case 2:
+        for (i = 0; i < n; i++) {
+            v = dst[i] = (UBYTE)(cur[i] - prev[i]);
+            if ((s += ABS8(v)) >= limit)
+                return s;
+        }
+        break;
+    case 3:
+        for (i = 0; i < first; i++) {
+            v = dst[i] = (UBYTE)(cur[i] - (prev[i] >> 1));
+            s += ABS8(v);
+        }
+        for (; i < n; i++) {
+            v = dst[i] = (UBYTE)(cur[i] - (((ULONG)cur[i - bpp] + prev[i]) >> 1));
+            if ((s += ABS8(v)) >= limit)
+                return s;
+        }
+        break;
+    default:
+        for (i = 0; i < first; i++) {       /* Paeth(0, b, 0) is b */
+            v = dst[i] = (UBYTE)(cur[i] - prev[i]);
+            s += ABS8(v);
+        }
+        for (; i < n; i++) {
+            LONG a = cur[i - bpp], b = prev[i], c = prev[i - bpp];
+            LONG pa = b - c, pb = a - c, pc = pa + pb;   /* p - a, p - b, p - c */
+            if (pa < 0) pa = -pa;
+            if (pb < 0) pb = -pb;
+            if (pc < 0) pc = -pc;
+            v = dst[i] = (UBYTE)(cur[i] - (pa <= pb && pa <= pc ? a : pb <= pc ? b : c));
+            if ((s += ABS8(v)) >= limit)
+                return s;
+        }
+        break;
     }
+    return s;
 }
 
 /* Deflate's output so far into IDAT chunks; flush: all of it. */
@@ -225,8 +257,7 @@ LONG png_encode(struct Library *zbase, struct pnge_env *env, const UBYTE *argb, 
             ULONG s;
             if (level == 0 && f)
                 break;
-            filter(tmp, cur, prev, n, bpp, f);
-            s = absum(tmp + 1, n);
+            s = filter(tmp, cur, prev, n, bpp, f, bestsum);
             if (s < bestsum) {
                 bestsum = s;
                 sw = best;

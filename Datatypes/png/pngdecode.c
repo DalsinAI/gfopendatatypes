@@ -663,18 +663,13 @@ void png_gather(const UBYTE *file, ULONG len, UBYTE *idat)
 
 /* ---- the rows ------------------------------------------------------------------------------- */
 
-static LONG paeth(LONG a, LONG b, LONG c)
-{
-    LONG p = a + b - c, pa = p > a ? p - a : a - p, pb = p > b ? p - b : b - p, pc = p > c ? p - c : c - p;
-    if (pa <= pb && pa <= pc)
-        return a;
-    return pb <= pc ? b : c;
-}
-
-/* Undoes one row's filter in place; prev is the row above in the same pass, or NULL. */
+/* Undoes one row's filter in place; prev is the row above in the same pass,
+ * or NULL. The first pixel apart (no left neighbour: a and c are 0), then
+ * a loop for the rest with no tests. With no row above, Average adds half
+ * the left byte and Paeth is Sub (PNG 9.4: b and c are 0, so it picks a). */
 static void unfilter(UBYTE f, UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp)
 {
-    ULONG i;
+    ULONG i, first = bpp < n ? bpp : n;
     switch (f) {
     case 1:
         for (i = bpp; i < n; i++)
@@ -686,16 +681,30 @@ static void unfilter(UBYTE f, UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp)
                 cur[i] = (UBYTE)(cur[i] + prev[i]);
         break;
     case 3:
-        for (i = 0; i < n; i++) {
-            ULONG a = i >= bpp ? cur[i - bpp] : 0, b = prev ? prev[i] : 0;
-            cur[i] = (UBYTE)(cur[i] + ((a + b) >> 1));
-        }
+        if (prev) {
+            for (i = 0; i < first; i++)
+                cur[i] = (UBYTE)(cur[i] + (prev[i] >> 1));
+            for (; i < n; i++)
+                cur[i] = (UBYTE)(cur[i] + (((ULONG)cur[i - bpp] + prev[i]) >> 1));
+        } else
+            for (i = bpp; i < n; i++)
+                cur[i] = (UBYTE)(cur[i] + (cur[i - bpp] >> 1));
         break;
     case 4:
-        for (i = 0; i < n; i++) {
-            LONG a = i >= bpp ? cur[i - bpp] : 0, b = prev ? prev[i] : 0, c = (prev && i >= bpp) ? prev[i - bpp] : 0;
-            cur[i] = (UBYTE)(cur[i] + paeth(a, b, c));
-        }
+        if (prev) {
+            for (i = 0; i < first; i++)     /* Paeth(0, b, 0) is b */
+                cur[i] = (UBYTE)(cur[i] + prev[i]);
+            for (; i < n; i++) {
+                LONG a = cur[i - bpp], b = prev[i], c = prev[i - bpp];
+                LONG pa = b - c, pb = a - c, pc = pa + pb;   /* p - a, p - b, p - c */
+                if (pa < 0) pa = -pa;
+                if (pb < 0) pb = -pb;
+                if (pc < 0) pc = -pc;
+                cur[i] = (UBYTE)(cur[i] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c));
+            }
+        } else
+            for (i = bpp; i < n; i++)
+                cur[i] = (UBYTE)(cur[i] + cur[i - bpp]);
         break;
     default:                            /* 0, and an unknown filter: the bytes as they are */
         break;
