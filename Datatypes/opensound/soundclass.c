@@ -11,6 +11,17 @@
  * older ones get 8-bit mono. With neither a card nor a Cradle the sound
  * does not open yet (FLAC, Vorbis and Opus decoders on the 68k come next).
  *
+ * DTM_WRITE in raw mode (47.2) writes AAC (as M4A, or ADTS for a .aac) or
+ * WMA through media.encode/1 (common/dtencode.c): the object's samples go
+ * to the service as 16-bit PCM, its FFmpeg encodes them, and the file comes
+ * back. The Team's ruling (6 November 2026): AAC and WMA are written by the
+ * service's FFmpeg, never by code in the pack. OIA_WriteFormat ('M4A ',
+ * 'AAC ', 'WMA ') and OIA_Quality in dtw_AttrList choose
+ * (include/datatypes/gfopenimage.h). No card or Cradle, or one whose
+ * FFmpeg can't: the write fails with ERROR_NOT_IMPLEMENTED. IFF mode is
+ * sound.datatype's 8SVX. An object made with no source (DTST_RAM) is a
+ * sound to set and save: a converter's target.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
@@ -27,18 +38,34 @@
 #include <proto/datatypes.h>
 #include <clib/alib_protos.h>
 
+#include <proto/utility.h>
+
 #include "dtlib.h"
 #include "dtservice.h"
+#include "dtencode.h"
+#include "datatypes/gfopenimage.h"
 
 const char LibName[] = "gfopensound.datatype";
-const char LibIdString[] = "gfopensound.datatype 47.1 (5.10.2026) AmiCradle Team, decoded by media.decode/1";
+const char LibIdString[] = "gfopensound.datatype 47.2 (7.11.2026) AmiCradle Team, decoded by media.decode/1, AAC and WMA written by media.encode/1";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.1 (5.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
-ULONG dt_instsize = 0;
+
+typedef struct {
+    ULONG format;                  /* as media.decode/1 named it ('AAC ', 'WMA '); 0 with no source */
+} SoundData;
+
+ULONG dt_instsize = sizeof(SoundData);
+
+/* sound.datatype V44's sample type, asked for when writing (the Team's
+ * sound.datatype answers it; the 3.2 NDK has no name for it, and its own
+ * name here would switch loadSound() to 16 bits). */
+#define WRITE_SampleType (SDTA_Dummy + 30)
+/* Sample frames sent to media.encode/1 at a time. */
+#define STRIP_FRAMES 16384UL
 
 /* media.decode/1 (docs/MEDIA_DECODE.md) */
 #define MD_PROBE  1
@@ -113,6 +140,7 @@ static BOOL loadSound(Class *cl, Object *o)
     buf[1].ob_Length = sizeof info;
     if (dt_service_call(&svc, MD_PROBE, 0, 2, buf, extra, NULL, NULL) != OSERR_OK || get32(info) != MD_KIND_SOUND)
         goto out;
+    ((SoundData *)INST_DATA(cl, o))->format = get32(info + 4);
     frames = get32(info + 12);
     rate = get32(info + 16);
     channels = get32(info + 20);
@@ -183,11 +211,81 @@ out:
     return ok;
 }
 
+/* DTM_WRITE, DTWM_RAW: the sound as M4A, AAC or WMA, through media.encode/1. 0, or an IoErr() code. */
+static LONG writeSound(Class *cl, Object *o, struct dtWrite *w)
+{
+    struct me_sound snd;
+    struct me_settings s;
+    struct dt_encoder enc;
+    ULONG left = 0, right = 0, length = 0, type = 0, rate = 0, period = 0, sourceType = DTST_FILE, at, n;
+    STRPTR name = NULL;
+    UBYTE *strip;
+    LONG err;
+
+    if (!w->dtw_FileHandle)
+        return ERROR_REQUIRED_ARG_MISSING;
+    GetDTAttrs(o, SDTA_Sample, (ULONG)&left, SDTA_SampleLength, (ULONG)&length, DTA_Name, (ULONG)&name, TAG_DONE);
+    GetDTAttrs(o, SDTA_LeftSample, (ULONG)&left, TAG_DONE);    /* the same as SDTA_Sample, where it is known */
+    GetDTAttrs(o, SDTA_RightSample, (ULONG)&right, TAG_DONE);
+    GetDTAttrs(o, WRITE_SampleType, (ULONG)&type, TAG_DONE);   /* 0 (8-bit mono) where it is not known */
+    GetDTAttrs(o, SDTA_Period, (ULONG)&period, TAG_DONE);
+    GetDTAttrs(o, SDTA_SamplesPerSec, (ULONG)&rate, TAG_DONE);
+    GetDTAttrs(o, DTA_SourceType, (ULONG)&sourceType, TAG_DONE);
+    if (!left || !length || type > 3)
+        return ERROR_OBJECT_WRONG_TYPE;
+    if (!rate && period)
+        rate = PAL_CLOCK / period;
+    if (!rate)
+        rate = 8000;                           /* as sound.datatype: no rate and no period */
+    memset(&s, 0, sizeof s);
+    s.format = me_pick_format(ME_KIND_SOUND, GetTagData(OIA_WriteFormat, 0, w->dtw_AttrList),
+                              ((SoundData *)INST_DATA(cl, o))->format, dt_name_hint(name), sourceType != DTST_RAM);
+    if (!s.format)
+        return ERROR_NOT_IMPLEMENTED;          /* FLAC, MP3...: not written by the service (yet) */
+    snd.left = (const signed char *)left;
+    snd.right = (const signed char *)right;
+    snd.length = length;
+    snd.type = type;
+    s.rate = rate;
+    s.channels = me_sound_channels(&snd);
+    s.samples = ME_SAMPLE_S16;
+    s.quality = me_quality((LONG)GetTagData(OIA_Quality, (ULONG)-1, w->dtw_AttrList));
+    if (!(strip = AllocVec(STRIP_FRAMES * s.channels * 2, MEMF_ANY)))
+        return ERROR_NO_FREE_STORE;
+    if (!(err = dt_encode_begin(&enc, &s))) {
+        for (at = 0; !err && at < length; at += n) {
+            n = length - at < STRIP_FRAMES ? length - at : STRIP_FRAMES;
+            me_sound_s16(&snd, at, n, strip);
+            err = dt_encode_put(&enc, ME_STREAM_SOUND, strip, n * s.channels * 2);
+        }
+        if (!err)
+            err = dt_encode_finish(&enc, w->dtw_FileHandle);
+    }
+    dt_encode_end(&enc);
+    FreeVec(strip);
+    return err;
+}
+
 ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
 {
     switch (msg->MethodID) {
+    case DTM_WRITE: {
+        struct dtWrite *w = (struct dtWrite *)msg;
+        LONG err;
+        if (w->dtw_Mode != DTWM_RAW)
+            return DoSuperMethodA(cl, o, msg);   /* IFF: sound.datatype's 8SVX */
+        if ((err = writeSound(cl, o, w))) {
+            SetIoErr(err);
+            return FALSE;
+        }
+        return TRUE;
+    }
     case OM_NEW: {
         Object *obj = (Object *)DoSuperMethodA(cl, o, msg);
+        if (obj)
+            ((SoundData *)INST_DATA(cl, obj))->format = 0;
+        if (obj && GetTagData(DTA_SourceType, DTST_FILE, ((struct opSet *)msg)->ops_AttrList) == DTST_RAM)
+            return (ULONG)obj;         /* no source: a sound to set, and save */
         if (obj && !loadSound(cl, obj)) {
             LONG err = IoErr();
             CoerceMethod(cl, obj, OM_DISPOSE);

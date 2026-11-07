@@ -49,6 +49,23 @@
  * time through). */
 #define OIA_LoopCount  (OIA_Dummy + 6)
 
+/* ---- Raw writes through the service (media.encode/1) -------------------------- */
+
+/* (ULONG, in DTM_WRITE's dtw_AttrList) The file a raw write makes, for the
+ * datatypes that write more than one kind: 'HEIC' (gfopenpicture); 'M4A ',
+ * 'AAC ' (ADTS) or 'WMA ' (gfopensound); 'HEVC' (MP4) or 'WMV '
+ * (gfopenvideo). Without it: the object's own format when the service
+ * writes it (an AAC as M4A, unless its name ends in .aac), or for an object
+ * made with no source (DTST_RAM) the first of the list. A format the
+ * datatype doesn't write fails with ERROR_NOT_IMPLEMENTED, as does any of
+ * them with no services card or paired Cradle whose FFmpeg writes it:
+ * these formats are written by the service, never on the 68k. */
+#define OIA_WriteFormat (OIA_Dummy + 16)
+
+/* (LONG, in DTM_WRITE's dtw_AttrList) A lossy raw write's quality, 1 (the
+ * smallest file) to 100 (the best); 0, -1 or no tag: the format's default. */
+#define OIA_Quality    (OIA_Dummy + 17)
+
 /* Writes frame oirf_Frame, composited over the frames before it as web
  * browsers show it, into the program's pixels: the whole picture, four
  * bytes a pixel, 0xAARRGGBB words (A, R, G, B in memory, WebCore's ARGB32

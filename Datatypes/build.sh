@@ -157,10 +157,11 @@ echo "Devs/DataTypes/WebM: $(wc -c < "$OUT/Devs/DataTypes/WebM") bytes"
 # decoded by the media.decode/1 service (gfopenservice) on the services
 # card or a paired Cradle; no codec on the 68k.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-openpicture" \
-    common/dtstart.c common/dtlib.c common/dtservice.c openpicture/pictureclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtencode.c common/encodemsg.c openpicture/pictureclass.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpicture.datatype" \
     "$WORK"/obj-openpicture/common_dtstart.o "$WORK"/obj-openpicture/common_dtlib.o \
-    "$WORK"/obj-openpicture/common_dtservice.o "$WORK"/obj-openpicture/openpicture_pictureclass.o $ACLIB -lamiga \
+    "$WORK"/obj-openpicture/common_dtservice.o "$WORK"/obj-openpicture/common_dtencode.o \
+    "$WORK"/obj-openpicture/common_encodemsg.o "$WORK"/obj-openpicture/openpicture_pictureclass.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/gfopenpicture.datatype.map"
 echo "gfopenpicture.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpicture.datatype") bytes"
 picdesc() {      # FILE NAME ID PATTERN MASK...
@@ -247,10 +248,11 @@ OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/stream/build.sh"
 # FLAC, Ogg (Vorbis, Opus), AAC/M4A, ALAC, WMA and MP3, decoded by the
 # media.decode/1 service on the services card or a paired Cradle.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opensound" \
-    common/dtstart.c common/dtlib.c common/dtservice.c opensound/soundclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtencode.c common/encodemsg.c opensound/soundclass.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopensound.datatype" \
     "$WORK"/obj-opensound/common_dtstart.o "$WORK"/obj-opensound/common_dtlib.o \
-    "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/opensound_soundclass.o $ACLIB -lamiga \
+    "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/common_dtencode.o \
+    "$WORK"/obj-opensound/common_encodemsg.o "$WORK"/obj-opensound/opensound_soundclass.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/gfopensound.datatype.map"
 echo "gfopensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
 sounddesc() {    # FILE NAME ID MASK...
@@ -436,10 +438,11 @@ echo "Devs/DataTypes/CDXL: $(wc -c < "$OUT/Devs/DataTypes/CDXL") bytes"
 # MP4, MOV, MKV, AVI, WMV, MPEG and FLV, decoded frame by frame by the
 # media.decode/1 service on the services card or a paired Cradle.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-openvideo" \
-    common/dtstart.c common/dtlib.c common/dtservice.c openvideo/videoclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtencode.c common/encodemsg.c openvideo/videoclass.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenvideo.datatype" \
     "$WORK"/obj-openvideo/common_dtstart.o "$WORK"/obj-openvideo/common_dtlib.o \
-    "$WORK"/obj-openvideo/common_dtservice.o "$WORK"/obj-openvideo/openvideo_videoclass.o $ACLIB -lamiga \
+    "$WORK"/obj-openvideo/common_dtservice.o "$WORK"/obj-openvideo/common_dtencode.o \
+    "$WORK"/obj-openvideo/common_encodemsg.o "$WORK"/obj-openvideo/openvideo_videoclass.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/gfopenvideo.datatype.map"
 echo "gfopenvideo.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenvideo.datatype") bytes"
 videodesc() {    # FILE NAME ID PATTERN MASK...
