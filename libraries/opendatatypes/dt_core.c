@@ -314,6 +314,7 @@ void odt_db_remove(struct odt_entry *e)
 
 void odt_free_entry(const struct odt_env *env, struct odt_entry *e)
 {
+    if (e->pat_tok) env->free(env->ctx, e->pat_tok);
     env->free(env->ctx, e);
 }
 
@@ -381,14 +382,36 @@ int odt_mask_match(const struct odt_DataTypeHeader *h, const odt_u8 *buf, odt_u3
  * the name "". Measured on OS 3.2: "#?" fits "", "#?.odtpm" doesn't; and a
  * pattern without wildcards fits every name but its own ("odtexact.bin"
  * took every binary file and memory, but not the file odtexact.bin). */
-static int name_fits(const struct odt_env *env, const char *pattern, const char *name)
+static int name_fits(const struct odt_env *env, struct odt_entry *e, const char *name)
 {
-    int r;
+    const char *pattern = e->dth.dth_Pattern;
     if (!pattern) return 1;
     if (!name) name = "";
-    r = env->match_name(env->ctx, pattern, name);
-    if (r < 0) return odt_stricmp(pattern, name) != 0;
-    return r;
+    if (e->pat_state == ODT_PAT_ANY) return 1;
+    if (e->pat_state == ODT_PAT_NEW) {
+        /* the first time this entry's pattern is asked: parsed once, the
+         * token kept (no memory for it: no fit, and asked again next time).
+         * "#?" fits every name (OS 3.2: "" too), so it needs no token. */
+        odt_u32 n = 2 * str_len(pattern) + 2;
+        char *tok;
+        int r;
+        if (pattern[0] == '#' && pattern[1] == '?' && !pattern[2]) {
+            e->pat_state = ODT_PAT_ANY;
+            return 1;
+        }
+        if (!(tok = env->alloc(env->ctx, n))) return 0;
+        r = env->parse_name(env->ctx, pattern, tok, n);
+        if (r > 0) {
+            e->pat_tok = tok;
+            e->pat_state = ODT_PAT_WILD;
+        } else {
+            env->free(env->ctx, tok);
+            e->pat_state = r == 0 ? ODT_PAT_LITERAL : ODT_PAT_BAD;
+        }
+    }
+    if (e->pat_state == ODT_PAT_WILD) return env->match_name(env->ctx, e->pat_tok, name);
+    if (e->pat_state == ODT_PAT_LITERAL) return odt_stricmp(pattern, name) != 0;
+    return 0;
 }
 
 static int fits(const struct odt_env *env, struct odt_entry *e,
@@ -402,7 +425,7 @@ static int fits(const struct odt_env *env, struct odt_entry *e,
         !h->dth_Pattern[2])
         return 0;
     if (!odt_mask_match(h, buf, len)) return 0;
-    if (!name_fits(env, h->dth_Pattern, name)) return 0;
+    if (!name_fits(env, e, name)) return 0;
     if (e->code && env->run_hook && !env->run_hook(env->ctx, e, dthc)) return 0;
     return 1;
 }

@@ -66,6 +66,13 @@ or `guess` until then. Measured so far (labs at 1cba45a and 1ea835e):
 
 Open: whether the mask outranks the priority in every case.
 
+Recognition's own costs: each descriptor's pattern is parsed
+(ParsePatternNoCase) the first time recognition asks it and the token kept
+with the descriptor, "#?" never ("#?" fits every name); before, every
+pattern asked was allocated, parsed and freed for every file. IFF data's
+file is parsed as IFF (AllocIFF, InitIFFasDOS, OpenIFF) only when
+recognition code is about to run on it, not for every IFF file.
+
 ## datatypesclass (step D2)
 
 - **The instance.** An object is a gadget (gadgetclass) whose SpecialInfo

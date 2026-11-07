@@ -1,7 +1,11 @@
 /* GFOpenDatatypes core under qemu-m68k: descriptor files made here are read,
  * ordered and asked to recognise data; the V45 method tables, tools and
  * strings. What OS 3.2 answers is DatatypesABITest's to check; this holds
- * the core to what it means to do.
+ * the core to what it means to do. Each descriptor's name pattern is
+ * parsed once and kept: a corpus of made-up descriptors and files checks
+ * every answer against recognition from scratch (patterns parsed for each
+ * file). Run as `t DESCDIR FILE...` it does the same with a pack's
+ * DEVS:DataTypes and real files, one line a file.
  * Copyright (c) 2026 AmiCradle Team. MIT.
  */
 #define _GNU_SOURCE
@@ -9,39 +13,113 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fnmatch.h>
+#include <regex.h>
+#include <strings.h>
+#include <dirent.h>
 #include "dt_core.h"
 
 static int fails, checks;
 #define CHECK(c) do { checks++; if (!(c)) { fails++; printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static long live;
-static void *t_alloc(void *ctx, odt_u32 n) { (void)ctx; live++; return calloc(1, n); }
+static int fail_alloc;
+static void *t_alloc(void *ctx, odt_u32 n) { (void)ctx; if (fail_alloc) return NULL; live++; return calloc(1, n); }
 static void t_free(void *ctx, void *p) { (void)ctx; if (p) live--; free(p); }
-/* "#?" and "?" as the shell's "*" and "?", enough for the patterns here;
- * -1 for a pattern without wildcards, as the library's MatchPatternNoCase glue */
-static int t_match(void *ctx, const char *pat, const char *name)
+/* AmigaDOS patterns, enough of them for descriptors' (? #x (a|b) [a-z]
+ * [~a] ' %), as POSIX extended regular expressions: parse writes the
+ * regex as the token (1 with wildcards, 0 without, -1 for what this
+ * doesn't take); match compiles and runs it without case. parses and
+ * matches count the calls. */
+static long parses, matches;
+static int to_regex(const char *p, char *out, unsigned size, int *wild)
 {
-    char g[64]; int i = 0;
-    (void)ctx;
-    if (!strchr(pat, '#') && !strchr(pat, '?')) return -1;
-    for (; *pat && i < 62; pat++) {
-        if (pat[0] == '#' && pat[1] == '?') { g[i++] = '*'; pat++; }
-        else g[i++] = *pat;
+    unsigned o = 0, depth = 0;
+    char stack[32];                         /* per group: a # before it */
+    int rep = 0;                            /* the next item repeats */
+#define PUT(c) do { if (o + 1 >= size) return -1; out[o++] = (c); } while (0)
+    *wild = 0;
+    PUT('^');
+    for (; *p; p++) {
+        int item_end = 1, r = rep;
+        rep = 0;
+        switch (*p) {
+        case '?': *wild = 1; PUT('.'); break;
+        case '#': *wild = 1; rep = 1; item_end = 0; break;
+        case '%': *wild = 1; PUT('('); PUT(')'); break;
+        case '(':
+            *wild = 1;
+            if (depth >= sizeof stack) return -1;
+            stack[depth++] = (char)r;
+            PUT('(');
+            item_end = 0; r = 0;
+            break;
+        case '|': *wild = 1; if (!depth) return -1; PUT('|'); item_end = 0; break;
+        case ')':
+            *wild = 1;
+            if (!depth) return -1;
+            PUT(')');
+            if (stack[--depth]) PUT('*');
+            break;
+        case '[':
+            *wild = 1;
+            PUT('[');
+            if (p[1] == '~') { PUT('^'); p++; }
+            for (p++; *p && *p != ']'; p++) PUT(*p);
+            if (!*p) return -1;
+            PUT(']');
+            break;
+        case '~': return -1;
+        case '\'':
+            if (!*++p) return -1;
+            /* fall through */
+        default:
+            if (strchr(".^$+{}*\\[]()|?", *p)) PUT('\\');
+            PUT(*p);
+        }
+        if (item_end && r) PUT('*');
+        else if (!item_end && r && *p != '(') return -1;  /* # before | or # */
     }
-    g[i] = 0;
-    return fnmatch(g, name, FNM_CASEFOLD) == 0;
+    if (depth || rep) return -1;
+    PUT('$');
+    out[o] = 0;
+    return 0;
+#undef PUT
 }
-static int hook_calls, hook_answer;
+static int t_parse(void *ctx, const char *pat, char *tok, odt_u32 size)
+{
+    int wild;
+    (void)ctx;
+    parses++;
+    if (to_regex(pat, tok, size, &wild) < 0) return -1;
+    return wild;
+}
+static int t_match(void *ctx, const char *tok, const char *name)
+{
+    regex_t re;
+    int r;
+    (void)ctx;
+    matches++;
+    if (regcomp(&re, tok, REG_EXTENDED | REG_ICASE | REG_NOSUB)) return 0;
+    r = regexec(&re, name, 0, NULL, 0) == 0;
+    regfree(&re);
+    return r;
+}
+static int hook_calls, hook_answer, hook_corpus;
 static odt_u32 hook_len;
+/* the corpus's hooks answer by the data and the type, so either way shows */
+static int corpus_hook(const struct odt_entry *e, const struct odt_DTHookContext *d)
+{
+    return ((d->dthc_BufferLength + e->dth.dth_ID + (unsigned char)d->dthc_Buffer[d->dthc_BufferLength - 1]) & 3) != 0;
+}
 static int t_hook(void *ctx, struct odt_entry *e, struct odt_DTHookContext *d)
 {
-    (void)ctx; (void)e;
+    (void)ctx;
     hook_calls++;
     hook_len = d ? d->dthc_BufferLength : 0;
+    if (hook_corpus) return corpus_hook(e, d);
     return hook_answer;
 }
-static const struct odt_env env = { NULL, t_alloc, t_free, t_match, t_hook };
+static const struct odt_env env = { NULL, t_alloc, t_free, t_parse, t_match, t_hook };
 
 /* ---- descriptor files ---------------------------------------------------------- */
 
@@ -236,6 +314,38 @@ static void test_descriptors(void)
     begin(); head("X", "x", "#?", NULL, 0, 0, 0, 0); end();
     CHECK(odt_parse(&env, form, flen - 4, &e) == ODT_ERR_FORM);
 
+    /* each pattern is parsed once, the first time it is asked, and "#?"
+     * never; the answers stay the same however often they are asked */
+    begin(); head("Alt", "alt", "#?.(svg|svgz)", NULL, ODT_GID_SYSTEM, ID("alt "), ODT_DTF_ASCII, 0); add();
+    begin(); head("Bad", "bad", "#?.(x", NULL, ODT_GID_SYSTEM, ID("bad "), ODT_DTF_BINARY, 0); add();
+    parses = matches = 0;
+    for (i = 0; i < 20; i++) {
+        CHECK(!strcmp(rec("<svg/>\n", 7, "a.SVGZ"), "Alt"));
+        CHECK(!strcmp(rec("<svg/>\n", 7, "a.svgx"), "ascii"));
+        /* Bad (fits nothing), Lit (not its own name), High, Low */
+        CHECK(!strcmp(rec("\1\2", 2, "odd.bin"), "binary"));
+    }
+    /* only Alt and Bad: Lit (no wildcards), High and Low were parsed for
+     * the checks above, and kept */
+    CHECK(parses == 2);
+    CHECK(matches == 20 * (2 + 2));         /* Alt twice; High and Low */
+    for (n = db.all.lh_Head; n->ln_Succ; n = n->ln_Succ) {
+        e = (struct odt_entry *)((char *)n - offsetof(struct odt_DataType, dtn_Node2));
+        if (!strcmp(e->dth.dth_Name, "Alt")) CHECK(e->pat_state == ODT_PAT_WILD && e->pat_tok);
+        if (!strcmp(e->dth.dth_Name, "Lit")) CHECK(e->pat_state == ODT_PAT_LITERAL && !e->pat_tok);
+        if (!strcmp(e->dth.dth_Name, "Bad")) CHECK(e->pat_state == ODT_PAT_BAD && !e->pat_tok);
+        if (!strcmp(e->dth.dth_Name, "GIF")) CHECK(e->pat_state == ODT_PAT_ANY && !e->pat_tok);
+    }
+    /* a token that can't be allocated: no fit, and parsed next time */
+    {
+        struct odt_entry *alt = odt_db_find_name(&db, "alt");
+        if (alt && alt->pat_tok) { t_free(NULL, alt->pat_tok); alt->pat_tok = NULL; alt->pat_state = ODT_PAT_NEW; }
+        fail_alloc = 1;
+        CHECK(!strcmp(rec("<svg/>\n", 7, "a.svg"), "ascii"));
+        fail_alloc = 0;
+        CHECK(!strcmp(rec("<svg/>\n", 7, "a.svg"), "Alt") && alt && alt->pat_state == ODT_PAT_WILD);
+    }
+
     while (db.all.lh_Head->ln_Succ) {
         e = (struct odt_entry *)((char *)db.all.lh_Head - offsetof(struct odt_DataType, dtn_Node2));
         odt_db_remove(e);
@@ -291,9 +401,234 @@ static void test_strings(void)
     CHECK(odt_GetDTTriggerMethodDataFlags(0xffffffffUL) == ODT_STMF_DATA_MASK);
 }
 
-int main(void)
+/* ---- a corpus: the cached patterns against recognition from scratch ---------- */
+
+/* Recognition as the core did before it kept tokens: every pattern parsed
+ * for every file it is asked about (by its own counter), the rest from
+ * the core's lists, odt_classify and odt_mask_match. */
+static long ref_parses;
+static int ref_name_fits(const char *pat, const char *name)
 {
+    char tok[512];
+    int wild;
+    if (!pat) return 1;
+    if (!name) name = "";
+    ref_parses++;
+    if (strlen(pat) * 2 + 2 > sizeof tok || to_regex(pat, tok, 2 * strlen(pat) + 2, &wild) < 0) return 0;
+    if (!wild) return strcasecmp(pat, name) != 0;
+    {
+        regex_t re;
+        int r;
+        if (regcomp(&re, tok, REG_EXTENDED | REG_ICASE | REG_NOSUB)) return 0;
+        r = regexec(&re, name, 0, NULL, 0) == 0;
+        regfree(&re);
+        return r;
+    }
+}
+static struct odt_entry *ref_recognize(const odt_u8 *buf, odt_u32 len, const char *name, struct odt_DTHookContext *d)
+{
+    odt_u32 form;
+    struct odt_Node *n;
+    odt_u16 kind;
+    if (!len) return NULL;
+    kind = odt_classify(buf, len, &form);
+    for (n = db.kind[kind].lh_Head; n->ln_Succ; n = n->ln_Succ) {
+        struct odt_entry *e = (struct odt_entry *)n;
+        const char *pat = e->dth.dth_Pattern;
+        if (e->builtin) continue;
+        if (!e->dth.dth_MaskLen && pat && !strcmp(pat, "#?")) continue;
+        if (!odt_mask_match(&e->dth, buf, len)) continue;
+        if (!ref_name_fits(pat, name)) continue;
+        if (e->code && !corpus_hook(e, d)) continue;
+        return e;
+    }
+    for (n = db.kind[kind].lh_Head; n->ln_Succ; n = n->ln_Succ)
+        if (((struct odt_entry *)n)->builtin) return (struct odt_entry *)n;
+    return NULL;
+}
+
+static unsigned long seed = 20261107;
+static unsigned rnd(unsigned n) { seed = seed * 1103515245UL + 12345UL; return (unsigned)((seed >> 8) % n); }
+
+static const char *const exts[] = { "svg", "svgz", "mod", "txt", "md", "dat", "iff", "gif", "bin", "x", "csv", "ilbm" };
+#define NEXTS (sizeof exts / sizeof exts[0])
+static const char bin_alpha[] = "ABab01\x89PNG\x1a\xff";
+static const char txt_alpha[] = "ABab01<?#! ";
+
+static unsigned char cbuf[1084];
+static long corpus_files, corpus_same;
+
+static void corpus_one(const odt_u8 *buf, odt_u32 len, const char *name)
+{
+    struct odt_DTHookContext d;
+    struct odt_entry *a, *b;
+    memset(&d, 0, sizeof d);
+    d.dthc_Buffer = (char *)buf;
+    d.dthc_BufferLength = len;
+    a = odt_recognize(&env, &db, buf, len, name, &d);
+    b = ref_recognize(buf, len, name, &d);
+    corpus_files++;
+    if (a == b) corpus_same++;
+    else printf("FAIL corpus: %s (%lu bytes) is %s, from scratch %s\n", name ? name : "(no name)", (unsigned long)len,
+                a ? a->dth.dth_Name : "(none)", b ? b->dth.dth_Name : "(none)");
+}
+
+static void corpus_free(void)
+{
+    struct odt_entry *e;
+    while (db.all.lh_Head->ln_Succ) {
+        e = (struct odt_entry *)((char *)db.all.lh_Head - offsetof(struct odt_DataType, dtn_Node2));
+        odt_db_remove(e);
+        odt_free_entry(&env, e);
+    }
+}
+
+static void corpus_builtins(void)
+{
+    odt_db_init(&db);
+    odt_db_add(&db, odt_builtin(&env, "binary", "binary", ODT_GID_SYSTEM, ID("bina"), ODT_DTF_BINARY, 0));
+    odt_db_add(&db, odt_builtin(&env, "ascii", "ascii", ODT_GID_TEXT, ID("asci"), ODT_DTF_ASCII, 0));
+    odt_db_add(&db, odt_builtin(&env, "iff", "iff", ODT_GID_SYSTEM, ID("iff\0"), ODT_DTF_IFF, 0));
+}
+
+/* 240 made-up descriptors (masks from a small alphabet so they collide;
+ * "#?", extensions, alternatives, literal names (with a mask: without
+ * one such a type takes nearly everything), sets, a broken pattern;
+ * priorities; DTF_CASE; one in ten with recognition code) and 6,000 files
+ * made from their masks or at random, with names from the same
+ * extensions: the core's answer must be the from-scratch one for each */
+static void test_corpus(void)
+{
+    char masks[240][16], pats[240][40], names[240][8], fname[32];
+    unsigned kinds[240], i, k;
+    long p0;
+
+    corpus_builtins();
+    for (i = 0; i < 240; i++) {
+        unsigned kind = rnd(10) < 5 ? ODT_DTF_BINARY : rnd(10) < 6 ? ODT_DTF_ASCII : ODT_DTF_IFF;
+        unsigned ml = rnd(10) < 3 ? 0 : 2 + rnd(7), flags = kind | (rnd(2) ? ODT_DTF_CASE : 0);
+        const char *e1 = exts[rnd(NEXTS)], *e2 = exts[rnd(NEXTS)];
+        static const unsigned pris[] = { 0, 0, 0, 1, 5, 0xffff };
+        kinds[i] = kind;
+        if (kind == ODT_DTF_IFF) {
+            static const char *const forms[] = { "ILBM", "8SVX", "ANIM", "FTXT", "ACBM" };
+            ml = rnd(3) ? 12 : 0;
+            sprintf(masks[i], "FORM????%s", forms[rnd(5)]);
+            masks[i][ml] = 0;
+        } else {
+            for (k = 0; k < ml; k++)
+                masks[i][k] = rnd(6) == 0 ? '?' : kind == ODT_DTF_ASCII ? txt_alpha[rnd(sizeof txt_alpha - 1)]
+                                                                     : bin_alpha[rnd(sizeof bin_alpha - 1)];
+            masks[i][ml] = 0;
+        }
+        switch (rnd(10)) {
+        case 0: case 1: case 2: case 3: strcpy(pats[i], "#?"); break;
+        case 4: sprintf(pats[i], "#?.%s", e1); break;
+        case 5: sprintf(pats[i], "#?.(%s|%s)", e1, e2); break;
+        case 6: sprintf(pats[i], "(%s.#?|#?.%s)", e1, e2); break;
+        case 7: sprintf(pats[i], rnd(4) || !ml ? "#?.%s#?" : "f%s.dat", e1); break;
+        case 8: sprintf(pats[i], rnd(8) ? "#?.[a-m]%s" : "#?.(%s", e1); break;
+        default: sprintf(pats[i], "#?%c", e1[0]); break;
+        }
+        sprintf(names[i], "T%03u", i);
+        begin();
+        head(names[i], "corpus", pats[i], ml ? masks[i] : NULL, ODT_GID_SYSTEM, i, flags, pris[rnd(6)]);
+        if (rnd(10) == 0) chunk("DTCD", 4);
+        add();
+    }
+    hook_corpus = 1;
+    p0 = parses;
+    ref_parses = 0;
+    for (i = 0; i < 6000; i++) {
+        unsigned len = 1 + rnd(rnd(4) ? 64 : 1084), from = rnd(240), how = rnd(4);
+        const char *alpha = how == 0 ? bin_alpha : txt_alpha;
+        unsigned alen = (unsigned)strlen(alpha) + (how == 0);      /* NUL in the binary one */
+        for (k = 0; k < len; k++) cbuf[k] = (unsigned char)alpha[rnd(alen)];
+        if (how >= 2) {                                             /* from a descriptor's mask */
+            const char *m = masks[from];
+            for (k = 0; m[k] && k < len; k++) if (m[k] != '?') cbuf[k] = (unsigned char)(rnd(5) ? m[k] : m[k] ^ 0x20);
+            if (kinds[from] == ODT_DTF_IFF && len >= 12) { memcpy(cbuf, "FORM", 4); memcpy(cbuf + 8, m + 8, 4); }
+        }
+        switch (rnd(8)) {
+        case 0: corpus_one(cbuf, len, NULL); continue;
+        case 1: sprintf(fname, "f%s.dat", exts[rnd(NEXTS)]); break;
+        case 2: sprintf(fname, "%s.x%s", exts[rnd(NEXTS)], exts[rnd(NEXTS)]); break;
+        default: sprintf(fname, "pic%u.%s", i, exts[rnd(NEXTS)]); break;
+        }
+        if (rnd(3) == 0) fname[0] ^= 0x20;
+        corpus_one(cbuf, len, fname);
+    }
+    hook_corpus = 0;
+    printf("corpus: %ld files, %ld as from scratch; patterns parsed %ld times (from scratch %ld)\n",
+           corpus_files, corpus_same, parses - p0, ref_parses);
+    CHECK(corpus_same == corpus_files && corpus_files == 6000);
+    CHECK(parses - p0 <= 240);
+    corpus_free();
+}
+
+/* DESCDIR FILE...: the descriptors in DESCDIR (DEVS:DataTypes as a pack
+ * has it) and the files given, each recognised as the core does and from
+ * scratch; one line a file */
+static void test_dir(int argc, char **argv)
+{
+    char path[1024];
+    static unsigned char d[65536];
+    FILE *f;
+    int i;
+    struct dirent *de;
+    DIR *dir = opendir(argv[1]);
+    long p0;
+    if (!dir) { printf("FAIL no %s\n", argv[1]); fails++; return; }
+    corpus_builtins();
+    while ((de = readdir(dir)) != NULL) {
+        struct odt_entry *e;
+        size_t n;
+        if (de->d_name[0] == '.') continue;
+        snprintf(path, sizeof path, "%s/%s", argv[1], de->d_name);
+        if (!(f = fopen(path, "rb"))) continue;
+        n = fread(d, 1, sizeof d, f);
+        fclose(f);
+        if (odt_parse(&env, d, (odt_u32)n, &e) == ODT_OK) {
+            e = odt_db_add(&db, e);
+            if (e) odt_free_entry(&env, e);
+        }
+    }
+    closedir(dir);
+    p0 = parses;
+    ref_parses = 0;
+    hook_corpus = 1;
+    for (i = 2; i < argc; i++) {
+        const char *base = strrchr(argv[i], '/') ? strrchr(argv[i], '/') + 1 : argv[i];
+        struct odt_DTHookContext dc;
+        struct odt_entry *e;
+        size_t n;
+        if (!(f = fopen(argv[i], "rb"))) continue;
+        n = fread(cbuf, 1, sizeof cbuf, f);
+        fclose(f);
+        memset(&dc, 0, sizeof dc);
+        dc.dthc_Buffer = (char *)cbuf;
+        dc.dthc_BufferLength = (odt_u32)n;
+        e = odt_recognize(&env, &db, cbuf, (odt_u32)n, base, &dc);
+        printf("%s: %s\n", base, e ? e->dth.dth_Name : "(none)");
+        corpus_one(cbuf, (odt_u32)n, base);
+    }
+    hook_corpus = 0;
+    printf("dir: %ld files, %ld as from scratch; patterns parsed %ld times (from scratch %ld)\n",
+           corpus_files, corpus_same, parses - p0, ref_parses);
+    CHECK(corpus_same == corpus_files);
+    corpus_free();
+}
+
+int main(int argc, char **argv)
+{
+    if (argc > 1) {
+        test_dir(argc, argv);
+        CHECK(live == 0);
+        printf("%d checks, %d failed\n", checks, fails);
+        return fails != 0;
+    }
     test_descriptors();
+    test_corpus();
     test_methods();
     test_strings();
     CHECK(live == 0);
