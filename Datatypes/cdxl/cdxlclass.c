@@ -9,7 +9,8 @@
  * DTM_WRITE in raw mode (47.2) writes the film as it plays: each frame the
  * object found, in order, as it is in the file, so an intact film comes out
  * byte for byte the same. Never onto the file it plays from. IFF mode is
- * animation.datatype's.
+ * animation.datatype's, and so is raw mode with OIA_WriteFormat (an MP4,
+ * datatypes/gfopenimage.h).
  *
  * media.cdxl/1 (DalsinAI/gfopenservice docs/MEDIA_CDXL.md) and ToCDXL
  * make CDXL from any film; this plays them, and the CDXL on CDTV and CD32
@@ -35,16 +36,18 @@
 #include <proto/graphics.h>
 #include <proto/intuition.h>
 #include <proto/datatypes.h>
+#include <proto/utility.h>
 #include <clib/alib_protos.h>
+#include <datatypes/gfopenimage.h>
 
 #include "dtlib.h"
 #include "cdxl_core.h"
 
 const char LibName[] = "cdxl.datatype";
-const char LibIdString[] = "cdxl.datatype 47.2 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "cdxl.datatype 47.3 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: cdxl.datatype 47.3 (7.11.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
@@ -365,7 +368,8 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
     case DTM_WRITE: {
         struct dtWrite *w = (struct dtWrite *)msg;
         LONG err;
-        if (w->dtw_Mode != DTWM_RAW)
+        /* IFF, or another format (OIA_WriteFormat: an MP4), is animation.datatype's */
+        if (w->dtw_Mode != DTWM_RAW || GetTagData(OIA_WriteFormat, 0, w->dtw_AttrList))
             return DoSuperMethodA(cl, o, msg);
         if ((err = writeFilm(INST_DATA(cl, o), w->dtw_FileHandle))) {
             SetIoErr(err);
