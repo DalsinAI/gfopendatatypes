@@ -60,10 +60,10 @@
 #include "ahidev.h"
 
 const char LibName[] = "gfopenmodule.datatype";
-const char LibIdString[] = "gfopenmodule.datatype 47.3 (8.10.2026) AmiCradle Team, played by libxmp 4.7.3";
+const char LibIdString[] = "gfopenmodule.datatype 47.4 (7.11.2026) AmiCradle Team, played by libxmp 4.7.3";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 3;
-static const char version[] __attribute__((used)) = "$VER: gfopenmodule.datatype 47.3 (8.10.2026)";
+const UWORD LibRevision = 4;
+static const char version[] __attribute__((used)) = "$VER: gfopenmodule.datatype 47.4 (7.11.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -278,7 +278,10 @@ struct Player {
     /* the service */
     struct dt_service svc;
     BOOL svcOpen;
+    struct dt_file svcFile;        /* the module, sent once (kept on the host by PROBE) */
     WORD *pcm16;                   /* a piece as media.decode/1 gives it */
+    WORD *pcm16b;                  /* the next piece, asked for while this one plays; NULL none */
+    LONG aheadPos;                 /* the sample frame it starts at; -1 none out */
     UBYTE *pcmOut;                 /* the same as it goes out */
     ULONG svcChannels, svcPos, pcmHave, pcmAt;
     /* the clock and the numbers */
@@ -487,17 +490,31 @@ static UBYTE *fillService(struct Player *p, ULONG n)
         if (p->pcmAt >= p->pcmHave) {
             struct OSBuffer buf[4];
             ULONG extra[4], got = 0, piece = mi->rate * SVC_SECONDS, i, t, c = p->svcChannels;
-            LONG st;
+            LONG st = OSERR_BADREQUEST;
             memset(buf, 0, sizeof buf);
-            buf[0].ob_Data = mi->data;
-            buf[0].ob_Length = mi->size;
-            buf[1].ob_Data = (UBYTE *)p->pcm16;
-            buf[1].ob_Length = piece * c * 2;
             extra[0] = 2;
             extra[1] = mi->rate;
             extra[2] = extra[3] = 0;
             t = eclock(p);
-            st = dt_service_call(&p->svc, MD_DECODE, p->svcPos, 2, buf, extra, &got, NULL);
+            if (p->svc.sent) {
+                /* The piece asked for while the last one played. */
+                ULONG g = 0;
+                LONG s2 = dt_service_wait(&p->svc, &g, NULL);
+                if (s2 == OSERR_OK && p->aheadPos == (LONG)p->svcPos) {
+                    WORD *w = p->pcm16;
+                    p->pcm16 = p->pcm16b;
+                    p->pcm16b = w;
+                    got = g;
+                    st = OSERR_OK;
+                }
+                p->aheadPos = -1;
+            }
+            if (st != OSERR_OK) {
+                /* The module goes once (PROBE kept it); named after that. */
+                buf[1].ob_Data = (UBYTE *)p->pcm16;
+                buf[1].ob_Length = piece * c * 2;
+                st = dt_file_call(&p->svc, &p->svcFile, MD_DECODE, p->svcPos, 2, buf, extra, &got, NULL, FALSE);
+            }
             p->svcTicks += eclock(p) - t;
             p->svcCalls++;
             if (st != OSERR_OK || !got) {
@@ -524,6 +541,20 @@ static UBYTE *fillService(struct Player *p, ULONG n)
             p->pcmHave = got;
             p->pcmAt = 0;
             p->svcPos += got;
+            /* The next piece, while this one plays. */
+            if (p->pcm16b) {
+                memset(buf, 0, sizeof buf);
+                if (p->svcFile.kept)
+                    extra[3] = DT_KEPT(p->svcFile.kept);
+                else {
+                    buf[0].ob_Data = mi->data;
+                    buf[0].ob_Length = mi->size;
+                }
+                buf[1].ob_Data = (UBYTE *)p->pcm16b;
+                buf[1].ob_Length = piece * c * 2;
+                if (dt_service_send(&p->svc, MD_DECODE, p->svcPos, 2, buf, extra))
+                    p->aheadPos = (LONG)p->svcPos;
+            }
         }
         take = p->pcmHave - p->pcmAt;
         if (take > n - have)
@@ -847,15 +878,20 @@ static BOOL serviceStart(struct Player *p, BOOL ahi)
     if (!dt_service_open(&p->svc, "media.decode/1"))
         return FALSE;
     p->svcOpen = TRUE;
+    p->aheadPos = -1;
+    p->svcFile.data = mi->data;
+    p->svcFile.size = mi->size;
+    p->svcFile.kept = 0;
     memset(buf, 0, sizeof buf);
-    buf[0].ob_Data = mi->data;
-    buf[0].ob_Length = mi->size;
     buf[1].ob_Data = info;
     buf[1].ob_Length = sizeof info;
     extra[0] = 2;
     extra[1] = ahi ? 48000 : mi->rate;    /* AHI takes any rate; Paula its own */
     extra[2] = extra[3] = 0;
-    if (dt_service_call(&p->svc, MD_PROBE, 0, 2, buf, extra, NULL, NULL) != OSERR_OK || get32(info) != MD_KIND_SOUND)
+    /* Kept on the host from here: DECODE names it, not the whole module
+     * every SVC_SECONDS (an older host goes on taking it whole). */
+    if (dt_file_call(&p->svc, &p->svcFile, MD_PROBE, 0, 2, buf, extra, NULL, NULL, FALSE) != OSERR_OK
+        || get32(info) != MD_KIND_SOUND)
         return FALSE;
     {
         ULONG frames = get32(info + 12), rate = get32(info + 16), ch = get32(info + 20);
@@ -869,6 +905,7 @@ static BOOL serviceStart(struct Player *p, BOOL ahi)
         if (!(p->pcm16 = AllocVec(rate * SVC_SECONDS * ch * 2, MEMF_ANY)) ||
             !(p->pcmOut = AllocVec(rate * SVC_SECONDS * p->bpf, MEMF_ANY)))
             return FALSE;
+        p->pcm16b = AllocVec(rate * SVC_SECONDS * ch * 2, MEMF_ANY);   /* no read-ahead without it */
         mi->rate = rate;
         mi->period = period;
         mi->frames = frames;
@@ -878,14 +915,21 @@ static BOOL serviceStart(struct Player *p, BOOL ahi)
 
 static void serviceStop(struct Player *p)
 {
-    if (p->svcOpen)
+    if (p->svcOpen) {
+        if (p->svc.sent)                  /* first: it may be writing into pcm16b */
+            dt_service_wait(&p->svc, NULL, NULL);
+        dt_file_release(&p->svc, &p->svcFile);
         dt_service_close(&p->svc);
+    }
     p->svcOpen = FALSE;
+    p->aheadPos = -1;
     if (p->pcm16)
         FreeVec(p->pcm16);
+    if (p->pcm16b)
+        FreeVec(p->pcm16b);
     if (p->pcmOut)
         FreeVec(p->pcmOut);
-    p->pcm16 = NULL;
+    p->pcm16 = p->pcm16b = NULL;
     p->pcmOut = NULL;
 }
 

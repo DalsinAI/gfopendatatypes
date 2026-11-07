@@ -10,6 +10,17 @@
  * and is kept open there, and each frame's 8-bit mono is asked for as the
  * frame loads; without the service the video plays silent.
  *
+ * 47.2: with the service, the frames are decoded there too (VINDEX, then
+ * VFRAME in MD_PIX_WEBM): by this reader's frame numbers, at the clip's own
+ * size, in the same 256 colours with the same integer arithmetic, from
+ * FFmpeg's VP8 and VP9 decoders, which give libvpx's pictures bit for bit;
+ * so a frame is the same byte for byte as libvpx makes it here, tens of
+ * times sooner. The next frame is asked for while this one shows. One
+ * connection to the service serves the object, frames and sound. A
+ * service without VINDEX (older), whose frame count or size differs from
+ * this reader's, or that fails while playing, leaves the decoding to
+ * libvpx on this CPU, from that frame on.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team. libvpx is the WebM Project's,
  * under its BSD licence (upstream/libvpx/LICENSE).
  */
@@ -41,19 +52,22 @@
 #include "vpx/vp8dx.h"
 
 const char LibName[] = "webm.datatype";
-const char LibIdString[] = "webm.datatype 47.1 (4.10.2026) AmiCradle Team, libvpx 1.17.0";
+const char LibIdString[] = "webm.datatype 47.2 (7.11.2026) AmiCradle Team, libvpx 1.17.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.1 (4.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
 
 /* media.decode/1 (gfopenservice docs/MEDIA_DECODE.md) */
 #define MD_VOPEN   3
+#define MD_VFRAME  4
 #define MD_VCLOSE  5
 #define MD_VSOUND  7
 #define MD_VUPLOAD 8
+#define MD_VINDEX  32
+#define MD_PIX_WEBM 3
 #define MD_KIND_ANIMATION 2
 #define MD_FLAG_SOUND 2
 /* The file goes to the service in parts this big (as gfopenvideo.datatype's),
@@ -88,7 +102,14 @@ typedef struct {
     ULONG frameDataSize;
     struct BitMap *keyFrame;
     ULONG fps;                     /* frames a second, as played */
-    ULONG soundHandle;             /* the service's open video, for VSOUND; 0 when silent */
+    struct dt_service svc;         /* the object's one connection to media.decode/1; svc.open when there */
+    ULONG videoHandle;             /* the service's open video, for VFRAME and VSOUND; 0 when none */
+    BOOL host;                     /* frames from the service (VFRAME, MD_PIX_WEBM), not libvpx */
+    BOOL sound;                    /* each frame's sound from the service (VSOUND) */
+    UBYTE *ahead;                  /* chunkySize bytes: the next frame, asked for while this one shows */
+    LONG aheadIndex;               /* the frame asked for into ahead; -1 none */
+    BOOL noAhead;                  /* in OM_NEW: no read-ahead (it would hold a signal of the
+                                      program's task; the loader's process plays the frames) */
     ULONG hostFps1000;             /* the steady frames a second VSOUND counts in, x 1000 */
     ULONG soundRate;               /* asked of VSOUND: the rate period plays */
     BYTE *ring;                    /* SOUND_RING slots of soundSlot bytes in chip RAM, by frame */
@@ -200,11 +221,58 @@ static struct BitMap *frameBitMap(WebMData *d, struct BitMap *into)
     return bm;
 }
 
+/* Frame index from the service into d->chunky: the read-ahead's when it
+ * is that frame, else asked for now; then the next one is asked for. */
+static BOOL serviceFrame(WebMData *d, ULONG index)
+{
+    struct OSBuffer buf[4];
+    ULONG extra[4], got = 0;
+    BOOL ok = FALSE;
+
+    if (d->svc.sent) {
+        if (dt_service_wait(&d->svc, &got, NULL) == OSERR_OK && d->aheadIndex == (LONG)index && got == index) {
+            UBYTE *t = d->chunky;
+            d->chunky = d->ahead;
+            d->ahead = t;
+            ok = TRUE;
+        }
+        d->aheadIndex = -1;
+    }
+    memset(buf, 0, sizeof buf);
+    extra[1] = MD_PIX_WEBM;
+    extra[2] = d->info.width;
+    extra[3] = d->info.height;
+    if (!ok) {
+        extra[0] = index;
+        buf[1].ob_Data = d->chunky;
+        buf[1].ob_Length = d->chunkySize;
+        if (dt_service_call(&d->svc, MD_VFRAME, d->videoHandle, 2, buf, extra, &got, NULL) != OSERR_OK || got != index)
+            return FALSE;
+    }
+    d->lastDecoded = index;
+    if (index + 1 < d->info.frameCount && !d->noAhead) {
+        extra[0] = index + 1;
+        buf[1].ob_Data = d->ahead;
+        buf[1].ob_Length = d->chunkySize;
+        if (dt_service_send(&d->svc, MD_VFRAME, d->videoHandle, 2, buf, extra))
+            d->aheadIndex = index + 1;
+    }
+    return TRUE;
+}
+
 static BOOL loadFrame(WebMData *d, ULONG index)
 {
     DecodeRequest rq = { d, index };
     if (index >= d->info.frameCount)
         index = rq.want = d->info.frameCount - 1;
+    if (d->host) {
+        if (d->lastDecoded == (LONG)index || serviceFrame(d, index))
+            return TRUE;
+        /* The service failed: libvpx on this CPU from here on. */
+        d->host = FALSE;
+        d->lastDecoded = -1;
+        rq.want = index;
+    }
     if (d->codecReady && d->lastDecoded == (LONG)index)
         return TRUE;
     return dt_call_with_stack(DECODE_STACK, decodeRequest, &rq) ? TRUE : FALSE;
@@ -244,40 +312,55 @@ static void setPalette(Object *o)
     }
 }
 
-/* Closes the service's video (VCLOSE) and frees the ring of sound. */
+/* Frees the ring of sound: the clip plays silent. */
 static void closeSound(WebMData *d)
 {
-    struct dt_service svc;
-    struct OSBuffer buf[4];
-    ULONG extra[4] = { 0, 0, 0, 0 };
-
-    if (d->soundHandle && dt_service_open(&svc, "media.decode/1")) {
-        memset(buf, 0, sizeof buf);
-        dt_service_call(&svc, MD_VCLOSE, d->soundHandle, 0, buf, extra, NULL, NULL);
-        dt_service_close(&svc);
-    }
-    d->soundHandle = 0;
+    d->sound = FALSE;
     if (d->ring)
         FreeVec(d->ring);
     d->ring = NULL;
 }
 
+/* Closes the service's video (VCLOSE), after any read-ahead, and the
+ * connection; the frames are libvpx's and the clip silent from here. */
+static void closeService(WebMData *d)
+{
+    struct OSBuffer buf[4];
+    ULONG extra[4] = { 0, 0, 0, 0 };
+
+    if (d->svc.open) {
+        if (d->svc.sent)
+            dt_service_wait(&d->svc, NULL, NULL);
+        if (d->videoHandle) {
+            memset(buf, 0, sizeof buf);
+            dt_service_call(&d->svc, MD_VCLOSE, d->videoHandle, 0, buf, extra, NULL, NULL);
+        }
+        dt_service_close(&d->svc);
+    }
+    d->videoHandle = 0;
+    d->host = FALSE;
+    d->aheadIndex = -1;
+    closeSound(d);
+}
+
 static void freeData(WebMData *d)
 {
+    closeService(d);                   /* first: a read-ahead may be writing into ahead */
     if (d->codecReady)
         vpx_codec_destroy(&d->codec);
     d->codecReady = 0;
     webm_free(&d->info);
     if (d->chunky)
         FreeVec(d->chunky);
+    if (d->ahead)
+        FreeVec(d->ahead);
     if (d->frameData)
         FreeVec(d->frameData);
     if (d->keyFrame) {
         WaitBlit();
         FreeBitMap(d->keyFrame);
     }
-    closeSound(d);
-    d->chunky = d->frameData = NULL;
+    d->chunky = d->frameData = d->ahead = NULL;
     d->keyFrame = NULL;
 }
 
@@ -327,42 +410,20 @@ static LONG uploadFile(WebMData *d, struct dt_service *svc, ULONG size, ULONG *u
     return st;
 }
 
-/* The clip's sound from media.decode/1, as gfopenvideo.datatype gets a
- * video's: the file is uploaded in parts and opened (VOPEN) on the
- * service, which keeps it, and each frame's sound is asked for as it loads
- * (fetchSound). Only for a clip with an audio track; FALSE (silent) when
- * the service, its VUPLOAD or the chip RAM for the ring is missing. */
-static BOOL loadSound(WebMData *d, ULONG size)
+/* The clip's sound, as gfopenvideo.datatype gets a video's: each frame's
+ * share asked for as it loads (fetchSound). FALSE (silent) when the
+ * service's rate is out of reach or the chip RAM for the ring is missing. */
+static BOOL openSound(WebMData *d, ULONG fps1000)
 {
-    struct dt_service svc;
-    struct OSBuffer buf[4];
-    ULONG extra[4] = { 0, 0, 0, 0 }, upload, handle = 0, fps1000 = 0, span, slot;
-    UBYTE info[24];
+    ULONG span, slot;
 
-    if (!d->info.audioTracks || size > SOUND_FILE_MAX || !d->fps || d->fps > 1000
-        || !dt_service_open(&svc, "media.decode/1"))
+    if (!d->fps || d->fps > 1000)
         return FALSE;
-    if (uploadFile(d, &svc, size, &upload) != OSERR_OK) {
-        dt_service_close(&svc);
-        return FALSE;
-    }
-    memset(buf, 0, sizeof buf);
-    buf[1].ob_Data = info;
-    buf[1].ob_Length = sizeof info;
-    extra[0] = extra[1] = 16;              /* only the sound is asked for: the smallest picture will do */
-    extra[2] = upload;
-    if (dt_service_call(&svc, MD_VOPEN, 0, 2, buf, extra, &handle, &fps1000) != OSERR_OK)
-        handle = 0;
-    dt_service_close(&svc);
-    d->soundHandle = handle;
     /* VSOUND counts in steady frames (a variable-rate clip's shortest, at
      * most 50 a second): up to span of them for each of ours. */
     span = fps1000 ? (fps1000 + d->fps * 1000 - 1) / (d->fps * 1000) : 0;
-    if (!handle || get32(info) != MD_KIND_ANIMATION || !(get32(info + 8) & MD_FLAG_SOUND)
-        || fps1000 > 1000000 || !span || span > SOUND_SPAN_MAX) {
-        closeSound(d);
+    if (fps1000 > 1000000 || !span || span > SOUND_SPAN_MAX)
         return FALSE;
-    }
     d->hostFps1000 = fps1000;
     d->period = PAL_CLOCK / SOUND_RATE;
     d->soundRate = PAL_CLOCK / d->period;
@@ -370,24 +431,21 @@ static BOOL loadSound(WebMData *d, ULONG size)
      * rounded up, and a little more for the service's own rounding. */
     slot = span * (d->soundRate * 1000 / fps1000 + 1) + 2;
     d->soundSlot = (slot + 1) & ~1UL;
-    if (!(d->ring = AllocVec(SOUND_RING * d->soundSlot, MEMF_CHIP | MEMF_CLEAR))) {
-        closeSound(d);
+    if (!(d->ring = AllocVec(SOUND_RING * d->soundSlot, MEMF_CHIP | MEMF_CLEAR)))
         return FALSE;
-    }
+    d->sound = TRUE;
     return TRUE;
 }
 
 /* Frame index's sound into its slot in the chip RAM ring (VSOUND): the
  * steady frames from where it starts to where the next one starts; its
- * length, or 0. Opens the service itself: animation.datatype loads frames
- * from its own process. */
+ * length, or 0. */
 static ULONG fetchSound(WebMData *d, ULONG index, BYTE **at)
 {
-    struct dt_service svc;
     struct OSBuffer buf[4];
     ULONG extra[4] = { 0, 0, 0, 0 }, n, end, got, filled = 0;
 
-    if (!d->soundHandle || !d->ring || !dt_service_open(&svc, "media.decode/1"))
+    if (!d->sound || !d->ring)
         return 0;
     *at = d->ring + (index % SOUND_RING) * d->soundSlot;
     memset(buf, 0, sizeof buf);
@@ -397,13 +455,56 @@ static ULONG fetchSound(WebMData *d, ULONG index, BYTE **at)
         extra[0] = n;
         buf[1].ob_Data = *at + filled;
         buf[1].ob_Length = d->soundSlot - filled;
-        if (dt_service_call(&svc, MD_VSOUND, d->soundHandle, 2, buf, extra, &got, NULL) != OSERR_OK
+        if (dt_service_call(&d->svc, MD_VSOUND, d->videoHandle, 2, buf, extra, &got, NULL) != OSERR_OK
             || got > d->soundSlot - filled)
             break;
         filled += got;
     }
-    dt_service_close(&svc);
     return filled;
+}
+
+/* The clip on media.decode/1, through the object's one connection: the
+ * file is uploaded in parts and opened (VOPEN) on the service, which keeps
+ * it. Its frames come from there (openFrames) when the service numbers
+ * them as this reader does, and its sound (openSound) when it has one.
+ * Nothing on the service (the connection closed) when it gives neither. */
+static void openOnService(WebMData *d, ULONG size)
+{
+    struct OSBuffer buf[4];
+    ULONG extra[4] = { 0, 0, 0, 0 }, upload, handle = 0, fps1000 = 0, count = 0, wh = 0;
+    UBYTE info[24];
+
+    if (size > SOUND_FILE_MAX || !dt_service_open(&d->svc, "media.decode/1"))
+        return;
+    if (uploadFile(d, &d->svc, size, &upload) != OSERR_OK) {
+        closeService(d);
+        return;
+    }
+    memset(buf, 0, sizeof buf);
+    memset(info, 0, sizeof info);
+    buf[1].ob_Data = info;
+    buf[1].ob_Length = sizeof info;
+    extra[0] = extra[1] = 16;              /* the steady frames' size: unused, the smallest will do */
+    extra[2] = upload;
+    if (dt_service_call(&d->svc, MD_VOPEN, 0, 2, buf, extra, &handle, &fps1000) != OSERR_OK || !handle
+        || get32(info) != MD_KIND_ANIMATION) {
+        closeService(d);
+        return;
+    }
+    d->videoHandle = handle;
+    /* The frames: when the service has VINDEX and counts the same frames
+     * at the same size, and the memory for the read-ahead is there. */
+    memset(buf, 0, sizeof buf);
+    if (dt_service_call(&d->svc, MD_VINDEX, handle, 0, buf, extra, &count, &wh) == OSERR_OK
+        && count == d->info.frameCount && wh == (d->info.width << 16 | d->info.height)
+        && (d->ahead = AllocVec(d->chunkySize, MEMF_ANY))) {
+        d->host = TRUE;
+        d->aheadIndex = -1;
+    }
+    if (d->info.audioTracks && (get32(info + 8) & MD_FLAG_SOUND))
+        openSound(d, fps1000);
+    if (!d->host && !d->sound)
+        closeService(d);
 }
 
 static BOOL loadWebM(Class *cl, Object *o)
@@ -456,11 +557,6 @@ static BOOL loadWebM(Class *cl, Object *o)
         SetIoErr(ERROR_NO_FREE_STORE);
         return FALSE;
     }
-    if (!loadFrame(d, 0) || !(d->keyFrame = frameBitMap(d, NULL))) {
-        SetIoErr(DTERROR_INVALID_DATA);
-        return FALSE;
-    }
-
     if (d->info.frameDurationNs)
         fps = (1000000000UL + d->info.frameDurationNs / 2) / d->info.frameDurationNs;
     else if (d->info.durationMs && d->info.frameCount > 1)
@@ -469,9 +565,17 @@ static BOOL loadWebM(Class *cl, Object *o)
         fps = 25;
     if (!fps)
         fps = 1;
-
     d->fps = fps;
-    if (loadSound(d, size))
+
+    /* Frames and sound from the service when there is one; then frame 0. */
+    openOnService(d, size);
+    d->noAhead = TRUE;
+    if (!loadFrame(d, 0) || !(d->keyFrame = frameBitMap(d, NULL))) {
+        SetIoErr(DTERROR_INVALID_DATA);
+        return FALSE;
+    }
+    d->noAhead = FALSE;
+    if (d->sound)
         SetDTAttrs(o, NULL, NULL, ADTA_Period, d->period, ADTA_Volume, 64, ADTA_Cycles, 1, TAG_DONE);
 
     setPalette(o);
@@ -521,6 +625,7 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         ObtainSemaphore(&d->lock);
         if (d->info.frames && loadFrame(d, index))
             bm = frameBitMap(d, given);
+        n = fetchSound(d, index, &sample);     /* on the same connection: one task at a time */
         ReleaseSemaphore(&d->lock);
         alf->alf_Frame = index;
         alf->alf_Duration = 1;
@@ -528,7 +633,7 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         alf->alf_CMap = NULL;
         alf->alf_Sample = NULL;
         alf->alf_SampleLength = 0;
-        if ((n = fetchSound(d, index, &sample)) != 0) {
+        if (n != 0) {
             alf->alf_Sample = sample;          /* ours, in the ring: freed with the object */
             alf->alf_SampleLength = n;
             alf->alf_Period = d->period;   /* animation.datatype 47 plays each frame's sound at this */

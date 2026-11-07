@@ -11,6 +11,11 @@
  * ILBM. An object made with no source (DTST_RAM) is a picture to write into
  * and save: a converter's target.
  *
+ * The services card (47.4): when this machine has one, the same libwebp
+ * 1.6.0 with the same patches, built for the card's host, decodes the file
+ * there (common/dtnative.c), byte for byte as here; else, or when it
+ * can't, this CPU does.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team. libwebp is Google's, under its
  * BSD licence (upstream/libwebp/COPYING).
  */
@@ -29,16 +34,17 @@
 #include <datatypes/gfopenimage.h>
 
 #include "dtlib.h"
+#include "dtnative.h"
 #include "webp/decode.h"
 #include "webp/demux.h"
 #include "webpencode.h"
 #include "dsp/lossless.h"
 
 const char LibName[] = "webp.datatype";
-const char LibIdString[] = "webp.datatype 47.3 (6.11.2026) AmiCradle Team, libwebp " "1.6.0";
+const char LibIdString[] = "webp.datatype 47.4 (7.11.2026) AmiCradle Team, libwebp " "1.6.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 3;
-static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.3 (6.11.2026)";
+const UWORD LibRevision = 4;
+static const char version[] __attribute__((used)) = "$VER: webp.datatype 47.4 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -81,6 +87,27 @@ static BOOL writeFirstFrame(Class *cl, Object *o, const UBYTE *data, ULONG size)
     return ok;
 }
 
+/* The services card's decode (dtnative.h): the picture, or an animation's
+ * first frame at its place, written as loadWebP does. FALSE when the card
+ * did not decode it (*ok untouched). */
+static BOOL cardDecode(Class *cl, Object *o, const UBYTE *data, ULONG size, ULONG width, ULONG height, BOOL *ok)
+{
+    ULONG room = width * height * 4, info[4], pw = 0, ph = 0;
+    UBYTE *argb;
+    BOOL done = FALSE;
+
+    if (!(argb = AllocVec(room, MEMF_FAST)) && !(argb = AllocVec(room, MEMF_ANY)))
+        return FALSE;
+    if (dt_card_decode(DT_NATIVE_WEBP, 0, 0, data, size, argb, room, info, &pw, &ph)
+        && info[0] == width && info[1] == height && pw && ph && pw <= width && ph <= height) {
+        *ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, pw * 4,
+            info[3] >> 16, info[3] & 0xffff, pw, ph) ? TRUE : FALSE;
+        done = TRUE;
+    }
+    FreeVec(argb);
+    return done;
+}
+
 static BOOL loadWebP(Class *cl, Object *o)
 {
     struct BitMapHeader *bmh = NULL;
@@ -116,7 +143,9 @@ static BOOL loadWebP(Class *cl, Object *o)
         PDTA_AlphaChannel, features.has_alpha ? TRUE : FALSE,
         TAG_DONE);
 
-    if (features.has_animation)
+    if (cardDecode(cl, o, data, size, features.width, features.height, &ok))
+        ;                              /* decoded on the services card */
+    else if (features.has_animation)
         ok = writeFirstFrame(cl, o, data, size);
     else {
         int width = 0, height = 0;

@@ -31,10 +31,10 @@
 #include "dtservice.h"
 
 const char LibName[] = "gfopenpicture.datatype";
-const char LibIdString[] = "gfopenpicture.datatype 47.1 (5.10.2026) AmiCradle Team, decoded by media.decode/1";
+const char LibIdString[] = "gfopenpicture.datatype 47.2 (7.11.2026) AmiCradle Team, decoded by media.decode/1";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: gfopenpicture.datatype 47.1 (5.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: gfopenpicture.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -63,6 +63,7 @@ static BOOL loadPicture(Class *cl, Object *o)
 {
     struct BitMapHeader *bmh = NULL;
     struct dt_service svc;
+    struct dt_file file = { NULL, 0, 0, { 0 } };
     struct OSBuffer buf[4];
     ULONG extra[4], size = 0, width, height, w, h, flags;
     UBYTE info[24], *data, *argb;
@@ -86,11 +87,13 @@ static BOOL loadPicture(Class *cl, Object *o)
     extra[0] = extra[1] = dt_max_side();
     extra[2] = dt_name_hint(name);
     extra[3] = 0;
-    buf[0].ob_Data = data;
-    buf[0].ob_Length = size;
+    file.data = data;
+    file.size = size;
+    file.kept = 0;
     buf[1].ob_Data = info;
     buf[1].ob_Length = sizeof info;
-    if (dt_service_call(&svc, MD_PROBE, 0, 2, buf, extra, &width, &height) != OSERR_OK)
+    /* The file goes once: kept on the host by PROBE, named by DECODE. */
+    if (dt_file_call(&svc, &file, MD_PROBE, 0, 2, buf, extra, &width, &height, FALSE) != OSERR_OK)
         goto out;
     flags = get32(info + 8);
     w = get32(info + 16);
@@ -116,10 +119,12 @@ static BOOL loadPicture(Class *cl, Object *o)
     }
     buf[1].ob_Data = argb;
     buf[1].ob_Length = w * h * 4;
-    if (dt_service_call(&svc, MD_DECODE, 0, 2, buf, extra, &width, &height) == OSERR_OK && width == w && height == h)
+    if (dt_file_call(&svc, &file, MD_DECODE, 0, 2, buf, extra, &width, &height, TRUE) == OSERR_OK
+        && width == w && height == h)
         ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, w * 4, 0, 0, w, h) ? TRUE : FALSE;
     FreeVec(argb);
 out:
+    dt_file_release(&svc, &file);      /* when DECODE was never reached */
     dt_service_close(&svc);
     FreeVec(data);
     if (!ok)

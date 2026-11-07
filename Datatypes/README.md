@@ -38,7 +38,7 @@ is not yet checked (see Tested).
 | `stream.datatype` | data (new) | our own (`stream/`) | The class for data that is not a picture or a sound: an object turns coded bytes into plain ones, read whole (`SDTA_Data`) or a piece at a time as they arrive (`SDTM_FEED`, `SDTM_TAKE`, `SDTM_END`), from a file, memory, a hook or what the program feeds it; `DTM_WRITE` (`DTWM_RAW`) saves the plain bytes. Its header is `include/datatypes/streamclass.h`; a decoder is a subclass that answers one method, `SDTM_CODEC`. The group, `GID_DATA`, is new. With `SDTA_WriteCoded` in `DTM_WRITE`'s attributes a subclass that can writes the bytes coded again (gzip.datatype); one that can't refuses (brotli.datatype). |
 | `gzip.datatype` | data | z.library (GFOpenZlib) | gzip (one member or several), zlib-wrapped deflate (HTTP's `deflate`) and raw deflate, told apart by their first bytes or named with `SDTA_Wrapper`. The inflate is z.library's, opened for each object: no zlib is linked in. Its descriptor, `GZip`, matches `1f 8b 08`. Saves gzip too (47.2): `DTM_WRITE` with `SDTA_WriteCoded` deflates the plain bytes again through z.library, in the wrapper they came in (gzip, zlib or raw deflate), at `OIA_Compression`'s level. |
 | `brotli.datatype` | data | our own decoder (`brotli/brdecode.c`) | Brotli (RFC 7932), written from the RFC: streaming (input may come a byte at a time), integer only, no writable data. Its static dictionary and transforms are the RFC's (`brotli/mkbrdict.py` writes them from the RFC's text and checks the dictionary's SHA-256). Brotli has no signature: a program names the class (`Content-Encoding: br`), and the `Brotli` descriptor takes files named `.br`. |
-| `webm.datatype` | animation | libvpx 1.17.0 | WebM video, VP8 or VP9, decoded frame by frame as the animation plays. Frames are shown in 256 colours (a 6x6x6 colour cube with ordered dithering), so they play on any screen. Sound through `media.decode/1` when a card or Cradle offers it. |
+| `webm.datatype` | animation | libvpx 1.17.0 | WebM video, VP8 or VP9, decoded frame by frame as the animation plays. Frames are shown in 256 colours (a 6x6x6 colour cube with ordered dithering), so they play on any screen. Sound through `media.decode/1` when a card or Cradle offers it, and the frames too (47.2), byte for byte as libvpx makes them here. |
 
 GFOpenBrowser decodes the pictures in web pages through datatypes, so with
 `webp.datatype` installed it shows WebP pictures too.
@@ -54,8 +54,28 @@ PiStorm-class networking. With neither, the file does not open
 The services are described in gfopenservice's `docs/MEDIA_DECODE.md`
 and `docs/DOC_RENDER.md`.
 
+The service rung (7 November 2026): each object keeps one connection to
+its service for its life (`common/dtservice.c`: the connection belongs to
+no task, so the program's task and animation.datatype's loader share it),
+and asks for the next frame or page while this one shows
+(`dt_service_send` / `dt_service_wait`). A file goes up once: PROBE keeps
+it on the host and the calls after it name it (`dt_file_call`, the
+service's "Files sent once"), so gfopenmodule no longer sends the whole
+module every two seconds; an older service that keeps nothing gets the
+file every time, as before. On a services card (OSCMD_WHERE), gfopenpng,
+gfopentga, gfopengif and webp.datatype have their own decoders, built for
+the card's host from these same sources, decode the picture there
+(`common/dtnative.c`, NDECODE): the same bytes, byte for byte
+(`tests/test-service-rung.sh`); `ENV:GFOpenImage/CardDecode` set to 0
+keeps them on this CPU.
+
 `webm.datatype` reads the WebM container itself (`webm/webm_demux.c`) and
-decodes with libvpx. The reader's small reads come from a 4 KB cache of the
+decodes with libvpx; with `media.decode/1` (47.2) the frames come from the
+service instead (VINDEX, VFRAME in `MD_PIX_WEBM`): the same frames by this
+reader's numbers, from FFmpeg's bit-exact VP8 and VP9 decoders, drawn with
+the same integer dither, so each is the same bytes libvpx makes here
+(`tests/test-service-rung.sh`), and libvpx takes over when the service is
+missing, older or fails. The reader's small reads come from a 4 KB cache of the
 file (`webm/webm_readcache.h`), one Read for many elements where it took a
 Seek and a Read for each (`tests/test-webm-read.sh`). Once GFOpenMedia's `gfopenmedia.library` exists
 (DalsinAI/gfopenmedia), the datatype will hand the frames to it for

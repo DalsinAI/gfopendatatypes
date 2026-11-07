@@ -25,6 +25,10 @@
  * kind that happens to be called .tga still opens as what it is when its own
  * datatype knows it, and one that is not a TGA fails as invalid data.
  *
+ * The services card (47.3): when this machine has one, the same tgadecode.c
+ * built for the card's host decodes the file there (common/dtnative.c),
+ * byte for byte as here; else, or when it can't, this CPU does.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
@@ -41,15 +45,16 @@
 
 #include "dtlib.h"
 #include "tgadecode.h"
+#include "dtnative.h"
 #include "tgaencode.h"
 #include <datatypes/gfopenimage.h>
 #include <proto/utility.h>
 
 const char LibName[] = "gfopentga.datatype";
-const char LibIdString[] = "gfopentga.datatype 47.2 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "gfopentga.datatype 47.3 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.3 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -93,7 +98,16 @@ static BOOL loadTGA(Class *cl, Object *o)
         SetIoErr(DTERROR_INVALID_DATA);
         return FALSE;
     }
-    if ((argb = big_alloc(h.width * h.height * 4)) && (h.type != 1 || (pal = AllocVec((ULONG)h.map_len * 4, MEMF_ANY)))) {
+    if ((argb = big_alloc(h.width * h.height * 4))) {
+        /* The services card first, with this same decoder (dtnative.h). */
+        ULONG info[4], pw, ph;
+        if (dt_card_decode(DT_NATIVE_TGA, 0, 0, file, size, argb, h.width * h.height * 4, info, &pw, &ph)
+            && pw == h.width && ph == h.height) {
+            alpha = (info[2] & DT_NATIVE_ALPHA) ? 1 : 0;
+            ok = TRUE;
+        }
+    }
+    if (!ok && argb && (h.type != 1 || (pal = AllocVec((ULONG)h.map_len * 4, MEMF_ANY)))) {
         if (tga_decode(&h, file, size, argb, pal, &alpha) == 0)
             ok = TRUE;
         else

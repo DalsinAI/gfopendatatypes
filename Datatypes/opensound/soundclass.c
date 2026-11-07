@@ -31,10 +31,10 @@
 #include "dtservice.h"
 
 const char LibName[] = "gfopensound.datatype";
-const char LibIdString[] = "gfopensound.datatype 47.1 (5.10.2026) AmiCradle Team, decoded by media.decode/1";
+const char LibIdString[] = "gfopensound.datatype 47.2 (7.11.2026) AmiCradle Team, decoded by media.decode/1";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.1 (5.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -88,6 +88,7 @@ static BOOL loadSound(Class *cl, Object *o)
     struct VoiceHeader *vh = NULL;
     struct dt_service svc;
     struct OSBuffer buf[4];
+    struct dt_file file = { NULL, 0, 0, { 0 } };
     ULONG extra[4], size = 0, frames, rate, channels, got, bytes;
     UBYTE info[24], *data, *pcm = NULL;
     STRPTR name = NULL;
@@ -107,11 +108,13 @@ static BOOL loadSound(Class *cl, Object *o)
     extra[0] = wide ? 2 : 1;
     extra[1] = soundRate();
     extra[2] = extra[3] = 0;
-    buf[0].ob_Data = data;
-    buf[0].ob_Length = size;
+    file.data = data;
+    file.size = size;
     buf[1].ob_Data = info;
     buf[1].ob_Length = sizeof info;
-    if (dt_service_call(&svc, MD_PROBE, 0, 2, buf, extra, NULL, NULL) != OSERR_OK || get32(info) != MD_KIND_SOUND)
+    /* The file goes once: kept on the host by PROBE, named by DECODE. */
+    if (dt_file_call(&svc, &file, MD_PROBE, 0, 2, buf, extra, NULL, NULL, FALSE) != OSERR_OK
+        || get32(info) != MD_KIND_SOUND)
         goto out;
     frames = get32(info + 12);
     rate = get32(info + 16);
@@ -126,7 +129,7 @@ static BOOL loadSound(Class *cl, Object *o)
     }
     buf[1].ob_Data = pcm;
     buf[1].ob_Length = bytes;
-    if (dt_service_call(&svc, MD_DECODE, 0, 2, buf, extra, &got, NULL) != OSERR_OK || !got)
+    if (dt_file_call(&svc, &file, MD_DECODE, 0, 2, buf, extra, &got, NULL, TRUE) != OSERR_OK || !got)
         goto out;
     if (got < frames)
         frames = got;
@@ -176,6 +179,7 @@ static BOOL loadSound(Class *cl, Object *o)
 out:
     if (pcm)
         FreeVec(pcm);
+    dt_file_release(&svc, &file);      /* when DECODE was never reached */
     dt_service_close(&svc);
     FreeVec(data);
     if (!ok)

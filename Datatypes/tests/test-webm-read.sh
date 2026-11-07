@@ -12,7 +12,11 @@
 # media.decode/1 that keeps a record: the file goes up in parts of at most
 # 256 KB (VUPLOAD), once, and each frame's sound is asked for as it loads
 # (VSOUND, scaled when the service counts at another rate); without the
-# service or VUPLOAD the clip plays silent.
+# service or VUPLOAD the clip plays silent. With a service that has VINDEX
+# (47.2), the frames come from it too (VFRAME in MD_PIX_WEBM) with the next
+# one asked for while this one shows, through one connection an object;
+# an older service, one that counts other frames, or one that fails while
+# playing leaves the frames to libvpx.
 # MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   CC     the host compiler (default cc)
@@ -40,7 +44,7 @@ fi
 "$OUT/webmreadtest" "$@"
 
 INC="$OUT/host-class"
-for h in exec/types.h exec/memory.h exec/semaphores.h exec/ports.h exec/io.h dos/dos.h \
+for h in exec/types.h exec/memory.h exec/semaphores.h exec/ports.h exec/tasks.h exec/io.h dos/dos.h \
          graphics/gfx.h graphics/rastport.h graphics/view.h intuition/classes.h intuition/classusr.h \
          datatypes/datatypes.h datatypes/datatypesclass.h datatypes/pictureclass.h datatypes/animationclass.h \
          proto/exec.h proto/dos.h proto/graphics.h proto/intuition.h proto/datatypes.h clib/alib_protos.h \

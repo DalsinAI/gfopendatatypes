@@ -15,6 +15,10 @@
  * RAM. GFOpenBench 0.1 and a test tool did that on AmiCradle's Instance-32
  * (10 and 11 October 2026); this class answers FALSE instead.
  *
+ * The services card (47.7): when this machine has one, the same pngdecode.c
+ * built for the card's host decodes the file there (common/dtnative.c),
+ * byte for byte as here; else, or when it can't, this CPU does.
+ *
  * PNG out (47.4): OIM_ENCODEPNG (datatypes/gfopenimage.h) encodes ARGB pixels,
  * the program's or the object's own, to a PNG file in memory, and DTM_WRITE
  * with DTWM_RAW writes the picture as PNG to a file (pngencode.c, deflate
@@ -46,14 +50,15 @@
 #include "dtlib.h"
 #include <datatypes/gfopenimage.h>
 #include "pngdecode.h"
+#include "dtnative.h"
 #include "pngencode.h"
 #include "zlibrary.h"
 
 const char LibName[] = "gfopenpng.datatype";
-const char LibIdString[] = "gfopenpng.datatype 47.6 (6.11.2026) AmiCradle Team";
+const char LibIdString[] = "gfopenpng.datatype 47.7 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 6;
-static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.6 (6.11.2026)";
+const UWORD LibRevision = 7;
+static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.7 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -105,11 +110,17 @@ static BOOL loadPNG(Class *cl, Object *o)
         SetIoErr(DTERROR_INVALID_DATA);
         return FALSE;
     }
-    if ((idat = big_alloc(h->idat_len)))
+    /* The services card first, with this same decoder (dtnative.h). */
+    if ((argb = big_alloc(h->width * h->height * 4))) {
+        ULONG info[4], pw, ph;
+        if (dt_card_decode(DT_NATIVE_PNG, 0, 0, file, size, argb, h->width * h->height * 4, info, &pw, &ph)
+            && pw == h->width && ph == h->height)
+            ok = TRUE;
+    }
+    if (!ok && (idat = big_alloc(h->idat_len)))
         png_gather(file, size, idat);
     FreeVec(file);
-    if (idat && (raw = big_alloc(h->raw_len)) && (argb = big_alloc(h->width * h->height * 4))
-        && (work = AllocVec(PNG_WORKSIZE, MEMF_ANY))) {
+    if (!ok && idat && (raw = big_alloc(h->raw_len)) && argb && (work = AllocVec(PNG_WORKSIZE, MEMF_ANY))) {
         if (png_decode(h, idat, raw, argb, work) == 0)
             ok = TRUE;
         else

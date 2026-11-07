@@ -21,6 +21,13 @@
 # The bitplanes-to-pixels helper ilbm, picture and cdxl share
 # (common/include/odt_planar.h) against the loop it replaced, on the host
 # (Datatypes/tests/test-planar.sh).
+# The datatypes' connection to gfopenservice.device: one an object, the
+# read-ahead and files sent once (Datatypes/tests/test-dtservice.sh).
+# The service rung, pixel for pixel (Datatypes/tests/test-service-rung.sh):
+# webm.datatype's frames and the PNG, TGA, GIF and WebP decoders' pictures
+# from gfopenservice's media.decode/1 against the datatypes' own code, when a
+# gfopenservice checkout with its host side built is beside this one (else
+# only the datatypes' side is built and run).
 # The Amiga builds need the os32-gcc16 stove and are made on the build PC.
 name: Datatypes
 on:
@@ -65,6 +72,10 @@ jobs:
         run: python3 Datatypes/tests/test-romtag.py
       - name: bitplanes to pixels (common/include/odt_planar.h)
         run: sh Datatypes/tests/test-planar.sh
+      - name: the datatypes' connection to gfopenservice.device
+        run: sh Datatypes/tests/test-dtservice.sh
+      - name: the service rung, pixel for pixel
+        run: sh Datatypes/tests/test-service-rung.sh
   m68k:
     runs-on: ubuntu-latest
     steps:
