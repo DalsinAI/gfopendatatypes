@@ -21,7 +21,11 @@
  *                                     length, so under AddressSanitizer a
  *                                     read past it stops the test.
  *   pngdectest -bench N FILE          decodes FILE N times (0: only reads
- *                                     it), for counting instructions
+ *                                     it) as the class does, in strips of
+ *                                     32 rows, for counting instructions
+ *
+ * Every picture is decoded whole (png_decode) and in strips of 3 and of 32
+ * rows (png_unpack, png_strip), which must agree.
  *
  * The same answers on x86 and on the 68040 (big-endian) are the point of
  * running it twice; tests/test-pngdec.sh compares both with make-png.py.
@@ -64,26 +68,75 @@ static ULONG fnv_bytes(ULONG h, const ULONG *argb, ULONG n)
 
 static int bench;
 
-/* As gfopenpng.datatype does it (png/pngclass.c): the head, the IDAT data
- * gathered, then the decode. 0 and the picture, or -1. */
+/* The decode as gfopenpng.datatype does it (png/pngclass.c): the head, the
+ * IDAT data gathered, the stream unpacked, then the rows handed on in
+ * strips of rows rows (into one strip's buffer, as the class does; copied
+ * into the picture at full unless it is NULL). 0, or -1. */
+static int strips(const UBYTE *file, ULONG len, struct png_head *h, ULONG rows, ULONG *full)
+{
+    UBYTE *idat = NULL, *raw = NULL;
+    ULONG *strip = NULL, y, n;
+    void *work = NULL;
+    struct png_rows r;
+    int rc = -1;
+    if (png_read_head(file, len, h))
+        return -1;
+    if ((idat = malloc(h->idat_len ? h->idat_len : 1)) && (raw = malloc(h->raw_len ? h->raw_len : 1))
+        && (strip = malloc((size_t)h->width * rows * 4)) && (work = malloc(PNG_WORKSIZE))) {
+        png_gather(file, len, idat);
+        if (png_unpack(h, idat, raw, work, &r) == 0) {
+            for (y = 0; y < h->height; y += n) {
+                n = h->height - y < rows ? h->height - y : rows;
+                if (!bench)
+                    memset(strip, 0xA5, (size_t)h->width * n * 4);
+                png_strip(h, raw, &r, strip, n);
+                if (full)
+                    memcpy(full + (size_t)y * h->width, strip, (size_t)h->width * n * 4);
+            }
+            rc = 0;
+        }
+    }
+    free(work);
+    free(strip);
+    free(raw);
+    free(idat);
+    return rc;
+}
+
+/* The whole picture with png_decode(), into a picture filled with garbage
+ * first (what a row never written would show); then again in strips of 3
+ * and of 32 rows, which must give the same. 0 and the picture, or -1. */
 static int decode(const UBYTE *file, ULONG len, struct png_head *h, ULONG **argb)
 {
     UBYTE *idat = NULL, *raw = NULL;
     void *work = NULL;
+    size_t size;
     int rc = -1;
     *argb = NULL;
     if (png_read_head(file, len, h))
         return -1;
+    size = (size_t)h->width * h->height * 4;
     if ((idat = malloc(h->idat_len ? h->idat_len : 1)) && (raw = malloc(h->raw_len ? h->raw_len : 1))
-        && (*argb = malloc((size_t)h->width * h->height * 4)) && (work = malloc(PNG_WORKSIZE))) {
+        && (*argb = malloc(size)) && (work = malloc(PNG_WORKSIZE))) {
         png_gather(file, len, idat);
-        if (!bench)                     /* what a row never written would show */
-            memset(*argb, 0xA5, (size_t)h->width * h->height * 4);
+        memset(*argb, 0xA5, size);
         rc = png_decode(h, idat, raw, *argb, work) == 0 ? 0 : -1;
     }
     free(work);
     free(raw);
     free(idat);
+    if (!rc) {
+        static const ULONG sizes[2] = { 3, 32 };
+        ULONG *again = malloc(size), k;
+        for (k = 0; k < 2; k++) {
+            memset(again, 0x5A, size);
+            if (!again || strips(file, len, h, sizes[k], again) || memcmp(again, *argb, size)) {
+                printf("strips of %lu rows differ from the whole picture\n", (unsigned long)sizes[k]);
+                exit(1);
+            }
+        }
+        free(again);
+    }
     if (rc) {
         free(*argb);
         *argb = NULL;
@@ -116,7 +169,7 @@ static int prefix_ok(const ULONG *full, const ULONG *got, ULONG w, ULONG h)
 static int damage(const char *name, const UBYTE *file, ULONG len, ULONG count)
 {
     struct png_head h0, h;
-    ULONG *full, *argb, k, hash = 0x811C9DC5UL, decoded = 0, refused = 0;
+    ULONG *full, *argb, k, i, hash = 0x811C9DC5UL, decoded = 0, refused = 0;
     if (decode(file, len, &h0, &full)) {
         printf("%s invalid\n", name);
         return 0;
@@ -157,6 +210,11 @@ static int damage(const char *name, const UBYTE *file, ULONG len, ULONG count)
         if (decode(copy, n, &h, &argb) == 0) {
             hash = (hash ^ h.width ^ (h.height << 16) ^ h.alpha) * 0x01000193UL;
             hash = fnv_bytes(hash, argb, h.width * h.height);
+            for (i = 0; i < h.width * h.height; i++)
+                if (argb[i] == 0xA5A5A5A5UL) {
+                    printf("%s damaged %lu: pixel %lu never written\n", name, (unsigned long)k, (unsigned long)i);
+                    return 0;
+                }
             if (kind <= 1 && !h0.interlace && !prefix_ok(full, argb, h.width, h.height)) {
                 printf("%s cut at %lu: rows past the end are not clear\n", name, (unsigned long)n);
                 return 0;
@@ -182,18 +240,14 @@ int main(int argc, char **argv)
     ULONG count = 0;
     if (argc == 4 && !strcmp(argv[1], "-bench")) {
         struct png_head h;
-        ULONG len = 0, n = strtoul(argv[2], NULL, 10), *argb, sum = 0;
+        ULONG len = 0, n = strtoul(argv[2], NULL, 10);
         UBYTE *file = slurp(argv[3], &len);
         bench = 1;
         if (!file || png_read_head(file, len, &h))
             return 1;
-        while (n--) {
-            if (decode(file, len, &h, &argb))
+        while (n--)                     /* as the class does it: strips of 32 rows */
+            if (strips(file, len, &h, 32, NULL))
                 return 1;
-            sum += argb[h.width * h.height / 2];
-            free(argb);
-        }
-        printf("%08lx\n", (unsigned long)sum);
         return 0;
     }
     if (argc > 2 && !strcmp(argv[1], "-damage")) {

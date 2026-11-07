@@ -795,37 +795,86 @@ static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d,
     }
 }
 
-LONG png_decode(const struct png_head *h, const UBYTE *idat, UBYTE *raw, ULONG *argb, APTR work)
+LONG png_unpack(const struct png_head *h, const UBYTE *idat, UBYTE *raw, APTR work, struct png_rows *r)
 {
     ULONG got, at = 0, i, bpp = (channels(h->ctype) * h->depth + 7) >> 3;
-    LONG pass, passes = h->interlace ? 7 : 1;
+    LONG pass;
     got = zlib_inflate((inf_work *)work, idat, h->idat_len, raw, h->raw_len);
     if (!got)
         return -1;
     for (i = got; i < h->raw_len; i++)
         raw[i] = 0;                     /* cut short: the rest stays clear */
-    for (i = 0; i < h->width * h->height; i++)
-        argb[i] = 0;
-    for (pass = 0; pass < passes; pass++) {
+    r->got = got;
+    r->at = 0;
+    r->y = 0;
+    r->prev = 0;
+    if (!h->interlace)
+        return 0;                       /* the rows are undone as they are asked for */
+    /* Adam7: every pass's rows undone now, as far as they came */
+    for (pass = 0; pass < 7; pass++) {
         ULONG pw, ph, rb, y;
         const UBYTE *prev = 0;
+        r->pass_at[pass] = at;
+        r->pass_rows[pass] = 0;
         pass_size(h, pass, &pw, &ph);
         if (!pw)
             continue;
         rb = rowbytes(h, pw);
-        for (y = 0; y < ph; y++) {
+        for (y = 0; y < ph && at < got; y++) {
             UBYTE *row = raw + at;
-            if (at >= got)
-                return 0;               /* no more rows came */
             unfilter(row[0], row + 1, prev, rb, bpp);
-            if (h->interlace) {
-                ULONG ty = adam7[pass][1] + y * adam7[pass][3];
-                convert(h, row + 1, pw, argb + ty * h->width + adam7[pass][0], adam7[pass][2]);
-            } else
-                convert(h, row + 1, pw, argb + y * h->width, 1);
             prev = row + 1;
             at += rb + 1;
+            r->pass_rows[pass]++;
+        }
+        if (y < ph)                     /* no more rows came: none of the later passes either */
+            got = 0;
+    }
+    return 0;
+}
+
+void png_strip(const struct png_head *h, UBYTE *raw, struct png_rows *r, ULONG *argb, ULONG n)
+{
+    ULONG w = h->width, y0 = r->y, i;
+    r->y += n;
+    if (!h->interlace) {
+        ULONG rb = rowbytes(h, w), bpp = (channels(h->ctype) * h->depth + 7) >> 3;
+        for (; n; n--, argb += w) {
+            UBYTE *row = raw + r->at;
+            if (r->at >= r->got) {      /* a row that never came: clear */
+                for (i = 0; i < w; i++)
+                    argb[i] = 0;
+                continue;
+            }
+            unfilter(row[0], row + 1, r->prev, rb, bpp);
+            convert(h, row + 1, w, argb, 1);
+            r->prev = row + 1;
+            r->at += rb + 1;
+        }
+    } else {
+        LONG pass;
+        if (r->got < h->raw_len)        /* cut short: some pixels never came */
+            for (i = 0; i < w * n; i++)
+                argb[i] = 0;
+        for (pass = 0; pass < 7; pass++) {
+            ULONG x0 = adam7[pass][0], py0 = adam7[pass][1], dx = adam7[pass][2], dy = adam7[pass][3];
+            ULONG sh = dy == 8 ? 3 : dy == 4 ? 2 : 1, pw, ph, rb, py, ty;
+            pass_size(h, pass, &pw, &ph);
+            if (!pw)
+                continue;
+            rb = rowbytes(h, pw) + 1;
+            py = y0 <= py0 ? 0 : (y0 - py0 + dy - 1) >> sh;   /* this pass's first row in the strip */
+            for (ty = py0 + (py << sh); ty < y0 + n && py < r->pass_rows[pass]; ty += dy, py++)
+                convert(h, raw + r->pass_at[pass] + py * rb + 1, pw, argb + (ty - y0) * w + x0, dx);
         }
     }
+}
+
+LONG png_decode(const struct png_head *h, const UBYTE *idat, UBYTE *raw, ULONG *argb, APTR work)
+{
+    struct png_rows r;
+    if (png_unpack(h, idat, raw, work, &r))
+        return -1;
+    png_strip(h, raw, &r, argb, h->height);
     return 0;
 }
