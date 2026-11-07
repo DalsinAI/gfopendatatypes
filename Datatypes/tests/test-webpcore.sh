@@ -4,9 +4,11 @@
 # libwebp 1.6.0 patched as for the Amiga:
 # - dt_init()'s webp_core_init() sets up all of libwebp's tables: libwebp's
 #   .data and .bss, linked as sections of their own (webp_data, webp_bss),
-#   are compared before and after decoding every kind of WebP (made with
-#   Pillow when it is installed) and encoding: nothing may change. The
-#   init dt_init() did before 47.4 must be caught writing them.
+#   are compared before and after decoding every kind of WebP and
+#   encoding: nothing may change. The init dt_init() did before 47.4 must
+#   be caught writing them. The WebP files are the test's own
+#   ("webpcoretest media": lossless ones from webp.datatype's encoder,
+#   lossy ones from tests/webpcore-media.h), so a clean checkout has them.
 # - an opaque animated WebP whose first frame doesn't cover the canvas
 #   comes on the ANIM background colour; with alpha, or a frame covering
 #   the canvas, as the frame alone.
@@ -32,36 +34,13 @@ mkdir -p "$TARBALLS"
 [ -f "$T" ] || sh "$HERE/../tools/fetch-tarball.sh" libwebp-1.6.0.tar.gz "$TARBALLS"
 echo "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564  $T" | sha256sum -c - >/dev/null
 rm -rf "$OUT"
-mkdir -p "$OUT/media"
+mkdir -p "$OUT"
 tar -xzf "$T" -C "$OUT"
 W="$OUT/libwebp-1.6.0"
 (cd "$W" && for p in no-float demux-null-chunk encoder-no-float m68060; do
     patch -p1 -s < "$HERE/patches/libwebp-1.6.0-$p.patch"; done)
 fail=0
 say() { echo "$1"; case "$1" in ok*) ;; *) fail=1 ;; esac; }
-
-python3 -I - "$OUT/media" <<'EOF' || true
-import sys
-try:
-    from PIL import Image
-except ImportError:
-    print("Pillow: not installed, the encoder's pictures only"); sys.exit(0)
-out = sys.argv[1]
-def grad(w, h, alpha=False):
-    im = Image.new('RGBA' if alpha else 'RGB', (w, h)); px = im.load()
-    for y in range(h):
-        for x in range(w):
-            r, g, b = (x * 255) // (w - 1), (y * 255) // (h - 1), ((x + y) * 7) & 255
-            px[x, y] = (r, g, b, (x * 13 + y * 29) & 255) if alpha else (r, g, b)
-    return im
-grad(64, 48).save(out + '/lossy.webp', 'WEBP', quality=80)
-grad(64, 48).save(out + '/lossless.webp', 'WEBP', lossless=True)
-grad(40, 30, True).save(out + '/lossless-alpha.webp', 'WEBP', lossless=True)
-grad(50, 20, True).save(out + '/lossy-alpha.webp', 'WEBP', quality=75)
-f1 = grad(32, 32); f2 = Image.new('RGB', (32, 32), (200, 30, 30))
-f1.save(out + '/anim.webp', 'WEBP', save_all=True, append_images=[f2], duration=100, loop=0, lossless=True)
-f1.save(out + '/anim-lossy.webp', 'WEBP', save_all=True, append_images=[f2], duration=100, loop=0, quality=70)
-EOF
 
 # build NAME CC LD OBJCOPY FLAGS...: OUT/NAME/webpcoretest, libwebp linked
 # as one object whose .data and .bss are renamed webp_data and webp_bss
@@ -84,15 +63,24 @@ build() {
 
 run() {          # NAME RUNNER...
     name=$1; shift
-    r=0; "$@" "$OUT/$name/webpcoretest" init old "$OUT"/media/*.webp > "$OUT/$name/old.txt" 2>&1 || r=$?
+    m="$OUT/$name/media"; mkdir -p "$m"
+    n=$("$@" "$OUT/$name/webpcoretest" media "$m" || true)
+    set -- "$@" "$OUT/$name/webpcoretest"
+    if [ "$n" = 7 ] && [ "$(ls "$m"/*.webp 2>/dev/null | wc -l)" -eq 7 ]; then
+        say "ok   ($name) the test's 7 WebP files made (lossy, lossless, alpha, animated)"
+    else
+        say "FAIL ($name) the test's WebP files weren't made (${n:-none} of 7)"
+        return
+    fi
+    r=0; "$@" init old "$m"/*.webp > "$OUT/$name/old.txt" 2>&1 || r=$?
     sed 's/^/     /' "$OUT/$name/old.txt"
     if [ $r -eq 3 ]; then say "ok   ($name) the test sees decodes write libwebp's tables after the old dt_init()"
     else say "FAIL ($name) the old dt_init() should have been caught (exit $r)"; fi
-    r=0; "$@" "$OUT/$name/webpcoretest" init "$OUT"/media/*.webp > "$OUT/$name/new.txt" 2>&1 || r=$?
+    r=0; "$@" init "$m"/*.webp > "$OUT/$name/new.txt" 2>&1 || r=$?
     sed 's/^/     /' "$OUT/$name/new.txt"
     if [ $r -eq 0 ]; then say "ok   ($name) after webp_core_init() nothing writes libwebp's data"
     else say "FAIL ($name) webp_core_init() leaves tables to the first decode (exit $r)"; fi
-    r=0; "$@" "$OUT/$name/webpcoretest" anim > "$OUT/$name/anim.txt" 2>&1 || r=$?
+    r=0; "$@" anim > "$OUT/$name/anim.txt" 2>&1 || r=$?
     sed 's/^/     /' "$OUT/$name/anim.txt"
     if [ $r -eq 0 ]; then say "ok   ($name) an animation's first frame on its background colour"
     else say "FAIL ($name) an animation's first frame"; fi

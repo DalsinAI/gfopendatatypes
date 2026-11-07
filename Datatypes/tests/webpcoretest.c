@@ -10,6 +10,11 @@
  *       it, a picture encoded at three levels and decoded back: none of it
  *       may write libwebp's data, or two tasks decoding at once could meet
  *       half-made tables
+ *   webpcoretest media DIR
+ *       writes the WebP files the init test decodes: lossless, lossless
+ *       with alpha, animated (opaque and with alpha), all made here with
+ *       webp.datatype's encoder, and lossy, lossy with alpha and a lossy
+ *       animation (webpcore-media.h); prints how many
  *   webpcoretest anim
  *       animated WebPs made here: an opaque one whose first frame doesn't
  *       cover the canvas comes on the ANIM background colour; one with
@@ -25,6 +30,7 @@
 #include "webpencode.h"
 #include "src/webp/decode.h"
 #include "src/dsp/lossless.h"
+#include "webpcore-media.h"
 
 extern unsigned char __start_webp_data[], __stop_webp_data[], __start_webp_bss[], __stop_webp_bss[];
 
@@ -239,12 +245,63 @@ done:
     free(frame);
 }
 
+static int writefile(const char *dir, const char *name, const unsigned char *p, unsigned long n)
+{
+    char path[600];
+    FILE *f;
+    int ok;
+    snprintf(path, sizeof path, "%s/%s", dir, name);
+    if (!(f = fopen(path, "wb")))
+        return 0;
+    ok = fwrite(p, 1, n, f) == n;
+    return fclose(f) == 0 && ok;
+}
+
+static int media(const char *dir)
+{
+    ULONG px[24 * 16], ax[24 * 16], i;
+    struct buf b = { 0, 0, 0 };
+    int made = 0;
+    unsigned k;
+
+    webp_core_init();
+    for (i = 0; i < 24 * 16; i++) {
+        px[i] = 0xff000000UL | ((i % 24) * 10 << 16) | ((i / 24) * 15 << 8) | ((i * 7) & 255);
+        ax[i] = (px[i] & 0x00ffffffUL) | (((i * 37) & 255) << 24);
+    }
+    {
+        ULONG work[24 * 16];
+        memcpy(work, px, sizeof work);
+        if (webp_encode_lossless(work, 24, 16, 24, -1, put, &b) == 0)
+            made += writefile(dir, "lossless.webp", b.p, b.n);
+        free(b.p);
+        b.p = NULL;
+        b.n = b.cap = 0;
+        memcpy(work, ax, sizeof work);
+        if (webp_encode_lossless(work, 24, 16, 24, -1, put, &b) == 0)
+            made += writefile(dir, "lossless-alpha.webp", b.p, b.n);
+        free(b.p);
+    }
+    b = animation(0, 0xff102030UL, 40, 30, 6, 4, px, 24, 16);
+    made += writefile(dir, "anim.webp", b.p, b.n);
+    free(b.p);
+    b = animation(1, 0x00000000UL, 40, 30, 6, 4, ax, 24, 16);
+    made += writefile(dir, "anim-alpha.webp", b.p, b.n);
+    free(b.p);
+    for (k = 0; k < sizeof lossy_media / sizeof lossy_media[0]; k++)
+        made += writefile(dir, lossy_media[k].name, lossy_media[k].data, lossy_media[k].size);
+    printf("%d\n", made);
+    return made == 7 ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && !strcmp(argv[1], "init")) {
         const int old = argc >= 3 && !strcmp(argv[2], "old");
         return init_test(old, argc - 2 - old, argv + 2 + old);
     }
+    if (argc == 3 && !strcmp(argv[1], "media"))
+        return media(argv[2]);
     if (argc == 2 && !strcmp(argv[1], "anim")) {
         webp_core_init();
         anim_case("opaque, frame inside the canvas", 0, 20, 12, 4, 2, 8, 6);
@@ -256,6 +313,6 @@ int main(int argc, char **argv)
         printf("webpcoretest anim: %d checks, %d failed\n", checks, fails);
         return fails != 0;
     }
-    fprintf(stderr, "usage: webpcoretest init [old] FILE... | anim\n");
+    fprintf(stderr, "usage: webpcoretest init [old] FILE... | media DIR | anim\n");
     return 2;
 }
