@@ -3,6 +3,7 @@
  * Clean-room; see animation_core.h for what this is written from.
  */
 #include "animation_core.h"
+#include "mp4_core.h"
 
 /* DTA_TriggerMethods: what DTM_TRIGGER does (labels: ours; ABI test) */
 static const struct odt_DTMethod adt_triggers[] = {
@@ -1387,6 +1388,7 @@ struct aw_glue {
     odt_s32 start;                      /* where the file began */
     struct adt_Frame msg;
     odt_u8 newformat;
+    odt_u8 *rgb;                        /* MP4: a frame's own colours (768 bytes) */
 };
 
 static void *aw_alloc(void *h, odt_u32 n)
@@ -1513,6 +1515,119 @@ static odt_u32 write_anim(const struct odt_cenv *env, struct adt_inst *in, void 
     return 1;
 }
 
+/* MP4: a frame's duration, own colours and sound, from what the subclass
+ * answered ADTM_LOADFRAME (or ADTM_LOADNEWFORMATFRAME) with */
+static void mp4_info(void *h, odt_u32 f, struct adt_mp4_frame *fi)
+{
+    struct aw_glue *g = h;
+    const struct adt_ext *x = g->env->class_ext;
+    const struct adt_Frame *m = &g->msg;
+    odt_u32 period = m->alf_Period ? m->alf_Period : g->in->period;
+    (void)f;
+    fi->duration = m->alf_Duration;
+    if (m->alf_CMap && x && x->cmap_rgb && g->rgb && (fi->ncolors = x->cmap_rgb(g->env, m->alf_CMap, g->rgb, 256)))
+        fi->rgb = g->rgb;
+    if (g->newformat == NF_NEW && m->alf_LeftSample && m->alf_RightSample) {
+        fi->left = m->alf_LeftSample;   /* V44 stereo */
+        fi->right = m->alf_RightSample;
+    } else
+        fi->left = m->alf_Sample ? m->alf_Sample : g->newformat == NF_NEW ? m->alf_LeftSample : 0;
+    fi->sound_len = fi->left ? m->alf_SampleLength : 0;
+    if (g->newformat == NF_NEW && m->alf_SamplesPerSec) fi->rate = m->alf_SamplesPerSec;
+    else if (fi->left && x && x->clock) fi->rate = x->clock(g->env) / (period ? period : 394);
+}
+
+struct mp4_call {
+    const struct adt_mp4_spec *s;
+    const struct adt_mp4_io *io;
+};
+
+static odt_u32 mp4_call(void *arg)
+{
+    struct mp4_call *c = arg;
+    return (odt_u32)adt_mp4_write(c->s, c->io);
+}
+
+/* DTM_WRITE in raw mode with OIA_WriteFormat OIWF_MP4: the frames the
+ * subclass gives as H.264, its sound as PCM, in an MP4 (mp4_core.h) */
+static odt_u32 write_mp4(const struct odt_cenv *env, struct adt_inst *in, void *obj, const struct odt_dtWrite *w)
+{
+    const struct adt_ext *x = env->class_ext;
+    struct aw_glue g;
+    struct adt_mp4_spec s;
+    struct adt_mp4_io io;
+    struct mp4_call c;
+    odt_u32 depth = in->depth, i, clock;
+    odt_s32 err;
+    if (!w->dtw_FileHandle || !env->write || !env->seek || !in->frames || !in->width || !in->height) {
+        if (env->set_io_err) env->set_io_err(env, DTC_ERROR_REQUIRED_ARG_MISSING);
+        return 0;
+    }
+    if (!depth || depth > 8) {           /* as write_anim */
+        depth = 1;
+        while (depth < 8 && (1UL << depth) < in->num_colors) depth++;
+        if (in->key_frame && in->key_frame->Depth > depth && in->key_frame->Depth <= 8) depth = in->key_frame->Depth;
+    }
+    for (i = 0; i < sizeof s; i++) ((odt_u8 *)&s)[i] = 0;
+    s.width = in->width;
+    s.height = in->height;
+    s.depth = depth;
+    s.frames = in->frames;
+    s.fps = in->fps ? in->fps : DEF_FPS;
+    s.ncolors = in->colregs ? in->num_colors : 0;
+    s.colors = in->colregs;
+    s.modeid = in->mode_id != ~0UL ? in->mode_id : 0;
+    s.qp = adt_mp4_qp((odt_s32)dtc_tag_data(w->dtw_AttrList, ADT_OIA_Quality, (odt_u32)-1));
+    s.speed = adt_mp4_speed((odt_s32)dtc_tag_data(w->dtw_AttrList, ADT_OIA_Compression, (odt_u32)-1));
+    /* a key frame every five seconds or so: where a player can start */
+    s.gop = s.fps * 5 > 250 ? 250 : s.fps * 5;
+    s.sound = dtc_tag_data(w->dtw_AttrList, ADT_OIA_WriteSound, 1) != 0;
+    clock = x && x->clock ? x->clock(env) : 3546895UL;
+    if (in->sample && in->sample_len) {
+        s.left = in->sample;
+        s.sound_len = in->sample_len;
+    } else if (in->left && in->right && in->sample_len) {
+        s.left = in->left;
+        s.right = in->right;
+        s.sound_len = in->sample_len;
+    }
+    s.rate = in->sps ? in->sps : clock / (in->period ? in->period : 394);
+    for (i = 0; i < sizeof g; i++) ((odt_u8 *)&g)[i] = 0;
+    g.env = env;
+    g.in = in;
+    g.obj = obj;
+    g.fh = w->dtw_FileHandle;
+    g.newformat = NF_OLD;
+    if ((g.start = env->seek(env, g.fh, 0, 0)) < 0) {
+        if (env->set_io_err) env->set_io_err(env, ODT_DTERROR_COULDNT_SAVE);
+        return 0;
+    }
+    if (!(g.rgb = env->alloc(env, 768))) {
+        if (env->set_io_err) env->set_io_err(env, DTC_ERROR_NO_FREE_STORE);
+        return 0;
+    }
+    io.aw.h = &g;
+    io.aw.alloc = aw_alloc;
+    io.aw.free = aw_free;
+    io.aw.put = aw_write;
+    io.aw.patch = aw_patch;
+    io.aw.frame = aw_frame;
+    io.aw.done = aw_done;
+    io.info = mp4_info;
+    c.s = &s;
+    c.io = &io;
+    lock(env, obj);                      /* the player waits while the frames are taken */
+    /* the encoder wants a few KB of stack more than a program may give */
+    err = (odt_s32)(x && x->call_on_stack ? x->call_on_stack(env, 32768, mp4_call, &c) : mp4_call(&c));
+    unlock(env, obj);
+    env->free(env, g.rgb);
+    if (err) {
+        if (env->set_io_err) env->set_io_err(env, err);
+        return 0;
+    }
+    return 1;
+}
+
 odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, void *msg)
 {
     odt_u32 id = *(odt_u32 *)msg;
@@ -1603,6 +1718,15 @@ odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *ob
     }
     case ODT_DTM_WRITE: {
         struct odt_dtWrite *w = msg;
+        if (w->dtw_Mode == ODT_DTWM_RAW) {
+            /* OIA_WriteFormat: another format than the subclass's own */
+            odt_u32 fmt = dtc_tag_data(w->dtw_AttrList, ADT_OIA_WriteFormat, 0);
+            if (fmt == ADT_OIWF_MP4) return write_mp4(env, in, obj, w);
+            if (fmt) {
+                if (env->set_io_err) env->set_io_err(env, ADT_ERROR_NOT_IMPLEMENTED);
+                return 0;
+            }
+        }
         if (w->dtw_Mode != ODT_DTWM_IFF)
             return env->do_super(env, cl, obj, msg);   /* raw: the file as it came, or the subclass's own */
         return write_anim(env, in, obj, w->dtw_FileHandle);

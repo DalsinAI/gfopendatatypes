@@ -378,7 +378,8 @@ static void a_load_colors(const struct odt_cenv *env, void *scr, odt_u32 first, 
 static const struct adt_ext anim_ext = {
     a_alloc_bitmap, a_free_bitmap, a_obtain_pen, a_release_pen, a_screen_depth, a_blit, t_fill, a_bevel, a_glyph,
     t_pen, a_font_ysize, a_sound_play, a_sound_stop, a_clock, a_player_start, a_player_stop, a_wait_blit,
-    a_in_chip, a_alloc_any, a_cmap_colors, a_load_colors
+    a_in_chip, a_alloc_any, a_cmap_colors, a_load_colors,
+    0, 0                                /* cmap_rgb, call_on_stack: MP4 writing (test_opendatatypes_mp4write.sh) */
 };
 
 static struct odt_cenv env_text, env_anim;

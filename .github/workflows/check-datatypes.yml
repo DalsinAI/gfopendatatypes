@@ -89,8 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: m68k cross GCC, G++ and qemu-m68k
-        run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user python3-pil
+      - name: m68k cross GCC, G++, qemu-m68k, FFmpeg and Pillow
+        run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user ffmpeg python3-pil
       - name: gfopenpng.datatype decoder, also as 68040 code (big-endian)
         run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-pngdec.sh
       - name: GFOpenDatatypes (datatypes.library) core
@@ -101,6 +101,8 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh
       - name: animation.datatype's IFF ANIM writer, read back by anim.datatype's reader
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh
+      - name: animation.datatype's MP4 writer (H.264), read back by FFmpeg and the host encoder
+        run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh
       - name: the descriptors, which datatype each kind of file goes to (datatypes.library's recognition)
         run: QEMU_M68K=qemu-m68k python3 -I tests/recognition/test_recognition.py
       - name: libwebp's 68060 patch as 68040 code (same files, no more instructions)

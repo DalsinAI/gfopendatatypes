@@ -30,6 +30,22 @@ libxmp 4.7.3 (Datatypes/build.sh, gfopenmodule.datatype)
   from:   https://github.com/libxmp/libxmp/releases/download/libxmp-4.7.3/libxmp-4.7.3.tar.gz
   sha256: b6a98797e4fb9c9a705f5d53112aa5214561857e929a644928b9e658930d9440
 
+# Kept in the tree (not tarballs)
+
+minih264e (animation.datatype's MP4 writer: its H.264 encoder), CC0 1.0
+  file:   libraries/opendatatypes/classes/datatypes/animation/h264/minih264e.h
+  from:   https://github.com/lieff/minih264, minih264e.h at commit
+          b0baea7a80ef9d12da97301dd1099b8791b5ba43 (10 December 2020)
+  sha256: 661afe7802b4e1174e8389632f3ee437b903e036a9c91a7f035830947c6a7aae (as fetched)
+  ours:   upstream/minih264/minih264e-b0baea7-gfopendatatypes.patch, applied in
+          the tree: big-endian fixes (intra 4x4 words, motion vector packing,
+          the deblocking strength), AmigaOS's byte order, MINIH264_NO_SIMD
+          (the plain C on a host, for the tests) and MINIH264_PADDED_INPUT
+  licence: upstream/minih264/LICENSE (CC0 1.0, checked in the source's own
+          header: "dedicated all copyright ... to the public domain")
+  not used: minimp4 (same author, CC0): the MP4 muxer is our own
+          (animation/mp4_core.c), for PCM sound and no writable data
+
 stb_vorbis 1.22 (Datatypes/build.sh, gfopensound.datatype: Ogg Vorbis on this CPU)
   file:   stb_vorbis.c
   from:   https://raw.githubusercontent.com/nothings/stb/4e9b368bfc071e97206ea5c6adba68dd0cbf8897/stb_vorbis.c

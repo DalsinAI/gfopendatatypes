@@ -75,6 +75,8 @@ static int anim_ext_init(struct DTCBase *base)
     a->x.alloc_any = ax_alloc_any;
     a->x.cmap_colors = ax_cmap_colors;
     a->x.load_colors = ax_load_colors;
+    a->x.cmap_rgb = ax_cmap_rgb;
+    a->x.call_on_stack = ax_call_on_stack;
     base->ext = a;
     base->env.class_ext = a;
     return 1;

@@ -45,6 +45,7 @@ host = [
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh",
+  "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh",
   # The descriptors through datatypes.library's recognition (and, with the
   # stove, the hooks as built, run as the library runs them).
   "QEMU_M68K=qemu-m68k python3 -I tests/recognition/test_recognition.py",

@@ -21,12 +21,14 @@ AmiCradle Team, released under the MIT licence (`LICENSE`).
 ## Third-party work in this repository
 
 The libraries' own notices are kept in `upstream/`; the sources themselves are
-fetched at build time (below).
+fetched at build time (below), except minih264e, a single header kept in the
+tree (no release tarball exists).
 
 | Component | Where | Authors | Licence |
 | --- | --- | --- | --- |
 | zlib, libpng, libjpeg, libwebp and libvpx licence and author notices | `upstream/` | The authors named below | Their own (below) |
 | Our patches to libvpx and libwebp, which carry a few lines of their code as context | `Datatypes/patches/` | The WebM Project authors; Google Inc. and the libwebp contributors | BSD 3-clause, with the WebM patent grant |
+| minih264e, the H.264 encoder under animation.datatype's MP4 writer: upstream commit b0baea7 with our patches applied (big-endian, AmigaOS, padded input), the patches also in `upstream/minih264/` | `libraries/opendatatypes/classes/datatypes/animation/h264/minih264e.h` | The minih264 authors (github.com/lieff/minih264) | CC0 1.0 (`upstream/minih264/LICENSE`); our patches MIT, as the rest of our code |
 
 ## From our other repositories
 
