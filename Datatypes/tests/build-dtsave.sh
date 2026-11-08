@@ -13,6 +13,8 @@
 #   dtsave Films/x.cdxl RAM:x.cdxl SAMEBYTES    the film written out again, byte for byte
 #   dtsave Films/x.webm RAM:x.anim IFF          any film saved as an IFF ANIM; then
 #   dtanim Films/x.webm and dtanim RAM:x.anim   the same frame sums, frame by frame
+#   dtsave Films/x.cdxl RAM:x.mp4 MP4           any film saved as an MP4 (H.264): its boxes
+#                                               read back, the time it took; FFmpeg on a host decodes it
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 S=${OS32_GCC16:-"$HOME/AmiCradle/stoves/os32-gcc16"}

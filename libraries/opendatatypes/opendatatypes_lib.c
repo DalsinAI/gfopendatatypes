@@ -163,19 +163,17 @@ static void memset_(void *p, ULONG n)
 static void *env_alloc(void *ctx, odt_u32 n) { return AllocVec(n, MEMF_ANY | MEMF_CLEAR); }
 static void env_free(void *ctx, void *p) { FreeVec(p); }
 
-static int env_match(void *ctx, const char *pattern, const char *name)
+/* Name patterns: the core parses each descriptor's once and keeps the
+ * token (1 wildcards, 0 none: the core compares, -1 not a pattern) */
+static int env_parse(void *ctx, const char *pattern, char *tok, odt_u32 size)
 {
-    ULONG n = 2 * strlen_(pattern) + 2;
-    STRPTR tok;
-    LONG wild;
-    int r;
-    if (!(tok = AllocVec(n, MEMF_ANY))) return 0;
-    wild = ParsePatternNoCase((CONST_STRPTR)pattern, tok, n);
-    if (wild < 0) r = 0;
-    else if (wild == 0) r = -1;             /* no wildcards: the core compares */
-    else r = MatchPatternNoCase(tok, (STRPTR)name) != 0;
-    FreeVec(tok);
-    return r;
+    LONG wild = ParsePatternNoCase((CONST_STRPTR)pattern, (STRPTR)tok, size);
+    return wild < 0 ? -1 : wild != 0;
+}
+
+static int env_match(void *ctx, const char *tok, const char *name)
+{
+    return MatchPatternNoCase((CONST_STRPTR)tok, (STRPTR)name) != 0;
 }
 
 /* Recognition code: a DTCD chunk is a load file whose first code is
@@ -215,8 +213,20 @@ static ULONG call_hook(APTR fn, struct DTHookContext *dthc)
     return r;
 }
 
-static int env_hook(void *ctx, struct odt_entry *e, struct odt_DTHookContext *dthc)
+/* What recognition hands the core as the hook context: the context first,
+ * then whether the data is IFF and its file not yet parsed as IFF. The
+ * IFFHandle is made only when recognition code is about to run on IFF
+ * data, not for every IFF file looked at (most types decide by their
+ * mask and pattern alone). */
+struct rctx {
+    struct DTHookContext dthc;
+    UBYTE want_iff;
+};
+
+static int env_hook(void *ctx, struct odt_entry *e, struct odt_DTHookContext *odthc)
 {
+    struct rctx *rc = (struct rctx *)odthc;
+    struct DTHookContext *dthc = &rc->dthc;
     if (!e->seg) {
         struct memfile f;
         LONG stack = 0;
@@ -226,12 +236,26 @@ static int env_hook(void *ctx, struct odt_entry *e, struct odt_DTHookContext *dt
         /* measured: code that isn't a load file is no code; the mask decides */
         if (!e->seg) { e->code = NULL; return 1; }
     }
+    if (rc->want_iff) {
+        /* the IFF data's file parsed as IFF, once, for this and any later
+         * code: from its start, as before any code ran */
+        struct IFFHandle *iff;
+        BPTR fh = dthc->dthc_FileHandle;
+        rc->want_iff = 0;
+        if ((iff = AllocIFF()) != NULL) {
+            Seek(fh, 0, OFFSET_BEGINNING);
+            iff->iff_Stream = fh;
+            InitIFFasDOS(iff);
+            if (OpenIFF(iff, IFFF_READ)) { FreeIFF(iff); iff = NULL; }
+            dthc->dthc_IFF = iff;
+        }
+    }
     if (dthc->dthc_FileHandle) Seek((BPTR)dthc->dthc_FileHandle, 0, OFFSET_BEGINNING);
     /* BOOL: the low word */
-    return (call_hook(BADDR((BPTR)e->seg) + 4, (struct DTHookContext *)dthc) & 0xffff) != 0;
+    return (call_hook(BADDR((BPTR)e->seg) + 4, dthc) & 0xffff) != 0;
 }
 
-static const struct odt_env env = { NULL, env_alloc, env_free, env_match, env_hook };
+static const struct odt_env env = { NULL, env_alloc, env_free, env_parse, env_match, env_hook };
 
 static void free_entry(struct odt_entry *e)
 {
@@ -529,30 +553,25 @@ static ULONG lib_null(void)
 static struct odt_entry *recognize(struct ODBase *base, const UBYTE *buf, LONG n, const char *name,
                                    BPTR lock, struct FileInfoBlock *fib, BPTR fh)
 {
-    struct DTHookContext dthc;
-    struct IFFHandle *iff = NULL;
+    struct rctx rc;
     struct odt_entry *e;
     odt_u32 form;
 
-    memset_(&dthc, sizeof dthc);
-    dthc.dthc_SysBase = (struct Library *)SysBase;
-    dthc.dthc_DOSBase = (struct Library *)DOSBase;
-    dthc.dthc_UtilityBase = UtilityBase;
-    dthc.dthc_IFFParseBase = IFFParseBase;  /* measured: always there */
-    dthc.dthc_Lock = lock;
-    dthc.dthc_FIB = fib;
-    dthc.dthc_FileHandle = fh;
-    dthc.dthc_Buffer = (STRPTR)buf;
-    dthc.dthc_BufferLength = n;
-    if (n && fh && odt_classify(buf, n, &form) == DTF_IFF && IFFParseBase && (iff = AllocIFF())) {
-        Seek(fh, 0, OFFSET_BEGINNING);
-        iff->iff_Stream = fh;
-        InitIFFasDOS(iff);
-        if (OpenIFF(iff, IFFF_READ)) { FreeIFF(iff); iff = NULL; }
-        dthc.dthc_IFF = iff;
-    }
-    e = odt_recognize(&env, &base->db, buf, n, name, (struct odt_DTHookContext *)&dthc);
-    if (iff) { CloseIFF(iff); FreeIFF(iff); }
+    memset_(&rc, sizeof rc);
+    rc.dthc.dthc_SysBase = (struct Library *)SysBase;
+    rc.dthc.dthc_DOSBase = (struct Library *)DOSBase;
+    rc.dthc.dthc_UtilityBase = UtilityBase;
+    rc.dthc.dthc_IFFParseBase = IFFParseBase;  /* measured: always there */
+    rc.dthc.dthc_Lock = lock;
+    rc.dthc.dthc_FIB = fib;
+    rc.dthc.dthc_FileHandle = fh;
+    rc.dthc.dthc_Buffer = (STRPTR)buf;
+    rc.dthc.dthc_BufferLength = n;
+    /* IFF data's code gets the file parsed as IFF: made when code first
+     * runs (env_hook), not here */
+    rc.want_iff = n && fh && IFFParseBase && odt_classify(buf, n, &form) == DTF_IFF;
+    e = odt_recognize(&env, &base->db, buf, n, name, (struct odt_DTHookContext *)&rc);
+    if (rc.dthc.dthc_IFF) { CloseIFF(rc.dthc.dthc_IFF); FreeIFF(rc.dthc.dthc_IFF); }
     return e;
 }
 
@@ -1084,7 +1103,7 @@ static struct IClass *obtain_engine(struct Library *lib)
  * header recognition can look at (with the IFFHandle for its code) */
 static struct odt_entry *recognize_iff(struct ODBase *base, struct IFFHandle *iff)
 {
-    struct DTHookContext dthc;
+    struct rctx rc;
     struct ContextNode *cn;
     UBYTE buf[12];
     ULONG type;
@@ -1097,15 +1116,15 @@ static struct odt_entry *recognize_iff(struct ODBase *base, struct IFFHandle *if
     buf[0] = 'F'; buf[1] = 'O'; buf[2] = 'R'; buf[3] = 'M';
     buf[4] = cn->cn_Size >> 24; buf[5] = cn->cn_Size >> 16; buf[6] = cn->cn_Size >> 8; buf[7] = cn->cn_Size;
     buf[8] = type >> 24; buf[9] = type >> 16; buf[10] = type >> 8; buf[11] = type;
-    memset_(&dthc, sizeof dthc);
-    dthc.dthc_SysBase = (struct Library *)SysBase;
-    dthc.dthc_DOSBase = (struct Library *)DOSBase;
-    dthc.dthc_UtilityBase = UtilityBase;
-    dthc.dthc_IFFParseBase = IFFParseBase;
-    dthc.dthc_IFF = iff;
-    dthc.dthc_Buffer = (STRPTR)buf;
-    dthc.dthc_BufferLength = sizeof buf;
-    return odt_recognize(&env, &base->db, buf, sizeof buf, NULL, (struct odt_DTHookContext *)&dthc);
+    memset_(&rc, sizeof rc);                /* want_iff 0: the caller's handle */
+    rc.dthc.dthc_SysBase = (struct Library *)SysBase;
+    rc.dthc.dthc_DOSBase = (struct Library *)DOSBase;
+    rc.dthc.dthc_UtilityBase = UtilityBase;
+    rc.dthc.dthc_IFFParseBase = IFFParseBase;
+    rc.dthc.dthc_IFF = iff;
+    rc.dthc.dthc_Buffer = (STRPTR)buf;
+    rc.dthc.dthc_BufferLength = sizeof buf;
+    return odt_recognize(&env, &base->db, buf, sizeof buf, NULL, (struct odt_DTHookContext *)&rc);
 }
 
 /* ObtainDataTypeA's DTST_CLIPBOARD: handle is an IFFHandle open on the

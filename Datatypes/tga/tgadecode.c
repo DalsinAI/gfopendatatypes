@@ -141,13 +141,9 @@ static ULONG pixel(const struct tga_head *h, const UBYTE *p, const ULONG *pal)
     }
 }
 
-LONG tga_decode(const struct tga_head *h, const UBYTE *f, ULONG len, ULONG *argb, ULONG *pal, UBYTE *alpha)
+LONG tga_start(const struct tga_head *h, const UBYTE *f, ULONG len, ULONG *pal, struct tga_rows *r, UBYTE opaque)
 {
-    const UBYTE *p = f + h->data_off, *end = f + len;
-    ULONG bpp = (h->depth + 7) >> 3, w = h->width, n = h->width * h->height;
-    ULONG x, y, i, run = 0, raw = 0, value = 0, seen;
-    BOOL short_file = FALSE;
-
+    ULONG i;
     if (h->data_off > len)
         return -1;
     if (h->type == 1) {
@@ -158,8 +154,23 @@ LONG tga_decode(const struct tga_head *h, const UBYTE *f, ULONG len, ULONG *argb
         for (i = 0; i < h->map_len; i++, m += mb)
             pal[i] = colour(m, h->map_depth, h->alpha);
     }
-    for (y = 0; y < h->height; y++) {
-        ULONG *q = argb + (h->top_down ? y : h->height - 1 - y) * w;
+    r->p = f + h->data_off;
+    r->run = r->raw = r->value = r->y = r->seen = 0;
+    r->short_file = 0;
+    r->opaque = opaque;
+    return 0;
+}
+
+void tga_strip(const struct tga_head *h, const UBYTE *f, ULONG len, const ULONG *pal, struct tga_rows *r,
+               ULONG *argb, ULONG n)
+{
+    const UBYTE *p = r->p, *end = f + len;
+    ULONG bpp = (h->depth + 7) >> 3, w = h->width, x, k, i;
+    ULONG run = r->run, raw = r->raw, value = r->value, seen = r->seen;
+    BOOL short_file = r->short_file;
+
+    for (k = 0; k < n; k++) {
+        ULONG *q = argb + (h->top_down ? k : n - 1 - k) * w;
         LONG step = 1;
         if (h->right_left) {
             q += w - 1;
@@ -204,25 +215,47 @@ LONG tga_decode(const struct tga_head *h, const UBYTE *f, ULONG len, ULONG *argb
                 raw--;
         }
     }
-    *alpha = h->alpha;
+    r->p = p;
+    r->run = run;
+    r->raw = raw;
+    r->value = value;
+    r->short_file = (UBYTE)short_file;
+    r->y += n;
     if (!h->alpha)
-        return 0;
-    for (i = 0, seen = 0; i < n; i++)
+        return;
+    n *= w;
+    if (r->opaque) {                     /* the second time through: the alpha was empty */
+        for (i = 0; i < n; i++)
+            argb[i] |= OPAQUE_BLACK;
+        return;
+    }
+    for (i = 0; i < n; i++)
         seen |= argb[i];
-    if (!(seen & 0xFF000000UL)) {        /* alpha 0 everywhere: an empty channel, not a clear picture */
+    r->seen = seen;
+    if (h->premultiplied)                /* a and r, g, b all 0 when the alpha turns out empty: untouched */
+        for (i = 0; i < n; i++) {
+            ULONG a = argb[i] >> 24, cr, cg, cb;
+            if (!a || a == 255)
+                continue;
+            cr = ((argb[i] >> 16) & 255) * 255 / a;
+            cg = ((argb[i] >> 8) & 255) * 255 / a;
+            cb = (argb[i] & 255) * 255 / a;
+            argb[i] = (a << 24) | ((cr > 255 ? 255 : cr) << 16) | ((cg > 255 ? 255 : cg) << 8) | (cb > 255 ? 255 : cb);
+        }
+}
+
+LONG tga_decode(const struct tga_head *h, const UBYTE *f, ULONG len, ULONG *argb, ULONG *pal, UBYTE *alpha)
+{
+    struct tga_rows r;
+    ULONG i, n = h->width * h->height;
+    if (tga_start(h, f, len, pal, &r, 0))
+        return -1;
+    tga_strip(h, f, len, pal, &r, argb, h->height);
+    *alpha = h->alpha;
+    if (h->alpha && !(r.seen & 0xFF000000UL)) {   /* alpha 0 everywhere: an empty channel, not a clear picture */
         for (i = 0; i < n; i++)
             argb[i] |= OPAQUE_BLACK;
         *alpha = 0;
-    } else if (h->premultiplied) {
-        for (i = 0; i < n; i++) {
-            ULONG a = argb[i] >> 24, r, g, b;
-            if (!a || a == 255)
-                continue;
-            r = ((argb[i] >> 16) & 255) * 255 / a;
-            g = ((argb[i] >> 8) & 255) * 255 / a;
-            b = (argb[i] & 255) * 255 / a;
-            argb[i] = (a << 24) | ((r > 255 ? 255 : r) << 16) | ((g > 255 ? 255 : g) << 8) | (b > 255 ? 255 : b);
-        }
     }
     return 0;
 }

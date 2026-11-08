@@ -176,7 +176,9 @@ static inline const odt_u8 *anm_planes(const struct anm_dec *d) { return d->cur 
 
 /* Copies the current frame into the planes of a BitMap: bpr bytes of each
  * row, rows modulo bytes apart (a BitMap's BytesPerRow, interleaved or
- * not); planes past the frame's depth are cleared. */
+ * not); planes past the frame's depth are cleared. Longwords at a time
+ * where both sides are word aligned; a plane in one go when the rows are
+ * as long as the modulo. */
 void anm_copy_out(const struct anm_dec *d, odt_u8 *const *planes, odt_u32 dst_depth, odt_u32 modulo);
 
 /* A frame's time on screen in ticks of the animation's fps (alf_Duration) */
@@ -193,7 +195,8 @@ struct anm_inst {
     struct adt_BitMap *key;             /* ADTA_KeyFrame */
     struct odt_SignalSemaphore lock;    /* the decoder, between the player and the application */
     odt_u8 ready;
-    odt_u8 pad[3];
+    odt_u8 anymem;                      /* the superclass shows frames from any memory (ADT_GFA_FramesAnyMem) */
+    odt_u8 pad[2];
 };
 
 /* Reads the object's source whole (env alloc); 0 or the DOS error */

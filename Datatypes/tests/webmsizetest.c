@@ -194,7 +194,7 @@ static void freeImage(vpx_image_t *img)
 /* Dithers an iw x ih picture into a buffer of size bytes taken as width x
  * height, pitch apart; checks the written pixels are exactly the rows x
  * cols expected and nothing else. */
-static void ditherCase(const WebMDitherTables *t, unsigned iw, unsigned ih, int srgb, unsigned long size, unsigned width,
+static void ditherCase(unsigned iw, unsigned ih, int srgb, unsigned long size, unsigned width,
     unsigned height, unsigned pitch, unsigned rows, unsigned cols, const char *why)
 {
     char what[200];
@@ -202,7 +202,7 @@ static void ditherCase(const WebMDitherTables *t, unsigned iw, unsigned ih, int 
     unsigned char *out = malloc(size ? size : 1);
     unsigned long i, wrong = 0;
     memset(out, UNTOUCHED, size);
-    webm_dither(t, img, out, size, width, height, pitch);
+    webm_dither(img, out, size, width, height, pitch);
     for (i = 0; i < size; i++) {
         int inside = i / pitch < rows && i % pitch < cols;
         if ((out[i] != UNTOUCHED) != inside)
@@ -217,7 +217,6 @@ static void ditherCase(const WebMDitherTables *t, unsigned iw, unsigned ih, int 
 
 int main(void)
 {
-    WebMDitherTables t;
     Buf f;
     size_t n, i;
     int v;
@@ -256,17 +255,16 @@ int main(void)
     free(f.d);
     printf("ok   %u cut or changed files: nothing read outside them, no side over %d\n", cases, WEBM_MAX_SIDE);
 
-    webm_dither_init(&t);
     /* What the old class did with that file: a 65536-byte buffer taken as
      * 65537 x 65536, pitch 65537. Not one row fits. */
-    ditherCase(&t, 65537, 2, 0, 65536, 65537, 65536, 65537, 0, 0, "the wrapped buffer: nothing fits");
+    ditherCase(65537, 2, 0, 65536, 65537, 65536, 65537, 0, 0, "the wrapped buffer: nothing fits");
     /* A frame bigger than its header: only the header's part. */
-    ditherCase(&t, 320, 240, 0, 160UL * 120, 160, 120, 160, 120, 160, "frame larger than the track");
-    ditherCase(&t, 100, 50, 0, 160UL * 120, 160, 120, 160, 50, 100, "frame smaller than the track");
+    ditherCase(320, 240, 0, 160UL * 120, 160, 120, 160, 120, 160, "frame larger than the track");
+    ditherCase(100, 50, 0, 160UL * 120, 160, 120, 160, 50, 100, "frame smaller than the track");
     /* A buffer shorter than width x height: the rows that fit. */
-    ditherCase(&t, 160, 120, 0, 1000, 160, 120, 160, 6, 160, "buffer of 6.25 rows");
-    ditherCase(&t, 64, 48, 1, 64UL * 48, 64, 48, 64, 48, 64, "whole picture");
-    ditherCase(&t, 64, 48, 0, 64UL * 48, 64, 48, 64, 48, 64, "whole picture");
+    ditherCase(160, 120, 0, 1000, 160, 120, 160, 6, 160, "buffer of 6.25 rows");
+    ditherCase(64, 48, 1, 64UL * 48, 64, 48, 64, 48, 64, "whole picture");
+    ditherCase(64, 48, 0, 64UL * 48, 64, 48, 64, 48, 64, "whole picture");
     if (failures) {
         printf("webmsizetest: %d failed\n", failures);
         return 1;

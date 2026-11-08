@@ -216,6 +216,8 @@ struct out {
     UBYTE interlaced, pass;
     WORD trans;                          /* -1 none */
     ULONG left;                          /* pixels still wanted */
+    ULONG *ap;                           /* next pixel, when the frame sits on the screen */
+    UBYTE *lp;
 };
 
 static void next_row(struct out *o)
@@ -235,17 +237,47 @@ static void next_row(struct out *o)
 
 static void put(struct out *o, UBYTE index)
 {
-    ULONG x = o->fx + o->col, y = o->fy + o->row;
-    if (index < o->colours && (WORD)index != o->trans && x < o->x1 && y < o->y1) {
-        if (o->lut8)
-            o->lut8[y * o->width + x] = o->remap[index];
-        else
-            o->argb[y * o->width + x] = o->palette[index];
-        o->written++;
+    if (o->ap) {
+        if (index < o->colours && (WORD)index != o->trans) {
+            *o->ap = o->palette[index];
+            o->written++;
+        }
+        o->ap++;
+        if (++o->col == o->fw) {
+            o->col = 0;
+            if (++o->row < o->fh)
+                o->ap += o->width - o->fw;
+        }
+        o->left--;
+        return;
     }
-    if (++o->col == o->fw)
-        next_row(o);
-    o->left--;
+    if (o->lp) {
+        if (index < o->colours && (WORD)index != o->trans) {
+            *o->lp = o->remap[index];
+            o->written++;
+        }
+        o->lp++;
+        if (++o->col == o->fw) {
+            o->col = 0;
+            if (++o->row < o->fh)
+                o->lp += o->width - o->fw;
+        }
+        o->left--;
+        return;
+    }
+    {
+        ULONG x = o->fx + o->col, y = o->fy + o->row;
+        if (index < o->colours && (WORD)index != o->trans && x < o->x1 && y < o->y1) {
+            if (o->lut8)
+                o->lut8[y * o->width + x] = o->remap[index];
+            else
+                o->argb[y * o->width + x] = o->palette[index];
+            o->written++;
+        }
+        if (++o->col == o->fw)
+            next_row(o);
+        o->left--;
+    }
 }
 
 /* Decodes frame f's LZW stream onto the screen: ARGB words, or with lut8
@@ -293,6 +325,15 @@ static ULONG draw(const UBYTE *file, ULONG len, const struct gif_info *g, const 
     o.pass = 0;
     o.trans = f->transparent ? f->trans : -1;
     o.left = (ULONG)f->w * f->h;
+    o.ap = 0;
+    o.lp = 0;
+    /* a frame that sits on the screen, not interlaced: the next pixel is a pointer */
+    if (!f->interlaced && (ULONG)f->x + f->w <= g->width && (ULONG)f->y + f->h <= g->height) {
+        if (lut8)
+            o.lp = lut8 + (ULONG)f->y * g->width + f->x;
+        else if (argb)
+            o.ap = argb + (ULONG)f->y * g->width + f->x;
+    }
 
     clear = (UWORD)(1U << min);
     end = clear + 1;
@@ -313,6 +354,11 @@ static ULONG draw(const UBYTE *file, ULONG len, const struct gif_info *g, const 
             }
             if (pos >= len)
                 return o.written;
+            acc |= (ULONG)file[pos++] << bits;
+            bits += 8;
+            block--;
+        }
+        while (bits <= 24 && block && pos < len) {      /* the rest of this sub-block, while it fits */
             acc |= (ULONG)file[pos++] << bits;
             bits += 8;
             block--;

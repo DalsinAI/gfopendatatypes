@@ -780,13 +780,22 @@ static odt_u32 frame_box(const struct odt_cenv *env, void *obj, struct odt_dtFra
     return 1;
 }
 
+/* The raw copy's buffer: the first read goes through a small one on the
+ * stack, so a file that fits in it costs what it always did (no
+ * allocation, no clearing); a bigger file is copied through 32 KB (16 KB
+ * when that much isn't free, the small one when neither is), which makes
+ * a save 64-128 times fewer DOS packets. */
+#define RAW_SMALL 256
+#define RAW_BIG   32768L
+
 /* DTWM_RAW for a class that has no writer: the source's bytes as they are
  * (ABI test: whether OS 3.2's datatypesclass copies or fails) */
 static odt_u32 write_raw(const struct odt_cenv *env, void *obj, struct odt_dtWrite *m)
 {
     struct odt_dtinst *d = ODT_DTINST(env, obj);
-    odt_u8 buf[256];
-    odt_s32 n;
+    odt_u8 small[RAW_SMALL], *buf = small, *big = NULLP;
+    odt_s32 n, size = RAW_SMALL;
+    int tried = 0;
     if (m->dtw_Mode != ODT_DTWM_RAW || !m->dtw_FileHandle) goto fail;
     if (d->source_type == ODT_DTST_MEMORY && d->source_address) {
         if (env->write(env, m->dtw_FileHandle, d->source_address, (odt_s32)d->source_size) != (odt_s32)d->source_size)
@@ -801,8 +810,17 @@ static odt_u32 write_raw(const struct odt_cenv *env, void *obj, struct odt_dtWri
         odt_s32 was;
         if (!fh) goto fail;
         if ((was = env->seek(env, fh, 0, OFFSET_BEGINNING)) < 0) return 0;
-        while ((n = env->read(env, fh, buf, sizeof buf)) > 0)
+        while ((n = env->read(env, fh, buf, size)) > 0) {
             if (env->write(env, m->dtw_FileHandle, buf, n) != n) break;
+            if (n == size && !tried && env->alloc) {
+                /* more than the small buffer holds: a big one for the rest */
+                odt_s32 want = RAW_BIG;
+                tried = 1;
+                if (!(big = env->alloc(env, want))) big = env->alloc(env, want = RAW_BIG / 2);
+                if (big) { buf = big; size = want; }
+            }
+        }
+        if (big && env->free) env->free(env, big);
         env->seek(env, fh, was, OFFSET_BEGINNING);
         return n == 0;
     }

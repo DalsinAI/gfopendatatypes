@@ -51,11 +51,36 @@ struct tga_head {
  * are any). 0, or -1 when this isn't a TGA it can read. */
 LONG tga_read_head(const UBYTE *file, ULONG len, struct tga_head *h);
 
-/* Decodes the picture into argb (width * height words), the colour map
- * first into pal (h->map_len words; NULL when there is none). 0, or -1 when
- * the header does not fit the file. Pixels a short file leaves out are
- * opaque black. *alpha says whether the result has alpha after all (an
- * empty alpha channel is dropped). No OS calls. */
+/* Where tga_strip() has got to (the caller keeps it). */
+struct tga_rows {
+    const UBYTE *p;                      /* the next pixel's bytes in the file */
+    ULONG run, raw, value;               /* the RLE packet it is in */
+    ULONG y;                             /* rows given, in the file's order */
+    ULONG seen;                          /* every pixel given, ORed (its top byte: any alpha) */
+    UBYTE short_file;                    /* the file ran out */
+    UBYTE opaque;                        /* the pixels made opaque (an empty alpha channel) */
+    UBYTE pad[2];
+};
+
+/* Before the rows: the colour map into pal (h->map_len words; NULL when
+ * there is none). opaque: every pixel opaque, the second time through a
+ * picture whose alpha came out empty. 0, or -1 when the header does not
+ * fit the file. */
+LONG tga_start(const struct tga_head *h, const UBYTE *file, ULONG len, ULONG *pal, struct tga_rows *r, UBYTE opaque);
+
+/* The next n rows in the file's order into argb (n * width words), placed
+ * top to bottom: a strip that goes at row r->y (before the call) of the
+ * picture when the file is top-down, else at height - r->y - n. Pixels a
+ * short file leaves out are opaque black; premultiplied alpha is undone.
+ * When the picture has alpha and r->seen has none in its top byte after
+ * the last strip, the alpha channel was empty: start again with opaque. */
+void tga_strip(const struct tga_head *h, const UBYTE *file, ULONG len, const ULONG *pal, struct tga_rows *r,
+               ULONG *argb, ULONG n);
+
+/* All of it as one strip into argb (width * height words), the colour map
+ * first into pal. 0, or -1 when the header does not fit the file. *alpha
+ * says whether the result has alpha after all (an empty alpha channel is
+ * dropped). No OS calls. */
 LONG tga_decode(const struct tga_head *h, const UBYTE *file, ULONG len, ULONG *argb, ULONG *pal, UBYTE *alpha);
 
 #endif

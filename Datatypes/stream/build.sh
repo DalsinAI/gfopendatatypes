@@ -65,9 +65,6 @@ link gzip
 obj brotli common/dtstart.c common/dtlib.c brotli/brdecode.c "$WORK/brdict.c" brotli/brotliclass.c
 link brotli
 
-# gzip: 1f 8b and method 8 (RFC 1952). Brotli has no signature: by name.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GZip" GZip gzip data gzip "#?" \
-    '$VER: GZip 47.1 (23.10.2026)' 0x1f 0x8b 0x08
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/Brotli" Brotli brotli data brot "#?.br" \
-    '$VER: Brotli 47.1 (23.10.2026)'
-echo "Devs/DataTypes/GZip, Brotli: $(wc -c < "$OUT/Devs/DataTypes/GZip"), $(wc -c < "$OUT/Devs/DataTypes/Brotli") bytes"
+# Its descriptor: descriptors.sh.
+. "$HERE/descriptors.sh"
+desc_stream "$OUT"

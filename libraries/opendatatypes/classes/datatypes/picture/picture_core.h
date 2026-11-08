@@ -168,6 +168,10 @@ static inline odt_u32 pic_rowbytes(odt_u32 w) { return ((w + 15) >> 4) << 1; }
 void pic_planar_to_chunky(const struct odt_BitMap *bm, odt_u32 w, odt_u32 h, odt_u8 *out);
 void pic_chunky_to_planar(const odt_u8 *in, odt_u32 w, odt_u32 h, odt_u32 depth, odt_u8 *const *planes,
                           odt_u32 bpr);
+/* The eight plane rows of n pixels, one byte a pixel every step bytes from
+ * px: plane d's row (bit d of each pixel) at out + d * rb, rb >= (n + 7) / 8
+ * bytes, the bits past the last pixel 0 */
+void pic_planes8(const odt_u8 *px, odt_u32 step, odt_u32 n, odt_u8 *out, odt_u32 rb);
 /* ByteRun1, one row: bytes written to out (at most n + (n + 127) / 128) */
 odt_u32 pic_byterun1_pack(const odt_u8 *in, odt_u32 n, odt_u8 *out);
 /* ILBM of the picture to a file handle: 1 written, 0 not (IoErr set) */

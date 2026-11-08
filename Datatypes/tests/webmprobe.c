@@ -30,7 +30,6 @@ int main(int argc, char **argv)
     int rc;
 
     int chunkyMode = argc > 2 && !strcmp(argv[1], "-chunky");
-    WebMDitherTables tables;
     unsigned char *chunky = NULL;
     if (chunkyMode) {
         argv++;
@@ -40,7 +39,6 @@ int main(int argc, char **argv)
         printf("usage: webmprobe [-chunky] file.webm\n");
         return 10;
     }
-    webm_dither_init(&tables);
     fseek(f, 0, SEEK_END);
     size = ftell(f);
     rc = webm_parse(readAt, f, (uint32_t)size, &info);
@@ -77,7 +75,7 @@ int main(int argc, char **argv)
                 unsigned long p;
                 if (!chunky)
                     chunky = calloc(info.width, info.height);
-                webm_dither(&tables, img, chunky, (unsigned long)info.width * info.height, info.width, info.height,
+                webm_dither(img, chunky, (unsigned long)info.width * info.height, info.width, info.height,
                     info.width);
                 for (p = 0; p < (unsigned long)info.width * info.height; p++)
                     sum = (sum * 31 + chunky[p]) & 0xffffffffUL;

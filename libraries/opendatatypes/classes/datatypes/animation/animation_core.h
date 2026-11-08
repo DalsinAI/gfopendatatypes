@@ -84,6 +84,11 @@
 #define ADT_ADTA_RightSample     ADT_SDTA_RightSample
 #define ADT_ADTA_SamplesPerSec   ADT_SDTA_SamplesPerSec
 
+/* GFOpenDatatypes' own (OM_GET, TRUE from this class, FALSE from OS 3.2's):
+ * the class shows a frame from any memory (remapped, or copied to Chip RAM
+ * first), so a subclass may put its frames' planes in Fast RAM */
+#define ADT_GFA_FramesAnyMem     (ODT_TAG_USER + 0x47460001UL)
+
 #define ADT_ADTM_Dummy                0x700UL
 #define ADT_ADTM_LOADFRAME            0x701UL
 #define ADT_ADTM_UNLOADFRAME          0x702UL
@@ -136,7 +141,8 @@ struct adt_ColorRegister { odt_u8 red, green, blue; };
 #define ADT_GLYPH_STOP  3
 
 struct adt_ext {
-    /* AllocBitMap(w, h, depth, BMF_CLEAR, friend) and FreeBitMap */
+    /* AllocBitMap(w, h, depth, 0, friend) (not cleared: every frame is
+     * drawn whole) and FreeBitMap */
     struct adt_BitMap *(*alloc_bitmap)(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth, void *friend_bm);
     void (*free_bitmap)(const struct odt_cenv *env, struct adt_BitMap *bm);
     /* ObtainBestPen on the screen's ColorMap (32-bit guns, PRECISION_IMAGE)
@@ -160,12 +166,30 @@ struct adt_ext {
                       odt_u32 cycles);
     void (*sound_stop)(const struct odt_cenv *env);
     odt_u32 (*clock)(const struct odt_cenv *env);  /* the colour clock: 3579545 NTSC, 3546895 PAL */
-    /* a process ticking fps times a second, calling adt_tick(env, cl, obj)
-     * each time until stopped */
+    /* a process ticking fps times a second by absolute deadlines (adt_due),
+     * calling adt_tick_n(env, cl, obj, the ticks due) until stopped */
     void *(*player_start)(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 fps);
     void (*player_stop)(const struct odt_cenv *env, void *player);
     /* WaitBlit, before the CPU writes into a bitmap a blit may still read */
     void (*wait_blit)(const struct odt_cenv *env);
+    /* Is every plane of bm in Chip RAM (where the blitter reads)? NULL: yes */
+    int (*in_chip)(const struct odt_cenv *env, const struct adt_BitMap *bm);
+    /* A bitmap for frames whose planes may be in Fast RAM (free_bitmap
+     * frees it); NULL: alloc_bitmap. Its contents are not cleared. */
+    struct adt_BitMap *(*alloc_any)(const struct odt_cenv *env, odt_u32 w, odt_u32 h, odt_u32 depth);
+    /* A frame's alf_CMap (a struct ColorMap): up to n of its colours as
+     * 8-bit R, G, B into rgb; how many */
+    odt_u32 (*cmap_colors)(const struct odt_cenv *env, void *cmap, odt_u32 n, odt_u8 *rgb);
+    /* n colours (8-bit R, G, B) into the screen's palette from colour
+     * first (LoadRGB32), where the screen is the film's own (not the
+     * Workbench's) */
+    void (*load_colors)(const struct odt_cenv *env, void *screen, odt_u32 first, odt_u32 n, const odt_u8 *rgb);
+    /* a struct ColorMap's colours (GetRGB32) as R, G, B bytes into rgb, at
+     * most max of them: how many */
+    odt_u32 (*cmap_rgb)(const struct odt_cenv *env, void *cmap, odt_u8 *rgb, odt_u32 max);
+    /* fn(arg) on at least bytes of stack: the caller's when it has that
+     * much free, else one of its own (exec's StackSwap) */
+    odt_u32 (*call_on_stack)(const struct odt_cenv *env, odt_u32 bytes, odt_u32 (*fn)(void *arg), void *arg);
 };
 
 /* ---- playing: frames against time -------------------------------------------- */
@@ -193,6 +217,28 @@ void adt_play_start(struct adt_play *p, odt_u32 frame, odt_u32 duration, odt_u32
 int adt_play_tick(struct adt_play *p);
 void adt_play_shown(struct adt_play *p, odt_u32 duration);
 
+/* The player's clock, by absolute deadlines: tick n is due n / fps
+ * seconds after the player started, whatever each tick took, so a film
+ * plays at its rate (re-arming a timer after each tick adds the tick's
+ * work to every frame) and its sound stays in step. A tick's deadline
+ * from the start, as seconds and microseconds (fps 1 to 4294) */
+void adt_deadline(odt_u32 n, odt_u32 fps, odt_u32 *secs, odt_u32 *micro);
+/* How many ticks are due by `now` (seconds and microseconds since the
+ * start, micro < 1000000): every tick whose deadline has come */
+odt_u32 adt_due(odt_u32 secs, odt_u32 micro, odt_u32 fps);
+/* The time from s0.m0 to s1.m1 (system times, micro < 1000000) into
+ * *secs, *micro; 0 when s1.m1 is before s0.m0 (the clock was set back) */
+int adt_elapsed(odt_u32 s0, odt_u32 m0, odt_u32 s1, odt_u32 m1, odt_u32 *secs, odt_u32 *micro);
+
+/* A sample of len bytes as audio.device writes (65535 words, 131070
+ * bytes, a write at most), queued one after another on a channel: the
+ * first write's start and length go in start[0], len[0]..., cycles times
+ * over (cycles 0, for ever, and a sample that needs one write: the one
+ * write repeats itself; more than one: once). How many writes, at most
+ * max (the rest of the sample left out); len is made even. */
+#define ADT_AUDIO_MAX 131070UL
+odt_u32 adt_sound_split(odt_u32 len, odt_u32 cycles, odt_u32 *start, odt_u32 *part, odt_u32 max);
+
 /* Where in a sample frame time ticks starts, in bytes: ticks / fps
  * seconds at clock / period samples a second (or sps when given) */
 odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps, odt_u32 clock, odt_u32 len);
@@ -200,9 +246,15 @@ odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps
 /* ---- remapping ---------------------------------------------------------------- */
 
 /* Each pixel of src (w x h) through table into dst (planes as BitMaps
- * have them), eight pixels at a time; pixels past src's depth read as 0,
- * dst planes past 8 and dst's bits past w are left alone. */
+ * have them), 32 pixels at a time, a longword of each plane in and out
+ * (a byte at a time at a row's end, or where a BitMap isn't word
+ * aligned); pixels past src's depth read as 0, dst planes past 8 and
+ * dst's bits past w are left alone. No table, or one that is the identity
+ * on every pixel src can hold, copies the planes. */
 void adt_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst);
+
+/* Is table (NULL: none) the identity on 0 to 2^depth - 1? */
+int adt_identity(const odt_u8 *table, odt_u32 depth);
 
 /* ---- the control panel -------------------------------------------------------- */
 
@@ -228,11 +280,22 @@ odt_s32 adt_knob_x(const struct adt_panel *p, odt_u32 frame, odt_u32 frames);
 
 struct adt_slot {
     struct adt_Frame msg;               /* as the subclass filled it */
-    struct adt_BitMap *remapped;        /* ours, on the screen's pens; kept for the slot's next frame */
+    struct adt_BitMap *remapped;        /* ours, on the screen's pens (or a Chip RAM copy); kept for the slot's next frame */
     odt_u8 used;
-    odt_u8 pad;
+    odt_u8 spare;                       /* not used, its frame's bitmap kept to be handed back */
     odt_u16 remapped_w;                 /* the width remapped was made for */
+    odt_u8 copied;                      /* remapped is the frame copied to Chip RAM, not on pens */
+    odt_u8 pad[3];
+    odt_u8 *table;                      /* 256: the pens for this frame's own colours (alf_CMap), or 0 */
 };
+
+/* A pen obtained for a colour some frame's alf_CMap has */
+struct adt_xpen {
+    odt_u32 rgb;                        /* 0x00RRGGBB */
+    odt_u8 pen;
+    odt_u8 pad[3];
+};
+#define ADT_MAXXPENS 256
 
 struct adt_inst {
     struct odt_IClass *cl;              /* for the player process */
@@ -262,8 +325,13 @@ struct adt_inst {
     void *player;
     struct odt_GadgetInfo gi;           /* a copy, for drawing from the player */
     odt_u8 have_gi;
-    odt_u8 pad2[3];
+    odt_u8 cm_loaded;                   /* a frame's own colours are in the screen's palette */
+    odt_u8 pad2[2];
     struct adt_panel pnl;
+    odt_u8 *cm_rgb;                     /* 768: a frame's colours as read; 768 more: those last loaded */
+    odt_u32 cm_last_n;
+    struct adt_xpen *xpens;             /* ADT_MAXXPENS: pens for frames' own colours, given back with the rest */
+    odt_u32 nxpens;
 };
 
 /* The frames wanted from the shown one on (preload of them): unloads the
@@ -271,10 +339,15 @@ struct adt_inst {
 struct adt_slot *adt_cache(const struct odt_cenv *env, struct adt_inst *in, void *obj, odt_u32 frame);
 void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj);
 
-/* The player process's tick */
+/* The player process's tick; adt_tick_n: n ticks at once (the player fell
+ * behind): the frames between are passed over (their durations as the
+ * cache knows them) and only the last is loaded and shown, its sound or
+ * the film's sound from where the frame is */
 void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj);
+void adt_tick_n(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 n);
 
 /* ---- writing: the animation as an IFF ANIM (DTM_WRITE, DTWM_IFF) ------------- */
+/* (and as an MP4, DTWM_RAW with OIA_WriteFormat OIWF_MP4: mp4_core.h) */
 
 /* What adt_anim_write writes */
 struct adt_aw_spec {

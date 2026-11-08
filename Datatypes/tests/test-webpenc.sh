@@ -28,7 +28,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/obj" "$OUT/files"
 tar -xzf "$T" -C "$OUT"
 W="$OUT/libwebp-1.6.0"
-(cd "$W" && for p in no-float demux-null-chunk encoder-no-float; do
+(cd "$W" && for p in no-float demux-null-chunk encoder-no-float m68060; do
     patch -p1 -s < "$HERE/patches/libwebp-1.6.0-$p.patch"; done)
 # libwebp's decoder and the lossless encoder's files, as an archive so only
 # what is used is linked; picture_enc.c, picture_csp_enc.c and

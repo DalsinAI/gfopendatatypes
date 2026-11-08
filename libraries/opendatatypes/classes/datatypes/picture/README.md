@@ -73,6 +73,8 @@ or AROS code, nor any third-party datatype). Step D4 of
 | `PDTA_FreeSourceBitMap` | the source bitmap freed as soon as a layout has the pixels read from it | documented |
 | A mask that cannot be allocated | the layout fails (ERROR_NO_FREE_STORE), the destination freed | ours |
 | `PDTM_SCALE` or a picture past 65535 pixels a side | refused (a BitMap's sizes are 16 bits); 4-byte pixel buffers checked before multiplying | ours |
+| `PDTM_WRITEPIXELARRAY` into a V42 picture (`PDTA_BitMap` set) | fails (0); the bitmap stays the picture | ours |
+| `PDTM_SCALE` of a V42 picture whose bitmap is smaller than its BitMapHeader | scales the size the layout has: the BitMapHeader's cut to the bitmap's (the bitmap's when the BitMapHeader has none) | ours |
 | `DTM_OBTAINDRAWINFO` | lays out and holds `si_Lock` until the matching `DTM_RELEASEDRAWINFO` (a layout waits) | ours |
 | `GM_LAYOUT` | passed to datatypesclass, which runs `DTM_ASYNCLAYOUT` (dt-d2); the picture is made there or at `DTM_PROCLAYOUT` | documented |
 
