@@ -17,6 +17,8 @@ usage: mkdtdesc.py OUT NAME BASENAME GROUP ID PATTERN VERSION [MASK...]
   DT_TEXT=1 marks a text format (DTF_ASCII): datatypes.library only tries
   text descriptors on a file that reads as text, so SVG, PostScript, RTF,
   CSV and the like need it or the ascii datatype takes them.
+  DT_IFF=1 marks an IFF format (DTF_IFF): a file that starts with FORM,
+  CAT or LIST is only tried against IFF descriptors (AIFF, AIFC).
 
 MIT, Copyright (c) 2026 AmiCradle Team.
 """
@@ -26,6 +28,7 @@ import sys
 
 DTF_BINARY = 0x0000
 DTF_ASCII = 0x0001
+DTF_IFF = 0x0002
 
 
 def chunk(cid, data):
@@ -53,7 +56,8 @@ def main(argv):
     pattern_off = base_off + len(base) + 1
     dthd = struct.pack(">IIII4s4shhHH", name_off, base_off, pattern_off, mask_off if mask else 0,
                        group.encode(), ident.encode(), len(mask), 0,
-                       DTF_ASCII if os.environ.get("DT_TEXT") == "1" else DTF_BINARY,
+                       DTF_ASCII if os.environ.get("DT_TEXT") == "1" else
+                       DTF_IFF if os.environ.get("DT_IFF") == "1" else DTF_BINARY,
                        int(os.environ.get("DT_PRIORITY", "0")) & 0xFFFF)
     dthd += b"".join(struct.pack(">H", w) for w in mask)
     dthd += name.encode() + b"\0" + base.encode() + b"\0" + pattern.encode() + b"\0"

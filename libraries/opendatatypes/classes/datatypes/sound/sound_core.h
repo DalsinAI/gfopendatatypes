@@ -76,6 +76,9 @@ struct snd_inst {
     void *player;                       /* the shell's player, while one plays */
     struct snd_timeval replay;
     struct dtc_audio_plan plan;
+    odt_u32 chip_bytes;                 /* chip[]'s size, while SND_F_CHIP */
+    odt_u8 *wave;                       /* the waveform's columns (lowest, highest), while SND_F_WAVE */
+    odt_u32 wave_w;                     /* how many */
 };
 #define SND_F_FREE       0x0001
 #define SND_F_CONTINUOUS 0x0002
@@ -83,12 +86,17 @@ struct snd_inst {
 #define SND_F_PLAYING    0x0008
 #define SND_F_PANSET     0x0010
 #define SND_F_PLAYED     0x0020         /* DTA_Immediate's play happened */
+#define SND_F_CHIP       0x0040         /* chip[] holds the sound as it is set now */
+#define SND_F_WAVE       0x0080         /* wave holds its columns for wave_w */
 
 odt_u32 snd_inst_size(void);
 odt_u32 snd_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, void *msg);
 
 /* The sample i of channel ch (0 left, 1 right) as 8 bits */
 odt_s8 snd_sample8(const struct snd_inst *p, odt_u32 ch, odt_u32 i);
+/* Samples from..from+n of channel ch as 8 bits into dst: a loop for each
+ * layout (8 or 16 bits, interleaved or not) */
+void snd_samples8(const struct snd_inst *p, odt_u32 ch, odt_u32 from, odt_u32 n, odt_s8 *dst);
 /* Makes p->plan for what is set now; 0 when there is nothing to play */
 int snd_make_plan(const struct odt_cenv *env, struct snd_inst *p, odt_u32 cycles);
 /* 8SVX of the sound to a file handle: 1 written, 0 not (IoErr set) */

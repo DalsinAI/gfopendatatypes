@@ -85,10 +85,10 @@
 #endif
 
 const char LibName[] = "gfopengif.datatype";
-const char LibIdString[] = "gfopengif.datatype 47.4 (5.11.2026) AmiCradle Team";
+const char LibIdString[] = "gfopengif.datatype 47.5 (8.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 4;
-static const char version[] __attribute__((used)) = "$VER: gfopengif.datatype 47.4 (5.11.2026)";
+const UWORD LibRevision = 5;
+static const char version[] __attribute__((used)) = "$VER: gfopengif.datatype 47.5 (8.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;

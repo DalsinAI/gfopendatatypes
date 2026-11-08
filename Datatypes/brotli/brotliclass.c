@@ -24,10 +24,10 @@
 #include "brdecode.h"
 
 const char LibName[] = "brotli.datatype";
-const char LibIdString[] = "brotli.datatype 47.1 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "brotli.datatype 47.2 (8.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: brotli.datatype 47.1 (23.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: brotli.datatype 47.2 (8.11.2026)";
 
 const char dt_superclass[] = STREAMDTCLASS;
 const UWORD dt_superversion = 47;

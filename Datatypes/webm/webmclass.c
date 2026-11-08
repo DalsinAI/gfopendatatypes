@@ -41,10 +41,10 @@
 #include "vpx/vp8dx.h"
 
 const char LibName[] = "webm.datatype";
-const char LibIdString[] = "webm.datatype 47.1 (4.10.2026) AmiCradle Team, libvpx 1.17.0";
+const char LibIdString[] = "webm.datatype 47.2 (7.11.2026) AmiCradle Team, libvpx 1.17.0";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.1 (4.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: webm.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "animation.datatype";
 const UWORD dt_superversion = 40;
@@ -98,12 +98,9 @@ typedef struct {
 
 ULONG dt_instsize = sizeof(WebMData);
 
-static WebMDitherTables ditherTables;
-
 BOOL dt_init(void)
 {
-    webm_dither_init(&ditherTables);
-    return TRUE;
+    return TRUE;                   /* the dither's tables are const (webm_dither_tables.h) */
 }
 
 void dt_cleanup(void)
@@ -154,7 +151,7 @@ static BOOL decodeOne(WebMData *d, ULONG index)
     while ((img = vpx_codec_get_frame(&d->codec, &iter)))
         last = img;
     if (last)
-        webm_dither(&ditherTables, last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
+        webm_dither(last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
     d->lastDecoded = index;
     return TRUE;
 }
@@ -187,10 +184,11 @@ static ULONG decodeRequest(APTR arg)
 }
 
 /* The decoded frame in a bitmap: "into" when animation.datatype hands one
- * back to be used again (see gfopenvideo's ADTM_LOADFRAME), else a new one. */
+ * back to be used again (see gfopenvideo's ADTM_LOADFRAME), else a new one,
+ * not cleared: WriteChunkyPixels fills every pixel of it. */
 static struct BitMap *frameBitMap(WebMData *d, struct BitMap *into)
 {
-    struct BitMap *bm = into ? into : AllocBitMap(d->info.width, d->info.height, 8, BMF_CLEAR, NULL);
+    struct BitMap *bm = into ? into : AllocBitMap(d->info.width, d->info.height, 8, 0, NULL);
     struct RastPort rp;
     if (!bm)
         return NULL;

@@ -20,21 +20,26 @@ outputs = [
 
 [test]
 host_parallel = true
-# The host job from .github/workflows/check-datatypes.yml, unchanged.
+# The host job from .github/workflows/check-datatypes.yml.
 host = [
   "sh Datatypes/tests/test-tga.sh",
   "sh Datatypes/tests/test-gif.sh",
   "sh Datatypes/tests/test-cdxl.sh",
   "sh Datatypes/tests/test-webm.sh",
+  "sh Datatypes/tests/test-webm-dither.sh",
   "sh Datatypes/tests/test-stream.sh",
   "sh Datatypes/tests/test-webm-read.sh",
+  "QEMU_M68K=qemu-m68k sh Datatypes/tests/test-pngdec.sh",
   "sh Datatypes/tests/test-pngenc.sh",
   "sh Datatypes/tests/test-tgaenc.sh",
   "sh Datatypes/tests/test-gifenc.sh",
   "sh Datatypes/tests/test-webpenc.sh",
+  "sh Datatypes/tests/test-webp060.sh",
+  "sh Datatypes/tests/test-webpcore.sh",
   "sh Datatypes/tests/test-gzenc.sh",
   "python3 Datatypes/tests/test-romtag.py",
   "sh Datatypes/tests/test-planar.sh",
+  "sh Datatypes/tests/test-ilbmbr1.sh",
   # The m68k job (Debian's m68k-linux GCC under qemu-m68k): here until
   # ac090-run exists, then it moves to the nightly cross-check.
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh",

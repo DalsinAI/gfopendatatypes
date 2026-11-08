@@ -302,9 +302,16 @@ int main(int argc, char **argv)
         goto out;
     target = o;
     if (as) {
+        /* What a V43 picture subclass does when it loads (gfopentga's
+         * loadTGA, gfopenpng's, AROS's png.datatype): the BitMapHeader
+         * filled in, then its name, the nominal size and V43 mode set in
+         * one SetDTAttrs, then the pixels. OS 3.2's own picture.datatype is
+         * known to take pixels that way; the object is made in V43 mode
+         * from the start as well. */
         struct BitMapHeader *bmh = NULL;
         if (!(target = NewDTObject(NULL, DTA_SourceType, DTST_RAM, DTA_BaseName, (ULONG)as,
-                                   DTA_GroupID, GID_PICTURE, PDTA_DestMode, PMODE_V43, TAG_DONE))) {
+                                   DTA_GroupID, GID_PICTURE, PDTA_DestMode, PMODE_V43,
+                                   PDTA_SourceMode, PMODE_V43, TAG_DONE))) {
             printf("%s: no empty %s object, ioerr=%ld\n", src, as, (long)IoErr());
             goto out;
         }
@@ -316,9 +323,25 @@ int main(int argc, char **argv)
         bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h;
         bmh->bmh_Depth = 32;
         bmh->bmh_Masking = al ? mskHasAlpha : mskNone;
-        SetDTAttrs(target, NULL, NULL, PDTA_SourceMode, PMODE_V43, PDTA_AlphaChannel, al, TAG_DONE);
+        SetDTAttrs(target, NULL, NULL,
+                   DTA_ObjName, (ULONG)FilePart((STRPTR)dst),
+                   DTA_NominalHoriz, w,
+                   DTA_NominalVert, h,
+                   PDTA_SourceMode, PMODE_V43,
+                   PDTA_AlphaChannel, al,
+                   TAG_DONE);
+        SetIoErr(0);
         if (!DoMethod(target, PDTM_WRITEPIXELARRAY, (ULONG)a, PBPAFMT_ARGB, w * 4, 0, 0, w, h)) {
-            printf("%s: WRITEPIXELARRAY into %s failed\n", src, as);
+            /* what the object says of itself, for the lab's log */
+            ULONG sm = ~0UL, nh = ~0UL, nv = ~0UL;
+            LONG e = IoErr();
+            struct BitMapHeader *b2 = NULL;
+            GetDTAttrs(target, PDTA_SourceMode, (ULONG)&sm, PDTA_BitMapHeader, (ULONG)&b2,
+                       DTA_NominalHoriz, (ULONG)&nh, DTA_NominalVert, (ULONG)&nv, TAG_DONE);
+            printf("%s: WRITEPIXELARRAY into %s failed, ioerr=%ld sourcemode=%ld bmhd=%s%lux%lux%u nominal=%ldx%ld\n",
+                   src, as, (long)e, (long)sm, b2 == bmh ? "" : "(moved) ",
+                   b2 ? (unsigned long)b2->bmh_Width : 0UL, b2 ? (unsigned long)b2->bmh_Height : 0UL,
+                   b2 ? b2->bmh_Depth : 0, (long)nh, (long)nv);
             goto out;
         }
     }

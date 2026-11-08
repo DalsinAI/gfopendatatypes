@@ -9,10 +9,11 @@
  * The sound keeps what its subclass or the program set (SDTA_Sample, or
  * SDTA_LeftSample and SDTA_RightSample; 8 or 16 bits, mono or interleaved
  * with SDTA_SampleType). To play, it copies the sample into chip memory
- * as 8 bits and makes a plan for audio.device: the channel sets to ask
- * for, then requests of at most 131070 bytes, at the period, volume and
- * cycles set; the shell's player process carries the plan out and signals
- * SDTA_SignalTask at the end. As a gadget it draws the waveform and, with
+ * as 8 bits (once: the copy is kept until a sound attribute is set again)
+ * and makes a plan for audio.device: the channel sets to ask for, then
+ * requests of at most 131070 bytes, at the period, volume and cycles set;
+ * the shell's player process carries the plan out, double buffered
+ * (../picture/dtc_audio.h), and signals SDTA_SignalTask at the end. As a gadget it draws the waveform and, with
  * DTA_ControlPanel, a play and a stop button under it.
  *
  * "ABI test" marks a corner the autodocs leave open; the ABI test's PROBE
@@ -28,6 +29,7 @@ using u32 = odt_u32;
 using s32 = odt_s32;
 using s8 = odt_s8;
 using env_t = const odt_cenv;
+typedef u32 __attribute__((may_alias)) au32;     /* longs read and written over bytes */
 
 template <class T> constexpr T min(T a, T b) { return a < b ? a : b; }
 template <class T> constexpr T max(T a, T b) { return a > b ? a : b; }
@@ -70,12 +72,47 @@ void free_chip(env_t *env, snd_inst *p)
     p->chip[0] = p->chip[1] = nullptr;
 }
 
+/* The player stopped. The chip copy stays for the next play while it is
+ * still the sound that is set (SND_F_CHIP). */
 void stop(env_t *env, snd_inst *p)
 {
     if ((p->flags & SND_F_PLAYING) && X(env)->audio_stop)
         X(env)->audio_stop(env, &p->player); /* synchronous: the player is done with chip[] */
     p->flags &= ~SND_F_PLAYING;
-    free_chip(env, p);
+    if (!(p->flags & SND_F_CHIP))
+        free_chip(env, p);
+}
+
+void free_wave(env_t *env, snd_inst *p)
+{
+    env->free(env, p->wave);
+    p->wave = nullptr;
+    p->flags &= ~SND_F_WAVE;
+}
+
+/* The sound changed (or was set again: a program that changed the samples
+ * where they are sets SDTA_Sample again): the chip copy and the waveform
+ * are made afresh. A chip copy the player still plays goes when it stops. */
+void invalidate(env_t *env, snd_inst *p)
+{
+    p->flags &= ~SND_F_CHIP;
+    if (!(p->flags & SND_F_PLAYING))
+        free_chip(env, p);
+    free_wave(env, p);
+}
+
+/* Where channel ch's 8-bit samples are: the first, and the bytes from one
+ * to the next (the high byte of a 16-bit sample) */
+struct src { const s8 *at; u32 stride; };
+src source(const snd_inst *p, u32 ch)
+{
+    bool wide = p->sample_type == SND_SDTST_M16S || p->sample_type == SND_SDTST_S16S;
+    bool inter = interleaved(p);
+    const s8 *s = ch && p->right ? p->right : p->left;
+    u32 step = wide ? 2 : 1;
+    if (!s)
+        return { nullptr, 0 };
+    return { s + (inter && ch ? step : 0), inter ? 2 * step : step };
 }
 
 bool play(env_t *env, odt_IClass *cl, void *obj, snd_inst *p)
@@ -129,6 +166,7 @@ u32 set_attrs(env_t *env, void *obj, snd_inst *p, odt_TagItem *tags)
         case SND_SDTA_Sample: {
             s8 *s = reinterpret_cast<s8 *>(d);
             s8 *old = p->left;
+            invalidate(env, p);
             p->left = s;
             if (old && old != s && (p->flags & SND_F_FREE) && old != p->right)
                 env->free(env, old);
@@ -136,14 +174,19 @@ u32 set_attrs(env_t *env, void *obj, snd_inst *p, odt_TagItem *tags)
         }
         case SND_SDTA_LeftSample: {
             s8 *old = p->left;
+            invalidate(env, p);
             p->left = reinterpret_cast<s8 *>(d);
             if (old && old != p->left && (p->flags & SND_F_FREE) && old != p->right)
                 env->free(env, old);
             break;
         }
-        case SND_SDTA_RightSample: set_free_sample(env, p, &p->right, reinterpret_cast<s8 *>(d)); break;
+        case SND_SDTA_RightSample:
+            invalidate(env, p);
+            set_free_sample(env, p, &p->right, reinterpret_cast<s8 *>(d));
+            break;
         case SND_SDTA_SampleLength:
             /* 0 stops a sound that plays (the attribute's contract) */
+            invalidate(env, p);
             if (!d)
                 stop(env, p);
             p->length = d;
@@ -192,7 +235,10 @@ u32 set_attrs(env_t *env, void *obj, snd_inst *p, odt_TagItem *tags)
             p->pan = min<u32>(d, SND_UNITY);
             p->flags |= SND_F_PANSET;
             break;
-        case SND_SDTA_SampleType: p->sample_type = d <= SND_SDTST_S16S ? d : SND_SDTST_M8S; break;
+        case SND_SDTA_SampleType:
+            invalidate(env, p);
+            p->sample_type = d <= SND_SDTST_S16S ? d : SND_SDTST_M8S;
+            break;
         default: continue;
         }
         n++;
@@ -288,6 +334,35 @@ void button(env_t *env, void *rp, odt_GadgetInfo *gi, s32 x0, s32 y0, s32 x1, s3
     }
 }
 
+/* Column x of W: the samples x * length / W up to (x + 1) * length / W
+ * (at least one), their lowest and highest; none (lowest 127, highest
+ * -128) past the end */
+void wave_column(const snd_inst *p, u32 W, u32 x, u8 *out)
+{
+    /* x * length / W without the product: length = q W + r */
+    u32 q = p->length / W, r = p->length % W;
+    u32 s0 = x * q + x * r / W;
+    u32 s1 = max<u32>((x + 1) * q + (x + 1) * r / W, s0 + 1);
+    s32 lo = 127, hi = -128;
+    src c = source(p, 0);
+    if (s1 > p->length)
+        s1 = p->length;
+    if (c.at)
+        for (const s8 *a = c.at + s0 * c.stride, *e = c.at + s1 * c.stride; a < e; a += c.stride) {
+            s32 v = *a;
+            lo = min(lo, v);
+            hi = max(hi, v);
+        }
+    out[0] = static_cast<u8>(lo);
+    out[1] = static_cast<u8>(hi);
+}
+
+void wave_columns(const snd_inst *p, u32 W, u8 *out)
+{
+    for (u32 x = 0; x < W; x++)
+        wave_column(p, W, x, out + 2 * x);
+}
+
 void render(env_t *env, odt_IClass *cl, void *obj, snd_inst *p, odt_GadgetInfo *gi, void *rp)
 {
     if (!rp)
@@ -302,16 +377,26 @@ void render(env_t *env, odt_IClass *cl, void *obj, snd_inst *p, odt_GadgetInfo *
     fill(env, rp, pen(gi, DTC_BACKGROUNDPEN), x0, y0, x0 + W - 1, y0 + wh - 1);
     if (p->left && p->length) {
         u32 tp = pen(gi, DTC_TEXTPEN);
+        /* each column's lowest and highest sample, worked out once for
+         * this width and kept until the sound changes */
+        if (!(p->flags & SND_F_WAVE) || p->wave_w != static_cast<u32>(W)) {
+            free_wave(env, p);
+            if ((p->wave = static_cast<u8 *>(env->alloc(env, 2 * static_cast<u32>(W)))) != nullptr) {
+                p->wave_w = static_cast<u32>(W);
+                p->flags |= SND_F_WAVE;
+                wave_columns(p, static_cast<u32>(W), p->wave);
+            }
+        }
         for (s32 x = 0; x < W; x++) {
-            /* x * length / W without the product: length = q W + r */
-            u32 q = p->length / static_cast<u32>(W), r = p->length % static_cast<u32>(W);
-            u32 s0 = static_cast<u32>(x) * q + static_cast<u32>(x) * r / static_cast<u32>(W);
-            u32 s1 = max<u32>(static_cast<u32>(x + 1) * q + static_cast<u32>(x + 1) * r / static_cast<u32>(W), s0 + 1);
-            s32 lo = 127, hi = -128;
-            for (u32 i = s0; i < s1 && i < p->length; i++) {
-                s32 v = snd_sample8(p, 0, i);
-                lo = min(lo, v);
-                hi = max(hi, v);
+            s32 lo, hi;
+            if (p->wave) {
+                lo = static_cast<s8>(p->wave[2 * x]);
+                hi = static_cast<s8>(p->wave[2 * x + 1]);
+            } else {
+                u8 col[2];              /* no memory for the columns: this one alone */
+                wave_column(p, static_cast<u32>(W), static_cast<u32>(x), col);
+                lo = static_cast<s8>(col[0]);
+                hi = static_cast<s8>(col[1]);
             }
             if (hi < lo)
                 continue;
@@ -360,28 +445,70 @@ extern "C" odt_s8 snd_sample8(const snd_inst *p, odt_u32 ch, odt_u32 i)
     return wide ? s[k * 2] : s[k];      /* 16 bits: the high byte (ABI test: OS 3.2 may round) */
 }
 
+extern "C" void snd_samples8(const snd_inst *p, odt_u32 ch, odt_u32 from, odt_u32 n, odt_s8 *dst)
+{
+    src c = source(p, ch);
+    if (!c.at) {
+        while (n--)
+            *dst++ = 0;
+        return;
+    }
+    const s8 *a = c.at + from * c.stride;
+    switch (c.stride) {
+    case 1:
+        /* 8 bits, one channel: longs while both are long aligned */
+        if (!((reinterpret_cast<u32>(a) | reinterpret_cast<u32>(dst)) & 3)) {
+            const au32 *la = reinterpret_cast<const au32 *>(a);
+            au32 *ld = reinterpret_cast<au32 *>(dst);
+            for (; n >= 4; n -= 4)
+                *ld++ = *la++;
+            a = reinterpret_cast<const s8 *>(la);
+            dst = reinterpret_cast<s8 *>(ld);
+        }
+        while (n--)
+            *dst++ = *a++;
+        break;
+    case 2:                             /* 8 bits interleaved, or 16 bits */
+        for (; n; n--, a += 2)
+            *dst++ = *a;
+        break;
+    default:                            /* 16 bits interleaved */
+        for (; n; n--, a += 4)
+            *dst++ = *a;
+        break;
+    }
+}
+
 extern "C" int snd_make_plan(const odt_cenv *env, snd_inst *p, odt_u32 cycles)
 {
     dtc_audio_plan *pl = &p->plan;
     for (u32 i = 0; i < sizeof *pl; i++)
         reinterpret_cast<u8 *>(pl)[i] = 0;
-    free_chip(env, p);
-    if (!p->left || !p->length || !X(env)->alloc_chip)
+    if (!p->left || !p->length || !X(env)->alloc_chip) {
+        p->flags &= ~SND_F_CHIP;
+        free_chip(env, p);
         return 0;
+    }
     bool st = stereo(p);
     u32 bytes = (p->length + 1) & ~1UL;
     u32 maxbytes = DTC_AUDIO_MAXLEN * (DTC_AUDIO_MAXSEGS / (st ? 2 : 1));
     if (bytes > maxbytes)
         bytes = maxbytes;               /* ABI test: a sample longer than the plan holds */
-    for (u32 ch = 0; ch < (st ? 2U : 1U); ch++) {
-        p->chip[ch] = static_cast<s8 *>(X(env)->alloc_chip(env, bytes));
-        if (!p->chip[ch]) {
-            free_chip(env, p);
-            set_err(env, DTC_ERROR_NO_FREE_STORE);
-            return 0;
+    if (!(p->flags & SND_F_CHIP) || p->chip_bytes != bytes) {
+        /* the chip copy, as 8 bits (made once: kept while the sound is
+         * the one set) */
+        free_chip(env, p);
+        for (u32 ch = 0; ch < (st ? 2U : 1U); ch++) {
+            p->chip[ch] = static_cast<s8 *>(X(env)->alloc_chip(env, bytes));
+            if (!p->chip[ch]) {
+                free_chip(env, p);
+                set_err(env, DTC_ERROR_NO_FREE_STORE);
+                return 0;
+            }
+            snd_samples8(p, ch, 0, min<u32>(bytes, p->length), p->chip[ch]);
         }
-        for (u32 i = 0; i < bytes && i < p->length; i++)
-            p->chip[ch][i] = snd_sample8(p, ch, i);
+        p->chip_bytes = bytes;
+        p->flags |= SND_F_CHIP;
     }
     u8 role = 1;
     if (st) {
@@ -457,9 +584,10 @@ extern "C" int snd_write_8svx(const odt_cenv *env, snd_inst *p, odt_u32 fh)
     dtc_put32(buf + o, ODT_ID('B', 'O', 'D', 'Y'));
     dtc_put32(buf + o + 4, body);
     o += 8;
-    for (u32 ch = 0; ch < nch; ch++)
-        for (u32 i = 0; i < p->length; i++)
-            buf[o++] = static_cast<u8>(snd_sample8(p, ch, i));
+    for (u32 ch = 0; ch < nch; ch++) {
+        snd_samples8(p, ch, 0, p->length, reinterpret_cast<s8 *>(buf + o));
+        o += p->length;
+    }
     if (o & 1)
         buf[o++] = 0;
     dtc_put32(buf + 4, o - 8);
@@ -492,6 +620,8 @@ extern "C" odt_u32 snd_dispatch(const odt_cenv *env, odt_IClass *cl, void *obj, 
     case ODT_OM_DISPOSE: {
         snd_inst *p = inst(cl, obj);
         stop(env, p);
+        free_chip(env, p);
+        free_wave(env, p);
         if (p->flags & SND_F_FREE) {
             if (p->right && p->right != p->left)
                 env->free(env, p->right);

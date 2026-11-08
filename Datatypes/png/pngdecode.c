@@ -3,8 +3,9 @@
  * row filters, Adam7 and the colour types, to 0xAARRGGBB.
  *
  * Inflate (RFC 1951) decodes Huffman codes of up to nine bits with one table
- * lookup and longer ones canonically a bit at a time; the bit buffer reads
- * ahead up to four bytes, which a stored block gives back. A stream that
+ * lookup and longer ones canonically a bit at a time from the ninth (codes()
+ * says how it keeps its state in registers); the bit buffer reads ahead up
+ * to four bytes, which a stored block gives back. A stream that
  * ends early or goes wrong keeps the rows it reached (the rest stay clear),
  * as web browsers show a cut-off picture.
  *
@@ -17,10 +18,19 @@
 #define FASTBITS 9
 #define FASTSIZE (1 << FASTBITS)
 
+/* fast[]: the entry for the next nine bits, reversed (as they arrive):
+ *   F_LIT | (byte << 4) | length    a literal (built with lit set)
+ *   (symbol << 4) | length          any other code of up to nine bits
+ *   F_LONG | the nine bits          the start of a longer code
+ *   0                               no code starts with these bits */
+#define F_LIT  0x8000
+#define F_LONG 0x4000
+
 typedef struct {
-    UWORD fast[FASTSIZE];               /* the next nine bits, reversed: (length << 9) | symbol; 0 = longer */
+    UWORD fast[FASTSIZE];
     UWORD count[16];                    /* codes of each length */
     UWORD symbol[288];                  /* symbols, in canonical order */
+    UWORD first9, index9;               /* the canonical walk's first and index after nine bits */
 } huff;
 
 typedef struct {
@@ -75,8 +85,9 @@ static LONG bits(inf_state *s, LONG n)
     return (LONG)v;
 }
 
-/* 0, or -1 when the lengths don't make a code (too many codes of a length). */
-static LONG build(huff *h, const UBYTE *len, LONG n)
+/* 0, or -1 when the lengths don't make a code (too many codes of a length).
+ * lit: symbols below 256 are literals (F_LIT). */
+static LONG build(huff *h, const UBYTE *len, LONG n, LONG lit)
 {
     UWORD offs[16], next[16];
     LONG i, left = 1;
@@ -97,23 +108,33 @@ static LONG build(huff *h, const UBYTE *len, LONG n)
     next[1] = 0;                        /* the first code of each length (RFC 1951, 3.2.2) */
     for (i = 2; i < 16; i++)
         next[i] = (UWORD)((next[i - 1] + h->count[i - 1]) << 1);
+    h->first9 = h->index9 = 0;
+    for (i = 1; i <= FASTBITS; i++) {
+        h->index9 = (UWORD)(h->index9 + h->count[i]);
+        h->first9 = (UWORD)((h->first9 + h->count[i]) << 1);
+    }
     for (i = 0; i < FASTSIZE; i++)
         h->fast[i] = 0;
     for (i = 0; i < n; i++) {
         LONG l = len[i];
+        ULONG c, r = 0, k, j;
         if (!l)
             continue;
         h->symbol[offs[l]++] = (UWORD)i;
-        if (l <= FASTBITS) {
-            ULONG c = next[l], r = 0, k, j;
-            for (k = 0; k < (ULONG)l; k++) {     /* the code, first bit lowest, as it arrives */
-                r = (r << 1) | (c & 1);
-                c >>= 1;
-            }
-            for (j = r; j < FASTSIZE; j += 1UL << l)
-                h->fast[j] = (UWORD)((l << FASTBITS) | i);
+        c = next[l]++;
+        if (l > FASTBITS) {             /* a longer code: its first nine bits say so */
+            c >>= l - FASTBITS;
+            for (k = 0; k < FASTBITS; k++)
+                r |= ((c >> k) & 1) << (FASTBITS - 1 - k);
+            h->fast[r] = (UWORD)(F_LONG | c);
+            continue;
         }
-        next[l]++;
+        for (k = 0; k < (ULONG)l; k++) {         /* the code, first bit lowest, as it arrives */
+            r = (r << 1) | (c & 1);
+            c >>= 1;
+        }
+        for (j = r; j < FASTSIZE; j += 1UL << l)
+            h->fast[j] = (UWORD)((lit && i < 256 ? F_LIT : 0) | (i << 4) | l);
     }
     return 0;
 }
@@ -124,9 +145,9 @@ static LONG decode(inf_state *s, const huff *h)
     UWORD e;
     fill(s);
     e = h->fast[s->bitbuf & (FASTSIZE - 1)];
-    if (e) {
-        drop(s, e >> FASTBITS);
-        return s->bad ? -1 : (LONG)(e & (FASTSIZE - 1));
+    if (e && !(e & F_LONG)) {
+        drop(s, e & 15);
+        return s->bad ? -1 : (LONG)((e >> 4) & 511);
     }
     /* longer than nine bits (or no such code): canonically, a bit at a time */
     for (len = 1; len < 16; len++) {
@@ -153,42 +174,240 @@ static const UWORD dbase[30] = { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97
                                  2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577 };
 static const UBYTE dext[30] = { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13 };
 
+/* codes() works on the bit buffer in locals: the state lives in registers
+ * for a whole block and goes back to the inf_state when the block ends.
+ * (Written through s, every output byte might alias it, and GCC stored and
+ * reloaded it for each one.) "Bad", bits used that were never there, is
+ * bitcnt < pad: once the input has run out, pad grows with bitcnt and
+ * nothing else does, so the test gives what the sticky flag gave at every
+ * point it was looked at. When the bytes are loaded makes no difference to
+ * what comes out (the bits are the same; stored() gives back whole bytes).
+ *
+ * Most symbols go through the fast loop, which runs while at least 10
+ * input bytes are left (one symbol with its extra bits and distance uses
+ * at most 48 bits, so no zero padding can be needed) and 258 bytes of
+ * output (the longest match): no end checks inside it. The rest, near
+ * either end, go through the careful loop, a symbol at a time, as before. */
+
+/* the next symbol of h when its code is longer than nine bits (e: F_LONG
+ * and the nine bits): canonically from there, a bit at a time, as the walk
+ * from the first bit would have gone; -1 when there is no such code or it
+ * runs past the input */
+#define C_LONG(h, e, sym)                                                                          \
+    do {                                                                                           \
+        LONG code_ = (LONG)((e) & (FASTSIZE - 1)) << 1, first_ = (h)->first9, index_ = (h)->index9; \
+        LONG l_;                                                                                   \
+        sym = -1;                                                                                  \
+        bitbuf >>= FASTBITS;                                                                       \
+        bitcnt -= FASTBITS;                                                                        \
+        for (l_ = FASTBITS + 1; l_ < 16 && bitcnt >= pad; l_++) {                                  \
+            LONG count_;                                                                           \
+            code_ |= (LONG)(bitbuf & 1);                                                           \
+            bitbuf >>= 1;                                                                          \
+            bitcnt--;                                                                              \
+            if (bitcnt < pad)                                                                      \
+                break;                                                                             \
+            count_ = (h)->count[l_];                                                               \
+            if (code_ - first_ < count_) {                                                         \
+                sym = (h)->symbol[index_ + (code_ - first_)];                                      \
+                break;                                                                             \
+            }                                                                                      \
+            index_ += count_;                                                                      \
+            first_ += count_;                                                                      \
+            first_ <<= 1;                                                                          \
+            code_ <<= 1;                                                                           \
+        }                                                                                          \
+    } while (0)
+
+/* at least 16 bits in the buffer: the fast loop's fill (input to spare) */
+#define C_FILL16()                                                                                 \
+    if (bitcnt < 16) {                                                                             \
+        bitbuf |= ((ULONG)in[0] | ((ULONG)in[1] << 8)) << bitcnt;                                  \
+        in += 2;                                                                                   \
+        bitcnt += 16;                                                                              \
+    }
+
+/* the careful loop's fill: fill() */
+#define C_FILL()                                                                                   \
+    while (bitcnt <= 24) {                                                                         \
+        if (in < in_end)                                                                           \
+            bitbuf |= (ULONG)*in++ << bitcnt;                                                      \
+        else                                                                                       \
+            pad += 8;                                                                              \
+        bitcnt += 8;                                                                               \
+    }
+
 /* One block's codes, to its end. 0; 1 when the output is full; -1 on a bad stream. */
 static LONG codes(inf_state *s, const huff *lencode, const huff *distcode)
 {
-    UBYTE *out = s->out;
+    const UBYTE *in = s->in, *const in_end = s->in_end, *in_lim;
+    ULONG bitbuf = s->bitbuf;
+    LONG bitcnt = s->bitcnt, pad = s->pad, r, sym;
+    UBYTE *const out = s->out, *op = out + s->outpos, *const oend = out + s->outmax, *op_lim;
+    const UWORD *const lfast = lencode->fast, *const dfast = distcode->fast;
+    ULONG len, dist, e, n;
+    const UBYTE *from;
+
+    in_lim = in_end - in > 10 ? in_end - 10 : in;
+    op_lim = oend - op > 258 ? oend - 258 : op;
     for (;;) {
-        LONG sym = decode(s, lencode);
-        if (sym < 0)
-            return -1;
-        if (sym < 256) {
-            if (s->outpos >= s->outmax)
-                return 1;
-            out[s->outpos++] = (UBYTE)sym;
-        } else if (sym == 256) {
-            return 0;
-        } else {
-            ULONG len, dist, from;
+        /* the fast loop */
+        while (in < in_lim && op < op_lim) {
+            C_FILL16();
+            e = lfast[bitbuf & (FASTSIZE - 1)];
+            if (e & F_LIT) {
+                n = e & 15;
+                bitbuf >>= n;
+                bitcnt -= n;
+                *op++ = (UBYTE)(e >> 4);
+                continue;
+            }
+            if (e & F_LONG) {
+                C_LONG(lencode, e, sym);
+                if (sym < 0)
+                    goto bad;
+                if (sym < 256) {
+                    *op++ = (UBYTE)sym;
+                    continue;
+                }
+            } else if (e) {
+                n = e & 15;
+                bitbuf >>= n;
+                bitcnt -= n;
+                sym = (LONG)(e >> 4);
+            } else
+                goto bad;
+            if (sym == 256)
+                goto end;
             sym -= 257;
             if (sym >= 29)
-                return -1;
-            len = lbase[sym] + (ULONG)bits(s, lext[sym]);
-            sym = decode(s, distcode);
-            if (sym < 0 || sym >= 30)
-                return -1;
-            dist = dbase[sym] + (ULONG)bits(s, dext[sym]);
-            if (s->bad || dist > s->outpos)
-                return -1;
-            if (s->outpos + len > s->outmax) {
-                len = s->outmax - s->outpos;
-                if (!len)
-                    return 1;
+                goto bad;
+            len = lbase[sym];
+            if ((n = lext[sym])) {
+                C_FILL16();
+                len += bitbuf & ((1UL << n) - 1);
+                bitbuf >>= n;
+                bitcnt -= n;
             }
-            from = s->outpos - dist;
+            C_FILL16();
+            e = dfast[bitbuf & (FASTSIZE - 1)];
+            if (e & F_LONG) {
+                C_LONG(distcode, e, sym);
+                if (sym < 0)
+                    goto bad;
+            } else if (e) {
+                n = e & 15;
+                bitbuf >>= n;
+                bitcnt -= n;
+                sym = (LONG)(e >> 4);
+            } else
+                goto bad;
+            if (sym >= 30)
+                goto bad;
+            dist = dbase[sym];
+            if ((n = dext[sym])) {
+                C_FILL16();
+                dist += bitbuf & ((1UL << n) - 1);
+                bitbuf >>= n;
+                bitcnt -= n;
+            }
+            if (dist > (ULONG)(op - out))
+                goto bad;
+            from = op - dist;
+            while (len >= 4) {              /* in order, so a near distance repeats */
+                op[0] = from[0];
+                op[1] = from[1];
+                op[2] = from[2];
+                op[3] = from[3];
+                op += 4;
+                from += 4;
+                len -= 4;
+            }
             while (len--)
-                out[s->outpos++] = out[from++];
+                *op++ = *from++;
         }
+
+        /* the careful loop: one symbol, near the end of the input or the output */
+        C_FILL();
+        e = lfast[bitbuf & (FASTSIZE - 1)];
+        if (e & F_LONG)
+            C_LONG(lencode, e, sym);
+        else if (e) {
+            n = e & 15;
+            bitbuf >>= n;
+            bitcnt -= n;
+            sym = bitcnt < pad ? -1 : (LONG)((e >> 4) & 511);
+        } else
+            goto bad;
+        if (sym < 256) {
+            if (sym < 0)
+                goto bad;
+            if (op >= oend) {
+                r = 1;
+                goto done;
+            }
+            *op++ = (UBYTE)sym;
+            continue;
+        }
+        if (sym == 256)
+            goto end;
+        sym -= 257;
+        if (sym >= 29)
+            goto bad;
+        len = lbase[sym];
+        if ((n = lext[sym])) {
+            C_FILL();
+            len += bitbuf & ((1UL << n) - 1);
+            bitbuf >>= n;
+            bitcnt -= n;
+        }
+        C_FILL();
+        e = dfast[bitbuf & (FASTSIZE - 1)];
+        if (e & F_LONG)
+            C_LONG(distcode, e, sym);
+        else if (e) {
+            n = e & 15;
+            bitbuf >>= n;
+            bitcnt -= n;
+            sym = bitcnt < pad ? -1 : (LONG)(e >> 4);
+        } else
+            goto bad;
+        if (sym < 0 || sym >= 30)
+            goto bad;
+        dist = dbase[sym];
+        if ((n = dext[sym])) {
+            C_FILL();
+            dist += bitbuf & ((1UL << n) - 1);
+            bitbuf >>= n;
+            bitcnt -= n;
+        }
+        if (bitcnt < pad || dist > (ULONG)(op - out))
+            goto bad;
+        if (len > (ULONG)(oend - op)) {
+            len = (ULONG)(oend - op);
+            if (!len) {
+                r = 1;
+                goto done;
+            }
+        }
+        from = op - dist;
+        while (len--)
+            *op++ = *from++;
     }
+end:
+    r = 0;
+    goto done;
+bad:
+    r = -1;
+done:
+    s->in = in;
+    s->bitbuf = bitbuf;
+    s->bitcnt = bitcnt;
+    s->pad = pad;
+    if (bitcnt < pad)
+        s->bad = 1;
+    s->outpos = (ULONG)(op - out);
+    return r;
 }
 
 static LONG stored(inf_state *s)
@@ -228,9 +447,9 @@ static LONG fixed(inf_work *w)
     for (; i < 256; i++) w->lens[i] = 9;
     for (; i < 280; i++) w->lens[i] = 7;
     for (; i < 288; i++) w->lens[i] = 8;
-    build(&w->lencode, w->lens, 288);
+    build(&w->lencode, w->lens, 288, 1);
     for (i = 0; i < 30; i++) w->lens[i] = 5;
-    build(&w->distcode, w->lens, 30);
+    build(&w->distcode, w->lens, 30, 0);
     return codes(&w->s, &w->lencode, &w->distcode);
 }
 
@@ -244,7 +463,7 @@ static LONG dynamic(inf_work *w)
         return -1;
     for (i = 0; i < 19; i++)
         len[order[i]] = (UBYTE)(i < ncode ? bits(s, 3) : 0);
-    if (s->bad || build(&w->lencode, len, 19) < 0)
+    if (s->bad || build(&w->lencode, len, 19, 0) < 0)
         return -1;
     for (i = 0; i < nlen + ndist;) {
         LONG sym = decode(s, &w->lencode), rep;
@@ -271,9 +490,19 @@ static LONG dynamic(inf_work *w)
     }
     if (!len[256])
         return -1;                      /* no end-of-block code */
-    if (build(&w->lencode, len, nlen) < 0 || build(&w->distcode, len + nlen, ndist) < 0)
+    if (build(&w->lencode, len, nlen, 1) < 0 || build(&w->distcode, len + nlen, ndist, 0) < 0)
         return -1;
     return codes(s, &w->lencode, &w->distcode);
+}
+
+/* x % 31 with no division (32 is 1 more than 31: add up the 5-bit
+ * digits). A constant division is a 64-bit multiply to GCC, which a 68060
+ * does not have (its library traps and emulates it). */
+static ULONG mod31(ULONG x)
+{
+    while (x > 31)
+        x = (x & 31) + (x >> 5);
+    return x == 31 ? 0 : x;
 }
 
 /* A zlib stream (RFC 1950) inflated into out: the bytes it gave, as many as
@@ -282,7 +511,7 @@ static ULONG zlib_inflate(inf_work *w, const UBYTE *in, ULONG inlen, UBYTE *out,
 {
     inf_state *s = &w->s;
     LONG last, r;
-    if (inlen < 2 || (in[0] & 15) != 8 || (in[0] >> 4) > 7 || ((in[0] << 8) | in[1]) % 31 || (in[1] & 0x20))
+    if (inlen < 2 || (in[0] & 15) != 8 || (in[0] >> 4) > 7 || mod31(((ULONG)in[0] << 8) | in[1]) || (in[1] & 0x20))
         return 0;
     s->in = in + 2;
     s->in_end = in + inlen;
@@ -388,7 +617,8 @@ LONG png_read_head(const UBYTE *file, ULONG len, struct png_head *h)
             break;                      /* cut off: what came before still counts */
         d = file + pos + 8;
         if (type == CK_PLTE && !seen_idat) {
-            pal_n = n / 3 > 256 ? 256 : n / 3;
+            for (pal_n = 0; pal_n < 256 && pal_n * 3 + 3 <= n; pal_n++)
+                ;                       /* n / 3 entries, at most 256 (no division: see mod31()) */
             for (i = 0; i < pal_n; i++)
                 h->palette[i] = 0xff000000UL | ((ULONG)d[i * 3] << 16) | ((ULONG)d[i * 3 + 1] << 8) | d[i * 3 + 2];
         } else if (type == CK_tRNS && !seen_idat) {
@@ -444,18 +674,13 @@ void png_gather(const UBYTE *file, ULONG len, UBYTE *idat)
 
 /* ---- the rows ------------------------------------------------------------------------------- */
 
-static LONG paeth(LONG a, LONG b, LONG c)
-{
-    LONG p = a + b - c, pa = p > a ? p - a : a - p, pb = p > b ? p - b : b - p, pc = p > c ? p - c : c - p;
-    if (pa <= pb && pa <= pc)
-        return a;
-    return pb <= pc ? b : c;
-}
-
-/* Undoes one row's filter in place; prev is the row above in the same pass, or NULL. */
+/* Undoes one row's filter in place; prev is the row above in the same pass,
+ * or NULL. The first pixel apart (no left neighbour: a and c are 0), then
+ * a loop for the rest with no tests. With no row above, Average adds half
+ * the left byte and Paeth is Sub (PNG 9.4: b and c are 0, so it picks a). */
 static void unfilter(UBYTE f, UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp)
 {
-    ULONG i;
+    ULONG i, first = bpp < n ? bpp : n;
     switch (f) {
     case 1:
         for (i = bpp; i < n; i++)
@@ -467,19 +692,49 @@ static void unfilter(UBYTE f, UBYTE *cur, const UBYTE *prev, ULONG n, ULONG bpp)
                 cur[i] = (UBYTE)(cur[i] + prev[i]);
         break;
     case 3:
-        for (i = 0; i < n; i++) {
-            ULONG a = i >= bpp ? cur[i - bpp] : 0, b = prev ? prev[i] : 0;
-            cur[i] = (UBYTE)(cur[i] + ((a + b) >> 1));
-        }
+        if (prev) {
+            for (i = 0; i < first; i++)
+                cur[i] = (UBYTE)(cur[i] + (prev[i] >> 1));
+            for (; i < n; i++)
+                cur[i] = (UBYTE)(cur[i] + (((ULONG)cur[i - bpp] + prev[i]) >> 1));
+        } else
+            for (i = bpp; i < n; i++)
+                cur[i] = (UBYTE)(cur[i] + (cur[i - bpp] >> 1));
         break;
     case 4:
-        for (i = 0; i < n; i++) {
-            LONG a = i >= bpp ? cur[i - bpp] : 0, b = prev ? prev[i] : 0, c = (prev && i >= bpp) ? prev[i - bpp] : 0;
-            cur[i] = (UBYTE)(cur[i] + paeth(a, b, c));
-        }
+        if (prev) {
+            for (i = 0; i < first; i++)     /* Paeth(0, b, 0) is b */
+                cur[i] = (UBYTE)(cur[i] + prev[i]);
+            for (; i < n; i++) {
+                LONG a = cur[i - bpp], b = prev[i], c = prev[i - bpp];
+                LONG pa = b - c, pb = a - c, pc = pa + pb;   /* p - a, p - b, p - c */
+                if (pa < 0) pa = -pa;
+                if (pb < 0) pb = -pb;
+                if (pc < 0) pc = -pc;
+                cur[i] = (UBYTE)(cur[i] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c));
+            }
+        } else
+            for (i = bpp; i < n; i++)
+                cur[i] = (UBYTE)(cur[i] + cur[i - bpp]);
         break;
     default:                            /* 0, and an unknown filter: the bytes as they are */
         break;
+    }
+}
+
+/* n pixels of 1, 2 or 4 bits (first pixel highest in its byte) to ARGB
+ * through a table: by shifts, a byte loaded once for all its pixels. */
+static void subbyte(const UBYTE *s, ULONG n, ULONG *d, ULONG step, ULONG depth, const ULONG *table)
+{
+    ULONG b = 0, max = (1UL << depth) - 1;
+    LONG sh = 0;
+    for (; n; n--, d += step) {
+        if (sh <= 0) {
+            b = *s++;
+            sh = 8;
+        }
+        sh -= (LONG)depth;
+        *d = table[(b >> sh) & max];
     }
 }
 
@@ -490,11 +745,12 @@ static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d,
     switch (h->ctype) {
     case 0:
         if (depth < 8) {
-            ULONG per = 8 / depth, max = (1UL << depth) - 1, mul = 255 / max;
-            for (x = 0; x < n; x++, d += step) {
-                ULONG v = (s[x / per] >> ((per - 1 - x % per) * depth)) & max, g = v * mul;
-                *d = ((h->has_key && v == h->key[0]) ? 0 : 0xff000000UL) | (g << 16) | (g << 8) | g;
+            ULONG grey[16], max = (1UL << depth) - 1, mul = depth == 1 ? 255 : depth == 2 ? 85 : 17, v;
+            for (v = 0; v <= max; v++) {
+                ULONG g = v * mul;
+                grey[v] = ((h->has_key && v == h->key[0]) ? 0 : 0xff000000UL) | (g << 16) | (g << 8) | g;
             }
+            subbyte(s, n, d, step, depth, grey);
         } else if (depth == 8) {
             for (x = 0; x < n; x++, d += step) {
                 ULONG g = s[x];
@@ -508,11 +764,9 @@ static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d,
         }
         break;
     case 3:
-        if (depth < 8) {
-            ULONG per = 8 / depth, max = (1UL << depth) - 1;
-            for (x = 0; x < n; x++, d += step)
-                *d = h->palette[(s[x / per] >> ((per - 1 - x % per) * depth)) & max];
-        } else
+        if (depth < 8)
+            subbyte(s, n, d, step, depth, h->palette);
+        else
             for (x = 0; x < n; x++, d += step)
                 *d = h->palette[s[x]];
         break;
@@ -552,37 +806,86 @@ static void convert(const struct png_head *h, const UBYTE *s, ULONG n, ULONG *d,
     }
 }
 
-LONG png_decode(const struct png_head *h, const UBYTE *idat, UBYTE *raw, ULONG *argb, APTR work)
+LONG png_unpack(const struct png_head *h, const UBYTE *idat, UBYTE *raw, APTR work, struct png_rows *r)
 {
     ULONG got, at = 0, i, bpp = (channels(h->ctype) * h->depth + 7) >> 3;
-    LONG pass, passes = h->interlace ? 7 : 1;
+    LONG pass;
     got = zlib_inflate((inf_work *)work, idat, h->idat_len, raw, h->raw_len);
     if (!got)
         return -1;
     for (i = got; i < h->raw_len; i++)
         raw[i] = 0;                     /* cut short: the rest stays clear */
-    for (i = 0; i < h->width * h->height; i++)
-        argb[i] = 0;
-    for (pass = 0; pass < passes; pass++) {
+    r->got = got;
+    r->at = 0;
+    r->y = 0;
+    r->prev = 0;
+    if (!h->interlace)
+        return 0;                       /* the rows are undone as they are asked for */
+    /* Adam7: every pass's rows undone now, as far as they came */
+    for (pass = 0; pass < 7; pass++) {
         ULONG pw, ph, rb, y;
         const UBYTE *prev = 0;
+        r->pass_at[pass] = at;
+        r->pass_rows[pass] = 0;
         pass_size(h, pass, &pw, &ph);
         if (!pw)
             continue;
         rb = rowbytes(h, pw);
-        for (y = 0; y < ph; y++) {
+        for (y = 0; y < ph && at < got; y++) {
             UBYTE *row = raw + at;
-            if (at >= got)
-                return 0;               /* no more rows came */
             unfilter(row[0], row + 1, prev, rb, bpp);
-            if (h->interlace) {
-                ULONG ty = adam7[pass][1] + y * adam7[pass][3];
-                convert(h, row + 1, pw, argb + ty * h->width + adam7[pass][0], adam7[pass][2]);
-            } else
-                convert(h, row + 1, pw, argb + y * h->width, 1);
             prev = row + 1;
             at += rb + 1;
+            r->pass_rows[pass]++;
+        }
+        if (y < ph)                     /* no more rows came: none of the later passes either */
+            got = 0;
+    }
+    return 0;
+}
+
+void png_strip(const struct png_head *h, UBYTE *raw, struct png_rows *r, ULONG *argb, ULONG n)
+{
+    ULONG w = h->width, y0 = r->y, i;
+    r->y += n;
+    if (!h->interlace) {
+        ULONG rb = rowbytes(h, w), bpp = (channels(h->ctype) * h->depth + 7) >> 3;
+        for (; n; n--, argb += w) {
+            UBYTE *row = raw + r->at;
+            if (r->at >= r->got) {      /* a row that never came: clear */
+                for (i = 0; i < w; i++)
+                    argb[i] = 0;
+                continue;
+            }
+            unfilter(row[0], row + 1, r->prev, rb, bpp);
+            convert(h, row + 1, w, argb, 1);
+            r->prev = row + 1;
+            r->at += rb + 1;
+        }
+    } else {
+        LONG pass;
+        if (r->got < h->raw_len)        /* cut short: some pixels never came */
+            for (i = 0; i < w * n; i++)
+                argb[i] = 0;
+        for (pass = 0; pass < 7; pass++) {
+            ULONG x0 = adam7[pass][0], py0 = adam7[pass][1], dx = adam7[pass][2], dy = adam7[pass][3];
+            ULONG sh = dy == 8 ? 3 : dy == 4 ? 2 : 1, pw, ph, rb, py, ty;
+            pass_size(h, pass, &pw, &ph);
+            if (!pw)
+                continue;
+            rb = rowbytes(h, pw) + 1;
+            py = y0 <= py0 ? 0 : (y0 - py0 + dy - 1) >> sh;   /* this pass's first row in the strip */
+            for (ty = py0 + (py << sh); ty < y0 + n && py < r->pass_rows[pass]; ty += dy, py++)
+                convert(h, raw + r->pass_at[pass] + py * rb + 1, pw, argb + (ty - y0) * w + x0, dx);
         }
     }
+}
+
+LONG png_decode(const struct png_head *h, const UBYTE *idat, UBYTE *raw, ULONG *argb, APTR work)
+{
+    struct png_rows r;
+    if (png_unpack(h, idat, raw, work, &r))
+        return -1;
+    png_strip(h, raw, &r, argb, h->height);
     return 0;
 }
