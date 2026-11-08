@@ -56,8 +56,8 @@ the Amiga itself (no card or Cradle) and keeps the sound as 8-bit PCM
 `gfopenpicture.datatype`, `gfopensound.datatype`, `gfopendoc.datatype` and
 `gfopenvideo.datatype` decode nothing themselves. It sends the file to
 `media.decode/1` through `gfopenservice.device` (DalsinAI/gfopenservice).
-Mitchy is the services card (product 13, MAGIC `ACSV`); its device is
-`mitchy.device`, and `gfopenservice.device` stays and opens that. The
+Mitchy is the services card (product 13, MAGIC `ACSV`). When it is ready,
+`gfopenservice.device` becomes a shim that opens `mitchy.device`. The
 x86 or ARM64 cores do the work on AmiCradle and the Pi appliance, and a
 paired Cradle on the LAN does it for a real Amiga, which we expect to
 have PiStorm-class networking. With neither, the file does not open

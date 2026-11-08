@@ -102,7 +102,7 @@ the order they are tried in):
 | --- | --- | --- | --- |
 | **A cores board core**: AmiCradle's cores board ($DA15 product 7, up to eight translated 68040 cores) | 2 | `gfopenmulticore.library` jobs (`OMC_Submit`, `OMC_Wait`), DalsinAI/gfopenmulticore | 68k compute: decoding and encoding (libwebp, libvpx, our PNG and TGA code), mixing, and pixel work too. A job calls no OS, touches no Chip RAM and writes only its granted buffers |
 | **The GPU** | 4 (new) | `gfopengpu.library` (the one library: GFOpenGPU, GFOpenGfx and SDL 2) | Pixel work: scaling, colour conversion, dithering to 256 colours or HAM8, presenting video frames. Video decode where a driver offers it, through `gfopenmedia.library` once it exists |
-| **Mitchy, or a paired Cradle** | 3 | `gfopenservice.device` (it opens `mitchy.device`): `media.decode/1`, `doc.render/1`, and `media.encode/1` for writing (section 3), DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
+| **Mitchy, or a paired Cradle** | 3 | `gfopenservice.device`, a shim onto `mitchy.device` when Mitchy is ready: `media.decode/1`, `doc.render/1`, and `media.encode/1` for writing (section 3), DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
 | **This CPU**, a single 68k | 1 | plain calls | Everything that has 68k code, when nothing above is there |
 
 The order, per kind of work:

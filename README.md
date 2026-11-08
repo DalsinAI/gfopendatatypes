@@ -59,10 +59,10 @@ gfopenpicture names, and AAC, WMA, Opus, MIDI, SID, documents and the
 container films (MP4, MKV, AVI, WMV, MPEG), are not decoded on the 68k.
 The class sends the file to `media.decode/1` or `doc.render/1` through
 `gfopenservice.device`. Mitchy is the services card (product 13, MAGIC
-`ACSV`). Its device is `mitchy.device`; `gfopenservice.device` stays and
-opens that, so a program built with the old name needs no change. A real
-Amiga with no Mitchy asks a paired Cradle on the LAN for the same
-services. One object keeps one connection for its life, and the program's
+`ACSV`). When it is ready, `gfopenservice.device` becomes a shim that
+opens `mitchy.device`, so a program built with the old name needs no
+change. A real Amiga with no Mitchy asks a paired Cradle on the LAN for
+the same services. One object keeps one connection for its life, and the program's
 task shares it with animation.datatype's loader. The file goes up once;
 the calls after that name it. The next frame or page is asked for while
 this one is showing. An older service, which cannot keep the file, is
