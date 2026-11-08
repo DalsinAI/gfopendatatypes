@@ -200,10 +200,16 @@ struct odt_env {
     /* memory: AllocVec(n, MEMF_ANY | MEMF_CLEAR) and FreeVec */
     void *(*alloc)(void *ctx, odt_u32 n);
     void (*free)(void *ctx, void *p);
-    /* does name match the AmigaDOS pattern? (no case, as MatchPatternNoCase):
-     * 1 or 0, or -1 when the pattern has no wildcards (the core then
-     * compares it as OS 3.2 does) */
-    int (*match_name)(void *ctx, const char *pattern, const char *name);
+    /* AmigaDOS name patterns, without case. parse_name, as
+     * ParsePatternNoCase: pattern's token into tok (size bytes, twice the
+     * pattern and 2), answering 1 when it has wildcards, 0 when it has none
+     * (the core then compares the pattern itself as OS 3.2 does) and -1
+     * when it can't be parsed (it fits no name). match_name, as
+     * MatchPatternNoCase: does name fit the token, 1 or 0. The core parses
+     * each entry's pattern once, the first time recognition asks it, and
+     * keeps the token with the entry. */
+    int (*parse_name)(void *ctx, const char *pattern, char *tok, odt_u32 size);
+    int (*match_name)(void *ctx, const char *tok, const char *name);
     /* run an entry's recognition code (its DTCD) on the context: 1 yes, 0 no */
     int (*run_hook)(void *ctx, struct odt_entry *e, struct odt_DTHookContext *dthc);
 };
@@ -222,6 +228,8 @@ struct odt_entry {
     void *seg;                          /* its loaded code (the library's to load and free) */
     odt_u32 serial;                     /* order of adding: the newest goes first */
     odt_u8 builtin;                     /* one of the library's own types */
+    odt_u8 pat_state;                   /* dth_Pattern: ODT_PAT_ */
+    char *pat_tok;                      /* its token (ODT_PAT_WILD), the core's to free */
     struct odt_List tools;              /* its DTTL tools (OS 3.2 leaves dtn_ToolList empty) */
 };
 
@@ -232,6 +240,15 @@ struct odt_db {
     struct odt_List all;                /* every entry, through dtn_Node2 */
     odt_u32 serial;
 };
+
+/* odt_entry.pat_state: the pattern not parsed yet; parsed, with wildcards;
+ * without wildcards (compared as it is); not a pattern (fits nothing);
+ * "#?" (fits every name, "" too: no token, no matching) */
+#define ODT_PAT_NEW     0
+#define ODT_PAT_WILD    1
+#define ODT_PAT_LITERAL 2
+#define ODT_PAT_BAD     3
+#define ODT_PAT_ANY     4
 
 /* Descriptor parse results */
 #define ODT_OK          0

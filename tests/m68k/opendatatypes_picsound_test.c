@@ -14,12 +14,14 @@
  *   pixw FILE                                    PDTM_WRITEPIXELARRAY then READPIXELARRAY
  *   svx FILE PANEL                               load an 8SVX, play, draw, click, write, reload
  *   snd LEN STEREO CYCLES PAN TYPE               a sound made in memory, played
+ *   sndre LEN TYPE                               its chip copy and waveform kept, and made afresh
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "../../libraries/opendatatypes/classes/datatypes/ilbm/ilbm_core.h"
 #include "../../libraries/opendatatypes/classes/datatypes/8svx/svx_core.h"
+#include "../../libraries/opendatatypes/classes/datatypes/picture/dtc_audio.h"
 
 static long live;
 static long ioerr;
@@ -265,7 +267,8 @@ static odt_s32 m_write(const struct odt_cenv *e, odt_u32 fh, const void *buf, od
 struct fscreen { int depth; int npens; odt_u8 rgb[256][3]; int share[256]; int fixed[256]; struct odt_BitMap bm; };
 static struct fscreen scr;
 
-static void *x_alloc_chip(const struct odt_cenv *e, odt_u32 n) { return m_alloc(e, n); }
+static long chip_allocs;
+static void *x_alloc_chip(const struct odt_cenv *e, odt_u32 n) { chip_allocs++; return m_alloc(e, n); }
 
 static struct odt_BitMap *x_alloc_bitmap(const struct odt_cenv *e, odt_u32 w, odt_u32 h, odt_u32 d, struct odt_BitMap *fr)
 {
@@ -358,6 +361,64 @@ static void m_release_rp(const struct odt_cenv *e, void *rp) { (void)e; (void)rp
 
 /* ---- audio ------------------------------------------------------------- */
 
+/* The player's own steps (dtc_audio.h, as the shell runs them) against a
+ * simulated audio.device: each channel plays its CMD_WRITEs one after the
+ * other, a request taking its length times its cycles (0: for ever). A
+ * request sent to a channel that has already gone quiet is a gap; the
+ * requests must go out in the plan's order; a plan that never ends (or a
+ * request that doesn't) is stopped after twice its segments and one. */
+#define SIM_FOREVER (1LL << 60)
+struct sim {
+    const struct dtc_audio_plan *plan;
+    long long t, ch_end[2], slot_end[4];
+    int ch_any[2];
+    long seq, done, cap, gaps, order, aborts;
+};
+static void sim_begin(void *ctx, odt_u32 slot, const struct dtc_audio_seg *g)
+{
+    struct sim *m = ctx;
+    long long dur = g->cycles ? (long long)g->length * g->cycles : SIM_FOREVER, end = 0;
+    int c;
+    if (g != &m->plan->seg[m->seq % m->plan->nseg]) m->order++;
+    m->seq++;
+    for (c = 0; c < 2; c++) {
+        long long start;
+        if (!(g->roles & (1 << c))) continue;
+        if (m->ch_any[c] && m->ch_end[c] <= m->t) m->gaps++;
+        start = m->ch_end[c] > m->t ? m->ch_end[c] : m->t;
+        m->ch_end[c] = dur == SIM_FOREVER || start >= SIM_FOREVER ? SIM_FOREVER : start + dur;
+        m->ch_any[c] = 1;
+        if (m->ch_end[c] > end) end = m->ch_end[c];
+    }
+    m->slot_end[slot] = end;
+}
+static int sim_wait(void *ctx, odt_u32 slot)
+{
+    struct sim *m = ctx;
+    if (m->slot_end[slot] >= SIM_FOREVER || m->done >= m->cap) return 0;
+    if (m->slot_end[slot] > m->t) m->t = m->slot_end[slot];
+    m->done++;
+    return 1;
+}
+static void sim_abort(void *ctx, odt_u32 slot) { struct sim *m = ctx; (void)slot; m->aborts++; }
+
+static void run_player(const struct dtc_audio_plan *pl)
+{
+    struct sim m;
+    struct dtc_audio_io io = { &m, sim_begin, sim_wait, sim_abort };
+    unsigned i;
+    int forever = !pl->repeat, r;
+    memset(&m, 0, sizeof m);
+    m.plan = pl;
+    for (i = 0; i < pl->nseg; i++) if (!pl->seg[i].cycles) forever = 1;
+    m.cap = forever ? 2L * pl->nseg + 1 : 0x7fffffffL;
+    r = dtc_audio_run(pl, &io);
+    printf("audio %s n=%ld\n", r ? "end" : "stop", m.done);
+    if (m.gaps) printf("FAIL audio: %ld gaps\n", m.gaps);
+    if (m.order) printf("FAIL audio: %ld requests out of order\n", m.order);
+    if (m.seq - m.done != (r ? 0 : m.aborts)) printf("FAIL audio: %ld sent, %ld back, %ld aborted\n", m.seq, m.done, m.aborts);
+}
+
 static int x_play(const struct odt_cenv *e, void **player, const struct dtc_audio_plan *pl)
 {
     unsigned i, k;
@@ -373,6 +434,7 @@ static int x_play(const struct odt_cenv *e, void **player, const struct dtc_audi
         printf("seg r=%u v=%u p=%u c=%u len=%lu sum=%08lx\n", s->roles, s->volume, s->period, s->cycles,
                (unsigned long)s->length, sum & 0xffffffffUL);
     }
+    run_player(pl);
     return 1;
 }
 static void x_stop(const struct odt_cenv *e, void **player) { (void)e; printf("stop%s\n", *player ? "" : " none"); *player = NULL; }
@@ -791,6 +853,60 @@ static void cmd_snd(char **a)
     printf("live %ld\n", live - base);
 }
 
+/* The chip copy kept between plays and the waveform between drawings,
+ * both made afresh when SDTA_Sample is set again (here to the same
+ * buffer, its samples changed where they are): drawn twice, played twice,
+ * changed, drawn and played */
+static void render_snd(void *o)
+{
+    struct odt_GadgetInfo gi;
+    struct odt_gpRender rm;
+    memset(&gi, 0, sizeof gi);
+    gi.gi_Domain.Width = 640;
+    gi.gi_Domain.Height = 480;
+    gi.gi_DrInfo = &dri;
+    rm.MethodID = ODT_GM_RENDER; rm.gpr_GInfo = &gi; rm.gpr_RPort = &rp_dummy; rm.gpr_Redraw = ODT_GREDRAW_REDRAW;
+    m_do_method(&env, o, &rm);
+}
+static void cmd_sndre(char **a)
+{
+    odt_u32 len = (odt_u32)atol(a[0]), type = (odt_u32)atoi(a[1]), i;
+    odt_u32 wide = type == SND_SDTST_M16S || type == SND_SDTST_S16S;
+    odt_u32 inter = type == SND_SDTST_S8S || type == SND_SDTST_S16S, per = inter ? 2 : 1, bytes = len * per * (wide ? 2 : 1);
+    long base = live, chips = chip_allocs;
+    void *o = new_obj(&cl_snd, ODT_DTST_RAM, NULL, 0);
+    odt_u8 *b = m_alloc(&env, bytes);
+    struct odt_TagItem t[6];
+    struct odt_opSet set;
+    for (i = 0; i < len * per; i++) {
+        odt_u32 c = inter ? i % 2 : 0, smp = inter ? i / 2 : i;
+        odt_u8 hi = (odt_u8)((smp * 37 + c * 11) & 0xff);
+        if (wide) { b[i * 2] = hi; b[i * 2 + 1] = (odt_u8)(smp & 0xff); }
+        else b[i] = hi;
+    }
+    t[0].ti_Tag = SND_SDTA_SampleType; t[0].ti_Data = type;
+    t[1].ti_Tag = SND_SDTA_Sample; t[1].ti_Data = (odt_u32)b;
+    t[2].ti_Tag = SND_SDTA_SampleLength; t[2].ti_Data = len;
+    t[3].ti_Tag = SND_SDTA_SamplesPerSec; t[3].ti_Data = 22050;
+    t[4].ti_Tag = ODT_TAG_DONE; t[4].ti_Data = 0;
+    set.MethodID = ODT_OM_SET; set.ops_AttrList = t; set.ops_GInfo = NULL;
+    m_do_method(&env, o, &set);
+    render_snd(o);
+    render_snd(o);
+    printf("trig %lu\n", (unsigned long)trig(o, ODT_STM_PLAY));
+    printf("trig %lu\n", (unsigned long)trig(o, ODT_STM_PLAY));
+    printf("chip %ld\n", chip_allocs - chips);
+    for (i = 0; i < bytes; i++) b[i] ^= 0x5a;
+    t[0].ti_Tag = SND_SDTA_Sample; t[0].ti_Data = (odt_u32)b;
+    t[1].ti_Tag = ODT_TAG_DONE;
+    m_do_method(&env, o, &set);
+    render_snd(o);
+    printf("trig %lu\n", (unsigned long)trig(o, ODT_STM_PLAY));
+    printf("chip %ld\n", chip_allocs - chips);
+    dispose(o);
+    printf("live %ld\n", live - base);
+}
+
 /* SDTA_VoiceHeader set (its rate and volume taken), then SDTA_SampleLength 0
  * while the sound plays (which stops it) */
 static void cmd_sndvh(char **a)
@@ -881,6 +997,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a[0], "svx")) cmd_svx(a + 1);
         else if (!strcmp(a[0], "snd")) cmd_snd(a + 1);
         else if (!strcmp(a[0], "sndvh")) cmd_sndvh(a + 1);
+        else if (!strcmp(a[0], "sndre")) cmd_sndre(a + 1);
         fflush(stdout);
     }
     printf("end\n");

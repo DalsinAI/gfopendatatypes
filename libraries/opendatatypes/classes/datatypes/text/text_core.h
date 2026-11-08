@@ -84,6 +84,12 @@ struct tdt_ext {
     odt_s32 (*pen)(const struct odt_cenv *env, struct odt_GadgetInfo *gi, odt_u32 which);
     /* intuition's DoubleClick */
     int (*double_click)(const struct odt_cenv *env, odt_u32 s1, odt_u32 m1, odt_u32 s2, odt_u32 m2);
+    /* optional: one RastPort for a whole layout's measuring (InitRastPort
+     * and SetFont once), TextLength on it in a soft style, and freeing it;
+     * without them each width is text_length's own RastPort */
+    void *(*measure_open)(const struct odt_cenv *env, void *font);
+    odt_s32 (*measure_len)(const struct odt_cenv *env, void *rp, odt_u32 style, const char *s, odt_u32 n);
+    void (*measure_close)(const struct odt_cenv *env, void *rp);
 };
 
 /* ---- the pure part: layout, selection, copying ------------------------------- */
@@ -94,6 +100,7 @@ struct tdt_measure {
     void *font;
     odt_u16 ysize, baseline, xsize;
     odt_s32 (*len)(const struct tdt_measure *m, odt_u32 style, const char *s, odt_u32 n);
+    void *rp;                           /* tdt_ext's measure_open's, while a layout measures */
 };
 
 /* One segment as the class makes it: the public Line, then ours */
@@ -114,6 +121,9 @@ struct tdt_layout {
     odt_u32 rows;
     odt_u32 width;                      /* the widest row, pixels */
     odt_u32 segs;
+    void *pool;                         /* the blocks the segments are carved from */
+    struct tdt_seg **row_seg;           /* each row's first segment (NULL: no index) */
+    odt_u32 *row_at;                    /* the places before each row; [rows] is all of them */
 };
 
 #define TDT_TABCHARS 8                  /* a tab stop each 8 spaces (ABI test) */
@@ -121,7 +131,15 @@ struct tdt_layout {
 /* Lays out len bytes of text: ANSI SGR escapes (ESC [ or CSI) set the
  * style and pens and are not shown, other escapes are skipped; LF, CR
  * and CR LF end a row; wrap (pixels, 0 for none) breaks rows at spaces.
- * Returns 0, or DTC_ERROR_NO_FREE_STORE (what was laid out stays). */
+ * Returns 0, or DTC_ERROR_NO_FREE_STORE (what was laid out stays).
+ * In linear time: wrapping adds each character's width (measured once a
+ * style) instead of measuring the row so far again for each character;
+ * each segment's own width is still measured whole, and if that ever
+ * isn't the sum of its characters' (a font measured some other way) the
+ * layout is made again measuring as before. Segments come from blocks of
+ * TDT_POOL; each row's first segment and the places before it are
+ * indexed for selecting, finding words and drawing. */
+#define TDT_POOL 64
 odt_s32 tdt_layout(const struct odt_cenv *env, const struct tdt_measure *m, const char *buf, odt_u32 len,
                    odt_u32 wrap, struct tdt_layout *out);
 void tdt_free_layout(const struct odt_cenv *env, struct tdt_layout *lay);

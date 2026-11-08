@@ -3,7 +3,8 @@
 # GFOpenDatatypes (datatypes.library) core: libraries/opendatatypes/dt_core.c,
 # built with an m68k cross GCC at -O0 and -O2 for the 68040,
 # checked to call nothing but libgcc, and run under qemu-m68k against
-# tests/m68k/opendatatypes_test.c.
+# tests/m68k/opendatatypes_test.c (with its corpus: 240 made-up
+# descriptors and 6,000 files, each answer as recognition from scratch).
 #   sh tests/m68k/test_opendatatypes.sh
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)

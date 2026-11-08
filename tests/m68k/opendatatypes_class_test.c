@@ -16,7 +16,9 @@
  *   down X Y / move X Y / up X Y / menu   the mouse, gadget-relative
  *   startsel                     StartDragSelect
  *   get                          GetDTAttrsA of the numbers and the domain
- *   write                        DTM_WRITE, DTWM_RAW (memory source)
+ *   write                        DTM_WRITE, DTWM_RAW (the source's bytes)
+ *   rawfile LEN BIGFAIL          the source file has LEN bytes; 1 refuses the
+ *                                raw copy's 32 KB buffer, 2 its 16 KB one too
  *   async 0|1                    layouts and printing on (mock) processes or not
  *   runproc                      the started processes run, in order
  *   selftest NAME                a dispose from inside a process's completion notification
@@ -38,6 +40,9 @@
  * after the free shows (quarantine_check) */
 static long live;
 static int fails;                       /* the mock's own FAILs, seen even when quiet */
+/* the raw source file DTM_WRITE copies (e_read, e_write) */
+static long raw_len, raw_pos, raw_out, raw_packets;
+static int raw_bigfail;
 struct qblock { struct qblock *next; unsigned long n, freed; };
 static struct qblock *quarantine;
 static void *q_alloc(unsigned long n)
@@ -236,7 +241,12 @@ static odt_u32 e_coerce(const struct odt_cenv *e, struct odt_IClass *cl, void *o
 static void *e_new_object(const struct odt_cenv *e, struct odt_IClass *cl, const char *id, struct odt_TagItem *tags)
 { (void)e; return oi_NewObjectA(&oenv, &boopsi, (struct oi_IClass *)cl, id, (struct ou_TagItem *)tags); }
 static void e_dispose(const struct odt_cenv *e, void *obj) { (void)e; oi_DisposeObject(&oenv, obj); }
-static void *e_alloc(const struct odt_cenv *e, odt_u32 n) { (void)e; return q_alloc(n); }
+static void *e_alloc(const struct odt_cenv *e, odt_u32 n)
+{
+    (void)e;
+    if ((n >= 32768 && raw_bigfail >= 1) || (n >= 16384 && raw_bigfail >= 2)) return NULL;
+    return q_alloc(n);
+}
 static void e_free(const struct odt_cenv *e, void *p) { (void)e; q_free(p); }
 
 /* semaphores: a count each, which must balance, and each holder's count
@@ -286,17 +296,53 @@ static odt_u32 e_open(const struct odt_cenv *e, const char *name, odt_s32 mode)
     return 7;
 }
 static void e_close(const struct odt_cenv *e, odt_u32 fh) { (void)e; printf("close %lu\n", (unsigned long)fh); }
+/* The source file (handle 7) has raw_len bytes, raw_byte(i) each, for
+ * DTM_WRITE's raw copy to read; what reaches handle 9 is checked against
+ * them, and the DOS packets the copy takes are counted. raw_bigfail 1
+ * refuses the copy's 32 KB buffer, 2 its 16 KB one as well. */
+static unsigned char raw_byte(long i) { return (unsigned char)(i * 7 + (i >> 8) + 3); }
 static odt_s32 e_write(const struct odt_cenv *e, odt_u32 fh, const void *buf, odt_s32 n)
 {
     (void)e;
+    raw_packets++;
+    if (fh == 9 && raw_len) {
+        long i;
+        for (i = 0; i < n; i++)
+            if (((const unsigned char *)buf)[i] != raw_byte(raw_out + i)) {
+                printf("FAIL raw copy byte %ld\n", raw_out + i);
+                fails++;
+                break;
+            }
+        raw_out += n;
+    }
     printf("write %lu %ld", (unsigned long)fh, (long)n);
     if (n > 0) printf(" %02x..%02x", ((const unsigned char *)buf)[0], ((const unsigned char *)buf)[n - 1]);
     printf("\n");
     return n;
 }
 static odt_s32 e_seek(const struct odt_cenv *e, odt_u32 fh, odt_s32 off, odt_s32 mode)
-{ (void)e; printf("seek %lu %ld %ld\n", (unsigned long)fh, (long)off, (long)mode); return 0; }
-static odt_s32 e_read(const struct odt_cenv *e, odt_u32 fh, void *buf, odt_s32 n) { (void)e; (void)fh; (void)buf; (void)n; return 0; }
+{
+    long was = raw_pos;
+    (void)e;
+    printf("seek %lu %ld %ld\n", (unsigned long)fh, (long)off, (long)mode);
+    raw_packets++;
+    if (fh == 7) raw_pos = (mode < 0 ? 0 : mode > 0 ? raw_len : raw_pos) + off;
+    return fh == 7 ? was : 0;
+}
+static odt_s32 e_read(const struct odt_cenv *e, odt_u32 fh, void *buf, odt_s32 n)
+{
+    long got = 0;
+    (void)e;
+    raw_packets++;
+    if (fh == 7) {
+        got = raw_len - raw_pos < n ? raw_len - raw_pos : n;
+        if (got < 0) got = 0;
+        for (long i = 0; i < got; i++) ((unsigned char *)buf)[i] = raw_byte(raw_pos + i);
+        raw_pos += got;
+    }
+    printf("read %lu %ld %ld\n", (unsigned long)fh, (long)n, got);
+    return got;
+}
 static char iff_obj[4];
 static void *e_iff_dos(const struct odt_cenv *e, odt_u32 fh, int w) { (void)e; printf("iffdos %lu %d\n", (unsigned long)fh, w); return iff_obj; }
 static void *e_iff_clip(const struct odt_cenv *e, odt_u32 unit, int w) { (void)e; printf("iffclip %lu %d\n", (unsigned long)unit, w); return iff_obj; }
@@ -608,6 +654,8 @@ int main(int argc, char **argv)
             struct odt_TagItem t[13];
             int i = 0;
             fail_open = !strcmp(k, "failfile");
+            raw_len = raw_pos = 0;
+            raw_bigfail = 0;
             if (!strcmp(k, "iff")) dt = &dt_iff;
             else if (!strcmp(k, "ram")) { st = ODT_DTST_RAM; name = 0; }
             else if (!strcmp(k, "mem")) { st = ODT_DTST_MEMORY; name = 0; }
@@ -705,7 +753,15 @@ int main(int argc, char **argv)
                    b->Left, b->Top, b->Width, b->Height, (unsigned long)nothing);
         } else if (!strcmp(w[0], "write")) {
             struct odt_dtWrite m = { ODT_DTM_WRITE, NULL, 9, ODT_DTWM_RAW, NULL };
+            raw_out = raw_packets = 0;
             printf("written %lu\n", (unsigned long)oi_DoMethodA(&oenv, obj, &m));
+            if (raw_len) {
+                if (raw_out != raw_len) { printf("FAIL raw copy %ld of %ld bytes\n", raw_out, raw_len); fails++; }
+                printf("raw %ld bytes, %ld DOS packets\n", raw_out, raw_packets);
+            }
+        } else if (!strcmp(w[0], "rawfile")) {
+            raw_len = atol(w[1]);
+            raw_bigfail = atoi(w[2]);
         } else if (!strcmp(w[0], "async")) {
             async_on = atoi(w[1]);
         } else if (!strcmp(w[0], "runproc")) {

@@ -31,7 +31,17 @@ The family's shell, env and build are in [`../picture`](../picture/README.md).
   at the period, volume and cycles (one request: its cycles; more: the
   whole sequence `cycles` times; 0 is for ever, as is `DTA_Repeat`). The
   shell's player process carries it out with ADIOF_PERVOL and signals the
-  task at the end; STM_STOP aborts it and waits until it has.
+  task at the end; STM_STOP aborts it and waits until it has. The player
+  (`../picture/dtc_audio.h`) is double buffered: two IORequests a channel,
+  the next segment queued behind the one playing, so a long sample plays
+  without a gap at each 131,070-byte segment's end.
+- The chip copy is made once (a loop for each sample layout: 8 or 16
+  bits, interleaved or not) and kept for the next play; the waveform's
+  columns are worked out once for the gadget's width. Both are made again
+  when the sound's attributes are set (`SDTA_Sample`, `SDTA_LeftSample`,
+  `SDTA_RightSample`, `SDTA_SampleLength`, `SDTA_SampleType`), even to the
+  same values: a program that changes the samples where they are sets
+  `SDTA_Sample` again.
 - As a gadget it draws the waveform (each column's lowest and highest
   sample) and, with `DTA_ControlPanel`, a play and a stop button under it.
 - `DTM_WRITE` (`DTWM_IFF`) writes 8SVX: VHDR, CHAN 6 for stereo, BODY.
@@ -58,6 +68,8 @@ The family's shell, env and build are in [`../picture`](../picture/README.md).
 | `SDTA_SampleLength` set to 0 while it plays | the replay stopped before OM_SET returns | documented |
 | `SDTA_VoiceHeader` set | copied; its `vh_SamplesPerSec` (when not 0) and `vh_Volume` taken as rate and volume (tags after it win) | documented (V44) |
 | Waveform of a very long sample | column positions from quotient and remainder, no 32-bit overflow | ours |
+| Samples changed where they are, attribute not set again | the kept chip copy and waveform are the old ones until a sound attribute is set | ours |
+| A sound attribute set while it plays | the playing copy stays until the replay stops; the next play copies afresh | ours |
 
 ## Not yet
 
@@ -70,5 +82,9 @@ The family's shell, env and build are in [`../picture`](../picture/README.md).
 
 `sh tests/m68k/test_opendatatypes_picsound.sh`: the plan, request by
 request with a checksum of each, for mono, stereo, 8 and 16 bits,
-interleaved, long samples split, pans and cycles; the drawing calls of the
-waveform and the panel; see [`../picture`](../picture/README.md).
+interleaved, long samples split, pans and cycles; each plan run by the
+player's own code against a simulated audio.device (every request in
+order, none sent to a channel that has gone quiet); the chip copy and
+waveform kept between plays and drawings and made afresh when the sample
+is set again; the drawing calls of the waveform and the panel; see
+[`../picture`](../picture/README.md).

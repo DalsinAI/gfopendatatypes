@@ -20,6 +20,20 @@ the autodocs and measured behaviour only.
 The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`, against the
 python model `tests/m68k/opendatatypes_textanim_ref.py`.
 
+## Speed
+
+Layout is linear in the text. Wrapping used to measure the row so far
+again for every character (TextLength on a new RastPort each time, so a
+32 KB text at 100 columns was 33,326 calls over 1.6 million characters);
+now each character's width is measured once a style and added up, each
+segment is still measured whole, and if a segment's width is ever not the
+sum of its characters' (a font measured another way) the layout is made
+again measuring as before, so the line list is the same either way. One
+RastPort serves the whole layout (`measure_open` in `tdt_ext`). Segments
+come from blocks of 64 instead of one allocation each, and each row's
+first segment and the places before it are indexed, so drawing, selecting
+and finding a word start at their row instead of the first line.
+
 ## Edge cases
 
 | Case | What we do | Source |

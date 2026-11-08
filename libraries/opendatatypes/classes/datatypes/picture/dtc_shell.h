@@ -239,6 +239,8 @@ static void x_line(const struct odt_cenv *e, void *rp, odt_u32 pen, odt_s32 x0, 
 /* ---- audio: a player process per sound that plays ---------------------------- */
 
 #ifdef DTC_NEED_AUDIO
+#include "dtc_audio.h"
+
 struct player {
     struct SignalSemaphore sem;         /* held by the player while it runs */
     struct Process *proc;               /* NULL once it has ended (set under Forbid) */
@@ -256,75 +258,84 @@ static void begin_io(struct IORequest *io)
                    : "+r"(a1), "+r"(a0) : : "d0", "d1", "memory", "cc");
 }
 
+/* The player's requests: a0 the one that opened the device, io[] the four
+ * slots dtc_audio_run sends (two steps of up to two channels) */
+struct player_io {
+    struct MsgPort *port;
+    struct IOAudio *a0, *io[4];
+    ULONG role_ch[3];                   /* the channels for roles 1, 2 and 3 */
+};
+
+static void pio_begin(void *ctx, odt_u32 slot, const struct dtc_audio_seg *g)
+{
+    struct player_io *p = ctx;
+    struct IOAudio *io = p->io[slot];
+    *io = *p->a0;
+    io->ioa_Request.io_Command = CMD_WRITE;
+    io->ioa_Request.io_Flags = ADIOF_PERVOL;
+    io->ioa_Request.io_Unit = (struct Unit *)p->role_ch[(g->roles & 3) - 1];
+    io->ioa_Data = (UBYTE *)g->data;
+    io->ioa_Length = g->length;
+    io->ioa_Period = g->period;
+    io->ioa_Volume = g->volume;
+    io->ioa_Cycles = g->cycles;
+    begin_io((struct IORequest *)io);
+}
+
+static int pio_wait(void *ctx, odt_u32 slot)
+{
+    struct player_io *p = ctx;
+    struct IORequest *io = (struct IORequest *)p->io[slot];
+    while (!CheckIO(io))
+        if (Wait((1UL << p->port->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) return 0;
+    WaitIO(io);
+    return 1;
+}
+
+static void pio_abort(void *ctx, odt_u32 slot)
+{
+    struct player_io *p = ctx;
+    AbortIO((struct IORequest *)p->io[slot]);
+    WaitIO((struct IORequest *)p->io[slot]);
+}
+
 static void player_main(void)
 {
     struct Process *me = (struct Process *)FindTask(NULL);
     struct player *pl = me->pr_Task.tc_UserData;
     const struct dtc_audio_plan *plan = pl->plan;
-    struct MsgPort *port;
-    struct IOAudio *a0 = NULL, *io[2] = { NULL, NULL };
-    int stopped = 0;
+    struct player_io p;
+    struct dtc_audio_io aio;
+    int stopped = 0, k, ok;
     ObtainSemaphore(&pl->sem);
     Signal(pl->creator, SIGF_SINGLE);
-    port = CreateMsgPort();
-    if (port) a0 = (struct IOAudio *)CreateIORequest(port, sizeof(struct IOAudio));
-    io[0] = AllocVec(sizeof(struct IOAudio), MEMF_PUBLIC | MEMF_CLEAR);
-    io[1] = AllocVec(sizeof(struct IOAudio), MEMF_PUBLIC | MEMF_CLEAR);
-    if (a0 && io[0] && io[1]) {
-        a0->ioa_Request.io_Message.mn_Node.ln_Pri = 0;      /* ABI test: OS 3.2's allocation precedence */
-        a0->ioa_Data = (UBYTE *)plan->alloc;
-        a0->ioa_Length = plan->nalloc;
-        if (!OpenDevice((CONST_STRPTR)AUDIONAME, 0, (struct IORequest *)a0, 0)) {
-            ULONG units = (ULONG)a0->ioa_Request.io_Unit, l = units & 9, r = units & 6;
-            ULONG role_ch[3] = { l ? l : units, r ? r : units, units };
-            ULONG rep, s;
-            for (rep = 0; !stopped && (!plan->repeat || rep < plan->repeat); rep++) {
-                for (s = 0; !stopped && s < plan->nseg;) {
-                    /* a segment, and its pair of the other channel */
-                    ULONG n = (s + 1 < plan->nseg && plan->seg[s].roles == 1 && plan->seg[s + 1].roles == 2) ? 2 : 1;
-                    ULONG k, out = 0;
-                    for (k = 0; k < n; k++) {
-                        const struct dtc_audio_seg *g = &plan->seg[s + k];
-                        *io[k] = *a0;
-                        io[k]->ioa_Request.io_Command = CMD_WRITE;
-                        io[k]->ioa_Request.io_Flags = ADIOF_PERVOL;
-                        io[k]->ioa_Request.io_Unit = (struct Unit *)role_ch[(g->roles & 3) - 1];
-                        io[k]->ioa_Data = (UBYTE *)g->data;
-                        io[k]->ioa_Length = g->length;
-                        io[k]->ioa_Period = g->period;
-                        io[k]->ioa_Volume = g->volume;
-                        io[k]->ioa_Cycles = g->cycles;
-                        begin_io((struct IORequest *)io[k]);
-                        out |= 1UL << k;
-                    }
-                    while (out) {
-                        ULONG sig = Wait((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C);
-                        if (sig & SIGBREAKF_CTRL_C) {
-                            for (k = 0; k < n; k++)
-                                if (out & (1UL << k)) {
-                                    AbortIO((struct IORequest *)io[k]);
-                                    WaitIO((struct IORequest *)io[k]);
-                                }
-                            out = 0;
-                            stopped = 1;
-                            break;
-                        }
-                        for (k = 0; k < n; k++)
-                            if ((out & (1UL << k)) && CheckIO((struct IORequest *)io[k])) {
-                                WaitIO((struct IORequest *)io[k]);
-                                out &= ~(1UL << k);
-                            }
-                    }
-                    s += n;
-                }
-            }
-            CloseDevice((struct IORequest *)a0);
+    p.a0 = NULL;
+    p.port = CreateMsgPort();
+    if (p.port) p.a0 = (struct IOAudio *)CreateIORequest(p.port, sizeof(struct IOAudio));
+    for (ok = 1, k = 0; k < 4; k++)
+        if (!(p.io[k] = AllocVec(sizeof(struct IOAudio), MEMF_PUBLIC | MEMF_CLEAR))) ok = 0;
+    if (p.a0 && ok) {
+        p.a0->ioa_Request.io_Message.mn_Node.ln_Pri = 0;    /* ABI test: OS 3.2's allocation precedence */
+        p.a0->ioa_Data = (UBYTE *)plan->alloc;
+        p.a0->ioa_Length = plan->nalloc;
+        if (!OpenDevice((CONST_STRPTR)AUDIONAME, 0, (struct IORequest *)p.a0, 0)) {
+            ULONG units = (ULONG)p.a0->ioa_Request.io_Unit, l = units & 9, r = units & 6;
+            p.role_ch[0] = l ? l : units;
+            p.role_ch[1] = r ? r : units;
+            p.role_ch[2] = units;
+            aio.ctx = &p;
+            aio.begin = pio_begin;
+            aio.wait = pio_wait;
+            aio.abort = pio_abort;
+            /* double buffered: each step queued behind the one playing */
+            stopped = !dtc_audio_run(plan, &aio);
+            CloseDevice((struct IORequest *)p.a0);
         }
     }
-    if (io[0]) FreeVec(io[0]);
-    if (io[1]) FreeVec(io[1]);
-    if (a0) DeleteIORequest((struct IORequest *)a0);
-    if (port) DeleteMsgPort(port);
+    for (k = 0; k < 4; k++)
+        if (p.io[k]) FreeVec(p.io[k]);
+    if (p.a0) DeleteIORequest((struct IORequest *)p.a0);
+    if (p.port) DeleteMsgPort(p.port);
     /* ABI test: OS 3.2 signals at the end only, not when stopped */
     if (!stopped && plan->signal_task && plan->signal_mask) Signal(plan->signal_task, plan->signal_mask);
     Forbid();                           /* ends forbidden: the library's code stays until it is gone */

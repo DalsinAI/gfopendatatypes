@@ -314,6 +314,7 @@ void odt_db_remove(struct odt_entry *e)
 
 void odt_free_entry(const struct odt_env *env, struct odt_entry *e)
 {
+    if (e->pat_tok) env->free(env->ctx, e->pat_tok);
     env->free(env->ctx, e);
 }
 
@@ -336,16 +337,87 @@ struct odt_entry *odt_db_find_name(struct odt_db *db, const char *name)
 
 /* Text is every byte but the C1 controls (0x80-0x9f) and the C0 controls
  * other than BEL to CR, DC1, DC3 and ESC; one other byte makes it binary
- * (measured on OS 3.2, every byte value). */
+ * (measured on OS 3.2, every byte value). Ours adds UTF-8 and UTF-16 with
+ * a byte order mark (below). */
 static int is_text(unsigned c)
 {
     if (c >= 0x20) return c < 0x80 || c >= 0xa0;
     return (c >= 7 && c <= 13) || c == 0x11 || c == 0x13 || c == 0x1b;
 }
 
+/* Ours, not OS 3.2's: UTF-8 puts bytes 0x80-0x9f in most characters
+ * outside Latin-1 (every CJK one, the euro sign, dashes, curly quotes),
+ * which OS 3.2's rule takes for C1 controls, so such text never reaches a
+ * text type. Data with such a byte is still text when all of it is valid
+ * UTF-8 (RFC 3629: no overlong forms, no surrogates, nothing past
+ * U+10FFFF) with no C1 control (U+0080-U+009F) in it; the C0 controls
+ * are as for any text. The data may end inside a character (recognition
+ * looks at the first bytes only). */
+static int utf8_text(const odt_u8 *b, odt_u32 len)
+{
+    odt_u32 i = 0, n, k;
+    while (i < len) {
+        unsigned c = b[i], lo = 0x80, hi = 0xbf;
+        if (c < 0x80) { i++; continue; }
+        if (c >= 0xc2 && c <= 0xdf) {
+            n = 1;
+            if (c == 0xc2) lo = 0xa0;       /* U+0080-U+009F: C1 controls */
+        } else if (c >= 0xe0 && c <= 0xef) {
+            n = 2;
+            if (c == 0xe0) lo = 0xa0;       /* overlong */
+            else if (c == 0xed) hi = 0x9f;  /* surrogates */
+        } else if (c >= 0xf0 && c <= 0xf4) {
+            n = 3;
+            if (c == 0xf0) lo = 0x90;       /* overlong */
+            else if (c == 0xf4) hi = 0x8f;  /* past U+10FFFF */
+        } else
+            return 0;                       /* a continuation byte, or never a lead */
+        for (k = 1; k <= n; k++) {
+            if (i + k >= len) return 1;     /* cut off where recognition stops looking */
+            c = b[i + k];
+            if (c < lo || c > hi) return 0;
+            lo = 0x80;
+            hi = 0xbf;
+        }
+        i += n + 1;
+    }
+    return 1;
+}
+
+/* Ours too: UTF-16 text with its byte order mark (FF FE little-endian, FE
+ * FF big-endian), which OS 3.2 takes for binary (its ASCII is every other
+ * byte NUL). Text when every unit after the mark is a character the text
+ * rule allows (C0 as for any text, no C1 controls, no NUL), surrogates
+ * come in pairs, nothing is private use (U+E000-U+F8FF, planes 15 and 16)
+ * or U+FFFE/U+FFFF, and a space, tab or line end is among them (as in
+ * nearly every text, and in about one random unit in 16,000). Random data
+ * after a mark fails one of these within a few dozen bytes. */
+static int utf16_text(const odt_u8 *b, odt_u32 len)
+{
+    int be = b[0] == 0xfe, blank = 0;
+    odt_u32 i;
+    if (len < 4) return 0;
+    for (i = 2; i + 1 < len; i += 2) {
+        unsigned u = be ? ((unsigned)b[i] << 8 | b[i + 1]) : ((unsigned)b[i + 1] << 8 | b[i]);
+        if (u < 0x100) {
+            if (!is_text(u)) return 0;
+            if (u == ' ' || u == '\t' || u == '\n' || u == '\r') blank = 1;
+        } else if (u >= 0xd800 && u <= 0xdb7f) {
+            unsigned v;
+            if (i + 3 >= len) break;        /* cut off after the first half */
+            v = be ? ((unsigned)b[i + 2] << 8 | b[i + 3]) : ((unsigned)b[i + 3] << 8 | b[i + 2]);
+            if (v < 0xdc00 || v > 0xdfff) return 0;
+            i += 2;
+        } else if ((u >= 0xdb80 && u <= 0xf8ff) || u >= 0xfffe)
+            return 0;                       /* a second half alone, private use, not a character */
+    }
+    return blank;
+}
+
 odt_u16 odt_classify(const odt_u8 *buf, odt_u32 len, odt_u32 *form)
 {
     odt_u32 i;
+    int c1 = 0;
     *form = 0;
     if (len >= 6) {
         /* measured: FORM is IFF from 6 bytes on, not at 4 or 5; CAT and
@@ -357,8 +429,17 @@ odt_u16 odt_classify(const odt_u8 *buf, odt_u32 len, odt_u32 *form)
         }
     }
     if (!len) return ODT_DTF_BINARY;
+    if (len >= 2 && ((buf[0] == 0xff && buf[1] == 0xfe) || (buf[0] == 0xfe && buf[1] == 0xff)) &&
+        utf16_text(buf, len))
+        return ODT_DTF_ASCII;
+    /* OS 3.2's rule, but for the bytes 0x80-0x9f: those make the data
+     * binary unless all of it is UTF-8 */
     for (i = 0; i < len; i++)
-        if (!is_text(buf[i])) return ODT_DTF_BINARY;
+        if (!is_text(buf[i])) {
+            if (buf[i] < 0x80 || buf[i] >= 0xa0) return ODT_DTF_BINARY;
+            c1 = 1;
+        }
+    if (c1 && !utf8_text(buf, len)) return ODT_DTF_BINARY;
     return ODT_DTF_ASCII;
 }
 
@@ -381,14 +462,36 @@ int odt_mask_match(const struct odt_DataTypeHeader *h, const odt_u8 *buf, odt_u3
  * the name "". Measured on OS 3.2: "#?" fits "", "#?.odtpm" doesn't; and a
  * pattern without wildcards fits every name but its own ("odtexact.bin"
  * took every binary file and memory, but not the file odtexact.bin). */
-static int name_fits(const struct odt_env *env, const char *pattern, const char *name)
+static int name_fits(const struct odt_env *env, struct odt_entry *e, const char *name)
 {
-    int r;
+    const char *pattern = e->dth.dth_Pattern;
     if (!pattern) return 1;
     if (!name) name = "";
-    r = env->match_name(env->ctx, pattern, name);
-    if (r < 0) return odt_stricmp(pattern, name) != 0;
-    return r;
+    if (e->pat_state == ODT_PAT_ANY) return 1;
+    if (e->pat_state == ODT_PAT_NEW) {
+        /* the first time this entry's pattern is asked: parsed once, the
+         * token kept (no memory for it: no fit, and asked again next time).
+         * "#?" fits every name (OS 3.2: "" too), so it needs no token. */
+        odt_u32 n = 2 * str_len(pattern) + 2;
+        char *tok;
+        int r;
+        if (pattern[0] == '#' && pattern[1] == '?' && !pattern[2]) {
+            e->pat_state = ODT_PAT_ANY;
+            return 1;
+        }
+        if (!(tok = env->alloc(env->ctx, n))) return 0;
+        r = env->parse_name(env->ctx, pattern, tok, n);
+        if (r > 0) {
+            e->pat_tok = tok;
+            e->pat_state = ODT_PAT_WILD;
+        } else {
+            env->free(env->ctx, tok);
+            e->pat_state = r == 0 ? ODT_PAT_LITERAL : ODT_PAT_BAD;
+        }
+    }
+    if (e->pat_state == ODT_PAT_WILD) return env->match_name(env->ctx, e->pat_tok, name);
+    if (e->pat_state == ODT_PAT_LITERAL) return odt_stricmp(pattern, name) != 0;
+    return 0;
 }
 
 static int fits(const struct odt_env *env, struct odt_entry *e,
@@ -402,7 +505,7 @@ static int fits(const struct odt_env *env, struct odt_entry *e,
         !h->dth_Pattern[2])
         return 0;
     if (!odt_mask_match(h, buf, len)) return 0;
-    if (!name_fits(env, h->dth_Pattern, name)) return 0;
+    if (!name_fits(env, e, name)) return 0;
     if (e->code && env->run_hook && !env->run_hook(env->ctx, e, dthc)) return 0;
     return 1;
 }

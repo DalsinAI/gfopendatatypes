@@ -20,6 +20,33 @@ const odt_u32 tdt_methods[] = {
 
 /* ---- layout ------------------------------------------------------------------ */
 
+/* Segments come from blocks of TDT_POOL, freed together */
+struct pool_block {
+    struct pool_block *next;
+    odt_u32 used, pad;
+    struct tdt_seg seg[TDT_POOL];
+};
+
+static struct tdt_seg *seg_alloc(const struct odt_cenv *env, struct tdt_layout *lay)
+{
+    struct pool_block *b = lay->pool;
+    if (!b || b->used == TDT_POOL) {
+        if (!(b = env->alloc(env, sizeof *b))) return 0;
+        b->next = lay->pool;
+        lay->pool = b;
+    }
+    return &b->seg[b->used++];
+}
+
+/* A character's width in one style, measured once a layout (TextLength
+ * adds its characters' widths, so a row's is the sum of them) */
+struct cw_table {
+    odt_s16 w[256];
+    odt_u8 known[32];
+};
+
+#define SUM_BAD (-1)
+
 struct lay {
     const struct odt_cenv *env;
     const struct tdt_measure *m;
@@ -34,14 +61,69 @@ struct lay {
     odt_u32 style;
     struct tdt_seg *last;
     odt_s32 err;
+    /* measuring: exact (the whole pending text each time, as it always
+     * was) or by the characters' widths; the pending text's width so far
+     * (pw, of pn bytes from ps in pstyle); a segment whose width isn't the
+     * sum of its characters' sets err to SUM_BAD and the layout is made
+     * again, measuring exactly */
+    odt_u8 exact;
+    odt_u32 ps, pn, pstyle;
+    odt_s32 pw;
+    struct cw_table *cw[8];
 };
+
+/* A character's width in the current style, or -1 when there is no memory
+ * for the table (the layout then measures exactly) */
+static odt_s32 char_w(struct lay *L, odt_u8 c)
+{
+    struct cw_table *t = L->cw[L->style & 7];
+    char ch = (char)c;
+    if (!t) {
+        if (!(t = L->env->alloc(L->env, sizeof *t))) return -1;
+        L->cw[L->style & 7] = t;
+    }
+    if (!(t->known[c >> 3] & (1 << (c & 7)))) {
+        t->w[c] = (odt_s16)L->m->len(L->m, L->style, &ch, 1);
+        t->known[c >> 3] |= (odt_u8)(1 << (c & 7));
+    }
+    return t->w[c];
+}
+
+/* The width of the first upto bytes of the pending text */
+static odt_s32 pending_width(struct lay *L, odt_u32 upto)
+{
+    if (!L->exact) {
+        if (L->pn > upto && L->ps == L->s && L->pstyle == L->style) {
+            /* fewer than were added up (a row's text checked with the
+             * character after it, or cut at a space): those taken off */
+            const struct cw_table *t = L->cw[L->style & 7];
+            while (L->pn > upto) L->pw -= t->w[(odt_u8)L->buf[L->s + --L->pn]];
+            return L->pw;
+        }
+        if (L->ps != L->s || L->pstyle != L->style) {
+            L->ps = L->s;
+            L->pstyle = L->style;
+            L->pn = 0;
+            L->pw = 0;
+        }
+        while (L->pn < upto) {
+            odt_s32 w = char_w(L, (odt_u8)L->buf[L->s + L->pn]);
+            if (w < 0) { L->exact = 1; break; }
+            L->pw += w;
+            L->pn++;
+        }
+        if (!L->exact) return L->pw;
+    }
+    return L->m->len(L->m, L->style, L->buf + L->s, upto);
+}
 
 static struct tdt_seg *emit(struct lay *L, odt_u32 brk)
 {
-    struct tdt_seg *g = L->env->alloc(L->env, sizeof *g);
+    struct tdt_seg *g = seg_alloc(L->env, L->out);
     odt_s32 w;
     if (!g) { L->err = DTC_ERROR_NO_FREE_STORE; return 0; }
     w = L->n ? L->m->len(L->m, L->style, L->buf + L->s, L->n) : 0;
+    if (!L->exact && L->n && w != pending_width(L, L->n)) L->err = SUM_BAD;
     g->l.ln_Text = (char *)L->buf + L->s;
     g->l.ln_TextLen = L->n;
     g->l.ln_XOffset = (odt_u16)L->x;
@@ -132,92 +214,165 @@ static odt_u32 escape(struct lay *L, odt_u32 i, odt_u32 len)
     return len;                         /* cut short at the end: dropped */
 }
 
-odt_s32 tdt_layout(const struct odt_cenv *env, const struct tdt_measure *m, const char *buf, odt_u32 len, odt_u32 wrap,
-                   struct tdt_layout *out)
+/* Each tab, character and row end is one place in reading order */
+static odt_u32 places(const struct tdt_seg *g) { return g->tab + g->l.ln_TextLen + (g->brk ? 1 : 0); }
+
+/* Each row's first segment and the places before it (none when there is
+ * no memory: the walks then start at the first segment) */
+static void make_index(const struct odt_cenv *env, struct tdt_layout *out)
 {
-    struct lay L;
+    const struct odt_MinNode *n;
+    odt_u32 r = 0, at = 0;
+    out->row_seg = env->alloc(env, (out->rows + 1) * sizeof *out->row_seg);
+    out->row_at = env->alloc(env, (out->rows + 1) * sizeof *out->row_at);
+    if (!out->row_seg || !out->row_at) {
+        env->free(env, out->row_seg);
+        env->free(env, out->row_at);
+        out->row_seg = 0;
+        out->row_at = 0;
+        return;
+    }
+    for (n = out->lines.mlh_Head; n->mln_Succ; n = n->mln_Succ) {
+        struct tdt_seg *g = (struct tdt_seg *)n;
+        while (r <= g->row && r < out->rows) {
+            out->row_seg[r] = g;
+            out->row_at[r++] = at;
+        }
+        at += places(g);
+    }
+    for (; r <= out->rows; r++) {
+        out->row_seg[r] = 0;
+        out->row_at[r] = at;
+    }
+}
+
+static odt_s32 lay_out(struct lay *L, const struct odt_cenv *env, const struct tdt_measure *m, const char *buf,
+                       odt_u32 len, odt_u32 wrap, struct tdt_layout *out, int exact)
+{
     odt_u32 i = 0;
     odt_s32 tabw;
     dtc_list_init(&out->lines);
     out->rows = out->width = out->segs = 0;
-    L.env = env;
-    L.m = m;
-    L.out = out;
-    L.buf = buf;
-    L.row = 0;
-    L.x = 0;
-    L.s = L.n = 0;
-    L.tab = L.row_has = 0;
-    L.fg = DEF_FG;
-    L.bg = DEF_BG;
-    L.style = 0;
-    L.last = 0;
-    L.err = 0;
+    out->pool = 0;
+    out->row_seg = 0;
+    out->row_at = 0;
+    L->env = env;
+    L->m = m;
+    L->out = out;
+    L->buf = buf;
+    L->row = 0;
+    L->x = 0;
+    L->s = L->n = 0;
+    L->tab = L->row_has = 0;
+    L->fg = DEF_FG;
+    L->bg = DEF_BG;
+    L->style = 0;
+    L->last = 0;
+    L->err = 0;
+    L->exact = (odt_u8)(exact || !wrap);  /* without wrapping nothing is decided by the sums */
+    L->ps = L->pn = L->pstyle = 0;
+    L->pw = 0;
     tabw = TDT_TABCHARS * m->len(m, 0, " ", 1);
     if (tabw <= 0) tabw = TDT_TABCHARS * 8;
-    while (i < len && !L.err) {
+    while (i < len && !L->err) {
         odt_u8 c = (odt_u8)buf[i];
         if (c == '\n' || c == '\r') {
-            end_row(&L, TDT_BRK_HARD, 1);
+            end_row(L, TDT_BRK_HARD, 1);
             i += (c == '\r' && i + 1 < len && buf[i + 1] == '\n') ? 2 : 1;
-            L.s = i;
+            L->s = i;
             continue;
         }
         if (c == '\t') {
-            if (L.n || L.tab) emit(&L, TDT_BRK_NONE);
-            L.x = (L.x / tabw + 1) * tabw;
-            L.tab = 1;
-            L.s = ++i;
+            if (L->n || L->tab) emit(L, TDT_BRK_NONE);
+            L->x = (L->x / tabw + 1) * tabw;
+            L->tab = 1;
+            L->s = ++i;
             continue;
         }
         if (c == 0x1b || c == 0x9b) {
-            i = escape(&L, i, len);
-            if (!L.n) L.s = i;
+            i = escape(L, i, len);
+            if (!L->n) L->s = i;
             else {
                 /* an escape that isn't SGR inside text: the text either
                  * side is one segment no more (ABI test) */
-                emit(&L, TDT_BRK_NONE);
-                L.s = i;
+                emit(L, TDT_BRK_NONE);
+                L->s = i;
             }
             continue;
         }
         if (wrap) {
-            odt_s32 w = m->len(m, L.style, buf + L.s, L.n + 1);
-            if (L.x + w > (odt_s32)wrap && (L.n || L.row_has || L.x > 0)) {
-                odt_u32 k = L.s + L.n + 1, sp = ~0UL;
-                while (k-- > L.s)
+            /* the pending text and this character: one more width added
+             * (the common case, inline), else pending_width */
+            const struct cw_table *t = L->cw[L->style & 7];
+            odt_s32 w;
+            if (!L->exact && L->pn == L->n && L->ps == L->s && L->pstyle == L->style && t &&
+                (t->known[c >> 3] & (1 << (c & 7)))) {
+                w = L->pw += t->w[c];
+                L->pn++;
+            } else
+                w = pending_width(L, L->n + 1);
+            if (L->x + w > (odt_s32)wrap && (L->n || L->row_has || L->x > 0)) {
+                odt_u32 k = L->s + L->n + 1, sp = ~0UL;
+                while (k-- > L->s)
                     if (buf[k] == ' ') { sp = k; break; }
                 if (sp != ~0UL) {
                     /* at the last space: it goes */
-                    L.n = sp - L.s;
-                    end_row(&L, TDT_BRK_SPACE, 1);
-                    L.s = sp + 1;
-                    if (sp == i) { L.n = 0; i++; L.s = i; }
-                    else L.n = i - L.s;
-                } else if (L.row_has || L.x > 0) {
+                    L->n = sp - L->s;
+                    end_row(L, TDT_BRK_SPACE, 1);
+                    L->s = sp + 1;
+                    if (sp == i) { L->n = 0; i++; L->s = i; }
+                    else L->n = i - L->s;
+                } else if (L->row_has || L->x > 0) {
                     /* before the word, which goes to the next row whole */
-                    end_row(&L, TDT_BRK_SOFT, 0);
+                    end_row(L, TDT_BRK_SOFT, 0);
                 } else {
                     /* a word wider than the row: broken where it fills it */
-                    end_row(&L, TDT_BRK_SOFT, 1);
-                    L.s = i;
+                    end_row(L, TDT_BRK_SOFT, 1);
+                    L->s = i;
                 }
                 continue;
             }
         }
-        L.n++;
+        L->n++;
         i++;
     }
-    if (!L.err && (L.n || L.tab)) emit(&L, TDT_BRK_NONE);
-    out->rows = L.row + (L.row_has ? 1 : 0);
-    return L.err;
+    if (!L->err && (L->n || L->tab)) emit(L, TDT_BRK_NONE);
+    out->rows = L->row + (L->row_has ? 1 : 0);
+    return L->err;
+}
+
+odt_s32 tdt_layout(const struct odt_cenv *env, const struct tdt_measure *m, const char *buf, odt_u32 len, odt_u32 wrap,
+                   struct tdt_layout *out)
+{
+    struct lay L;
+    odt_s32 r;
+    int k;
+    for (k = 0; k < 8; k++) L.cw[k] = 0;
+    r = lay_out(&L, env, m, buf, len, wrap, out, 0);
+    if (r == SUM_BAD) {
+        /* a width that isn't its characters' sum: measured as before */
+        tdt_free_layout(env, out);
+        r = lay_out(&L, env, m, buf, len, wrap, out, 1);
+    }
+    for (k = 0; k < 8; k++) env->free(env, L.cw[k]);
+    make_index(env, out);
+    return r;
 }
 
 void tdt_free_layout(const struct odt_cenv *env, struct tdt_layout *lay)
 {
-    struct odt_MinNode *n;
+    struct pool_block *b, *next;
     if (!lay->lines.mlh_Head) return;
-    while ((n = dtc_rem_head(&lay->lines)) != 0) env->free(env, n);
+    for (b = lay->pool; b; b = next) {
+        next = b->next;
+        env->free(env, b);
+    }
+    lay->pool = 0;
+    env->free(env, lay->row_seg);
+    env->free(env, lay->row_at);
+    lay->row_seg = 0;
+    lay->row_at = 0;
+    dtc_list_init(&lay->lines);
     lay->rows = lay->width = lay->segs = 0;
 }
 
@@ -228,19 +383,33 @@ void tdt_free_layout(const struct odt_cenv *env, struct tdt_layout *lay)
 #define NEXT(g) SEG((g)->l.ln_Link.mln_Succ)
 #define END(g) (!(g)->l.ln_Link.mln_Succ)
 
-/* Each tab, character and row end is one place in reading order */
-static odt_u32 places(const struct tdt_seg *g) { return g->tab + g->l.ln_TextLen + (g->brk ? 1 : 0); }
-
 /* The place at content point (x, y) */
+/* Where a walk for row starts: its first segment and the places before
+ * it, from the index (or the first segment, when there is none) */
+static const struct tdt_seg *row_start(const struct tdt_layout *lay, odt_u32 row, odt_u32 *at)
+{
+    if (lay->row_seg) {
+        if (row >= lay->rows) {         /* nothing there: the list's end */
+            *at = lay->row_at[lay->rows];
+            return (const struct tdt_seg *)&lay->lines.mlh_Tail;
+        }
+        *at = lay->row_at[row];
+        return lay->row_seg[row];
+    }
+    *at = 0;
+    return FIRST(lay);
+}
+
 static odt_u32 place_at(const struct tdt_measure *m, const struct tdt_layout *lay, odt_s32 x, odt_s32 y)
 {
     const struct tdt_seg *g;
     odt_u32 at = 0, row = y < 0 ? 0 : (odt_u32)y / m->ysize, k;
     if (row >= lay->rows) {
+        if (lay->row_at) return lay->row_at[lay->rows];
         for (g = FIRST(lay); !END(g); g = NEXT(g)) at += places(g);
         return at;                      /* past the end */
     }
-    for (g = FIRST(lay); !END(g); g = NEXT(g)) {
+    for (g = row_start(lay, row, &at); !END(g); g = NEXT(g)) {
         if (g->row < row) { at += places(g); continue; }
         if (g->row > row) return at;    /* the row had nothing there: the next row's start */
         if (x < g->l.ln_XOffset) return at;
@@ -261,7 +430,7 @@ static odt_u32 place_at(const struct tdt_measure *m, const struct tdt_layout *la
 static struct tdt_seg *split(const struct odt_cenv *env, const struct tdt_measure *m, struct tdt_layout *lay,
                              struct tdt_seg *g, odt_u32 k)
 {
-    struct tdt_seg *h = env->alloc(env, sizeof *h);
+    struct tdt_seg *h = seg_alloc(env, lay);
     odt_s32 w;
     if (!h) return 0;
     *h = *g;
@@ -286,11 +455,24 @@ odt_u32 tdt_select(const struct odt_cenv *env, const struct tdt_measure *m, stru
     odt_u32 a = place_at(m, lay, x0, y0), b = place_at(m, lay, x1, y1), at = 0, count = 0;
     struct tdt_seg *g, *next;
     if (a > b) { odt_u32 t = a; a = b; b = t; }
-    for (g = FIRST(lay); !END(g); g = next) {
+    g = FIRST(lay);
+    if (lay->row_at && lay->rows) {
+        /* from the row a is on: the last whose places start at or before it */
+        odt_u32 lo = 0, hi = lay->rows - 1;
+        while (lo < hi) {
+            odt_u32 mid = (lo + hi + 1) / 2;
+            if (lay->row_at[mid] <= a) lo = mid;
+            else hi = mid - 1;
+        }
+        g = lay->row_seg[lo];
+        at = lay->row_at[lo];
+    }
+    for (; !END(g); g = next) {
         odt_u32 n = places(g), p0 = at, p1 = at + n - 1, c0 = at + g->tab;
         next = NEXT(g);
         at += n;
-        if (!n || p1 < a || p0 > b) continue;
+        if (p0 > b) break;              /* the rest come later still */
+        if (!n || p1 < a) continue;
         if (a <= p0 && p1 <= b) {
             g->l.ln_Flags |= TDT_LNF_SELECTED;
             count++;
@@ -363,7 +545,7 @@ odt_u32 tdt_word_at(const struct tdt_measure *m, const struct tdt_layout *lay, c
     if (size) buf[0] = 0;
     if (y < 0 || x < 0) return 0;
     row = (odt_u32)y / m->ysize;
-    for (g = FIRST(lay); !END(g); g = NEXT(g)) {
+    for (g = row_start(lay, row, &k); !END(g) && g->row <= row; g = NEXT(g)) {
         if (g->row != row || x < g->l.ln_XOffset || x >= g->l.ln_XOffset + g->l.ln_Width) continue;
         for (k = 0; k < g->l.ln_TextLen; k++)
             if (m->len(m, g->l.ln_Style, g->l.ln_Text, k + 1) > x - g->l.ln_XOffset) break;
@@ -386,11 +568,11 @@ void tdt_render(const struct odt_cenv *env, const struct tdt_ext *x, const struc
 {
     const struct tdt_seg *g;
     void *clip;
-    odt_u32 rows = m->ysize ? (odt_u32)(height + m->ysize - 1) / m->ysize : 0;
+    odt_u32 rows = m->ysize ? (odt_u32)(height + m->ysize - 1) / m->ysize : 0, at;
     if (width <= 0 || height <= 0) return;
     clip = x->clip ? x->clip(env, rp, left, top, left + width - 1, top + height - 1) : 0;
     x->fill(env, rp, pens->back, left, top, left + width - 1, top + height - 1);
-    for (g = FIRST(lay); !END(g); g = NEXT(g)) {
+    for (g = row_start(lay, top_row, &at); !END(g); g = NEXT(g)) {
         odt_s32 sx, sy, fg;
         if (g->row < top_row) continue;
         if (g->row >= top_row + rows) break;
@@ -415,7 +597,9 @@ void tdt_render(const struct odt_cenv *env, const struct tdt_ext *x, const struc
 static odt_s32 ext_len(const struct tdt_measure *m, odt_u32 style, const char *s, odt_u32 n)
 {
     const struct tdt_ext *x = EXT(m->env);
-    if (!m->font || !x || !x->text_length) return (odt_s32)(n * m->xsize);
+    if (!m->font || !x) return (odt_s32)(n * m->xsize);
+    if (m->rp && x->measure_len) return x->measure_len(m->env, m->rp, style, s, n);
+    if (!x->text_length) return (odt_s32)(n * m->xsize);
     return x->text_length(m->env, m->font, style, s, n);
 }
 
@@ -543,8 +727,15 @@ static odt_u32 layout(const struct odt_cenv *env, struct tdt_inst *in, void *obj
         }
     } else {
         if (!in->laid_out || wrap != in->laid_wrap) {
+            /* one RastPort for the whole layout's measuring, when the
+             * shell has them */
+            const struct tdt_ext *x = EXT(env);
+            struct tdt_measure lm = in->m;
+            lm.rp = in->font && x && x->measure_open && x->measure_len && x->measure_close ?
+                    x->measure_open(env, in->font) : 0;
             drop_layout(env, in);
-            tdt_layout(env, &in->m, in->buffer ? in->buffer : "", in->buffer_len, wrap, &in->lay);
+            tdt_layout(env, &lm, in->buffer ? in->buffer : "", in->buffer_len, wrap, &in->lay);
+            if (lm.rp) x->measure_close(env, lm.rp);
             in->laid_out = 1;
             in->laid_wrap = wrap;
         }
