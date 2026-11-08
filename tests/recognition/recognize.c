@@ -33,34 +33,58 @@
 static void *t_alloc(void *ctx, odt_u32 n) { (void)ctx; return calloc(1, n); }
 static void t_free(void *ctx, void *p) { (void)ctx; free(p); }
 
-/* An AmigaDOS pattern as an extended glob: #x is *(x), #? is *, (a|b) is
- * @(a|b), ~x is !(x), ' quotes the next character. -1 for a pattern with
- * no wildcards, as the library's MatchPatternNoCase glue. */
-static int t_match(void *ctx, const char *pat, const char *name)
+/* An AmigaDOS pattern as an extended glob, written into tok (size bytes):
+ * #x is *(x), #? is *, (a|b) is @(a|b), ~x is !(x), ' quotes the next
+ * character. 1 when it has wildcards, 0 when it has none (the core then
+ * compares the pattern itself, as OS 3.2 does), -1 when the glob does not
+ * fit. parse_name of struct odt_env. */
+static int t_parse(void *ctx, const char *pat, char *tok, odt_u32 size)
 {
-    char g[512];
     size_t i = 0;
     int wild = 0;
     const char *p;
     (void)ctx;
-    for (p = pat; *p && i < sizeof g - 8; p++) {
+    if (!size) return -1;
+    for (p = pat; *p; p++) {
+        char add[8];
+        int n = 0;
         switch (*p) {
         case '#':
             wild = 1;
-            if (p[1] == '?') { g[i++] = '*'; p++; }
-            else { g[i++] = '*'; if (p[1] != '(') { g[i++] = '('; g[i++] = *++p; g[i++] = ')'; } }
+            if (p[1] == '?') { add[n++] = '*'; p++; }
+            else {
+                add[n++] = '*';
+                if (p[1] != '(') { add[n++] = '('; add[n++] = *++p; add[n++] = ')'; }
+            }
             break;
-        case '(': wild = 1; if (!i || (g[i - 1] != '*' && g[i - 1] != '!')) g[i++] = '@'; g[i++] = '('; break;
-        case '~': wild = 1; g[i++] = '!'; if (p[1] != '(') { g[i++] = '('; g[i++] = *++p; g[i++] = ')'; } break;
-        case '?': case '|': case ')': wild = 1; g[i++] = *p; break;
-        case '\'': if (p[1]) { g[i++] = '\\'; g[i++] = *++p; } break;
-        case '*': case '[': case ']': case '\\': g[i++] = '\\'; g[i++] = *p; break;
-        default: g[i++] = *p;
+        case '(':
+            wild = 1;
+            if (!i || (tok[i - 1] != '*' && tok[i - 1] != '!')) add[n++] = '@';
+            add[n++] = '(';
+            break;
+        case '~':
+            wild = 1;
+            add[n++] = '!';
+            if (p[1] != '(') { add[n++] = '('; add[n++] = *++p; add[n++] = ')'; }
+            break;
+        case '?': case '|': case ')': wild = 1; add[n++] = *p; break;
+        case '\'': if (p[1]) { add[n++] = '\\'; add[n++] = *++p; } break;
+        case '*': case '[': case ']': case '\\': add[n++] = '\\'; add[n++] = *p; break;
+        default: add[n++] = *p;
         }
+        if (i + (size_t)n + 1 > size) return -1;
+        memcpy(tok + i, add, (size_t)n);
+        i += (size_t)n;
     }
-    g[i] = 0;
-    if (!wild) return -1;
-    return fnmatch(g, name, FNM_CASEFOLD | FNM_EXTMATCH) == 0;
+    tok[i] = 0;
+    return wild ? 1 : 0;
+}
+
+/* match_name: the glob t_parse wrote, without regard to case. */
+static int t_match(void *ctx, const char *tok, const char *name)
+{
+    (void)ctx;
+    return fnmatch(tok, name, FNM_CASEFOLD | FNM_EXTMATCH) == 0;
 }
 
 static int service;
@@ -88,7 +112,7 @@ static int t_hook(void *ctx, struct odt_entry *e, struct odt_DTHookContext *d)
     return 0;
 }
 
-static const struct odt_env env = { NULL, t_alloc, t_free, t_match, t_hook };
+static const struct odt_env env = { NULL, t_alloc, t_free, t_parse, t_match, t_hook };
 
 static unsigned char *slurp(const char *path, unsigned long max, unsigned long *len)
 {
