@@ -11,8 +11,9 @@
 #   TARBALLS     folder holding the upstream tarballs listed in ../SOURCES
 #                (default ./tarballs, else ../tarballs); the script checks
 #                their SHA-256
-#   AC_HELPERS   1: big copies and fills in common/dtlib.c go through
-#                AC090's native helpers (../achelpers/, see ../README.md);
+#   AC_HELPERS   1: big copies and fills in common/dtlib.c, libwebp and
+#                libvpx go through AC090's native helpers (../achelpers/,
+#                see ../README.md; libwebp and libvpx get ac_string.h);
 #                0: as before; auto (default): 1 when the pinned
 #                amicradle-guest commit is to hand, else 0, saying so
 #   AMIGACHROME_GUEST  checkout of amicradle-guest holding the commit in
@@ -55,12 +56,17 @@ if [ "$AC_HELPERS" = auto ]; then          # on when the pinned amicradle-guest 
     if sh "$HERE/../achelpers/achelpers.sh" --have; then AC_HELPERS=1
     else AC_HELPERS=0; echo "AC090 native helpers: off (no amicradle-guest checkout with $(cat "$HERE/../AMIGACHROME_GUEST_PINNED_COMMIT" | cut -c1-12); set AMIGACHROME_GUEST)"; fi
 fi
-ACFLAGS= ACLIB=
+# ACSTRING goes on libwebp's and libvpx's compiles: ac_string.h, forced in,
+# sends their memcpy, memmove and memset calls of 64 bytes and more to the
+# helpers (on a 68k without AC090 the helpers' own 68k code runs).
+ACFLAGS= ACLIB= ACSTRING=
 if [ "$AC_HELPERS" = 1 ]; then
     CC="$CC" AR="$AR" CFLAGS="$CFLAGS" sh "$HERE/../achelpers/achelpers.sh" "$WORK/achelpers"
     ACFLAGS="-DOAI_AC_HELPERS -I$WORK/achelpers/src"
     ACLIB="$WORK/achelpers/libachelpers.a"
+    ACSTRING="-include $HERE/../achelpers/ac_string.h -I$WORK/achelpers/src"
 fi
+echo "AC090 native helpers: AC_HELPERS=$AC_HELPERS"
 
 unpack() {
     t="$TARBALLS/$2"
@@ -84,13 +90,16 @@ compile() {
 unpack libwebp libwebp-1.6.0.tar.gz e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 W="$WORK/libwebp/libwebp-1.6.0"
 # No floating point in the decoder or the lossless encoder (see the
-# patches), and no null read in the demuxer's chunk iterator (see the patch).
+# patches), no null read in the demuxer's chunk iterator (see the patch), and
+# no 64-bit multiplies or divides in the lossless encoder's busiest sums,
+# which a 68060 traps (libwebp-1.6.0-m68060.patch, tests/test-webp060.sh).
 (cd "$W" && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-no-float.patch" \
     && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-demux-null-chunk.patch" \
-    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch")
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch" \
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-m68060.patch")
 # The decoder, the demuxer (animated and extended files) and the shared code.
 # The SSE, NEON and MIPS files compile to nothing on 68k and are left out.
-XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \
+XFLAGS="-I$W -I$W/src $ACSTRING" compile "$W" "$WORK/obj-libwebp" \
     src/dec/alpha_dec.c src/dec/buffer_dec.c src/dec/frame_dec.c src/dec/idec_dec.c src/dec/io_dec.c \
     src/dec/quant_dec.c src/dec/tree_dec.c src/dec/vp8_dec.c src/dec/vp8l_dec.c src/dec/webp_dec.c \
     src/demux/demux.c \
@@ -106,10 +115,13 @@ XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \
 # three picture calls it needs: libwebp's picture files would bring the lossy
 # encoder). No floating point in any of it: the link map is checked below.
 # dtstart.c is linked first, so the library's first code is a safe return.
-XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c
+# webpcore.c: libwebp's tables set up in dt_init(), and an animation's first
+# frame on its background colour (tests/test-webpcore.sh).
+XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" \
+    common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c webp/webpcore.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/webp.datatype" \
     "$WORK"/obj-webp/common_dtstart.o "$WORK"/obj-webp/common_dtlib.o "$WORK"/obj-webp/webp_webpclass.o \
-    "$WORK"/obj-webp/webp_webpencode.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
+    "$WORK"/obj-webp/webp_webpencode.o "$WORK"/obj-webp/webp_webpcore.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/webp.datatype.map"
 echo "webp.datatype: $(wc -c < "$OUT/Classes/DataTypes/webp.datatype") bytes"
 # No soft-float helpers and no maths library linked in: they would open the ROM
@@ -130,8 +142,10 @@ V="$WORK/libvpx/libvpx-1.17.0"
 (cd "$V" && patch -p1 -s < "$HERE/patches/libvpx-1.17.0-amiga-align.patch" \
     && patch -p1 -s < "$HERE/patches/libvpx-1.17.0-tx-size-null.patch")
 # The VP8 and VP9 decoders in plain C: no encoders, threads or tools.
+# A fresh build folder: libvpx's make doesn't notice CFLAGS changing (AC_HELPERS).
+rm -rf "$WORK/libvpx-build"
 mkdir -p "$WORK/libvpx-build"
-(cd "$WORK/libvpx-build" && CROSS="$P/bin/m68k-amigaos-" CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer $NONULL" \
+(cd "$WORK/libvpx-build" && CROSS="$P/bin/m68k-amigaos-" CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer $NONULL $ACSTRING" \
     "$V/configure" --target=generic-gnu --disable-vp8-encoder --disable-vp9-encoder --enable-vp8-decoder \
     --enable-vp9-decoder --disable-examples --disable-tools --disable-docs --disable-unit-tests \
     --disable-multithread --disable-runtime-cpu-detect --disable-install-docs --disable-install-bins \
@@ -225,17 +239,17 @@ DT_PRIORITY=1 picdesc RAW "Camera RAW" raw \
 
 # --- gfopenpng.datatype ---------------------------------------------------------
 # PNG on the Amiga itself, our own decoder (png/pngclass.c, png/build.sh).
-OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/png/build.sh"
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/png/build.sh"
 
 # --- gfopentga.datatype ---------------------------------------------------------
 # Targa (TGA) on the Amiga itself, our own decoder (tga/tgaclass.c,
 # tga/build.sh); tests/test-tga.sh checks the decoder on x86 or ARM64 cores.
-OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/tga/build.sh"
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/tga/build.sh"
 
 # --- gfopengif.datatype ---------------------------------------------------------
 # GIF on the Amiga itself, every frame of an animation (gif/gifclass.c,
 # gif/build.sh); tests/test-gif.sh checks the decoder on x86 or ARM64 cores.
-OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/gif/build.sh"
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/gif/build.sh"
 
 # --- stream.datatype, gzip.datatype, brotli.datatype --------------------------
 # The "data" class and its first two decoders (stream/build.sh); gzip

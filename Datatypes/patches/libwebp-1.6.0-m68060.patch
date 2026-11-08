@@ -1,0 +1,238 @@
+--- a/src/dsp/lossless_common.h
++++ b/src/dsp/lossless_common.h
+@@ -111,6 +111,70 @@
+   return ((a < 0) == (b < 0)) ? ((a + b / 2) / b) : ((a - b / 2) / b);
+ }
+ 
++// AmigaOS 3.x datatypes: a 68060 has no 64-bit MULU.L/MULS.L and no DIVU.L
++// with a 64-bit dividend; 68060.library emulates each one at 100 cycles or
++// more. GCC uses them for every 32 x 32 -> 64-bit product and for every
++// division by a constant, so the encoder's busiest sums go through these,
++// which give the same results with 16 x 16 -> 32-bit multiplies and 32-bit
++// divides (DIVUL.L) only.
++
++// A divisor GCC can't see, so that x / d is one DIVUL.L and not a multiply
++// by the reciprocal (a 64-bit MULU.L).
++static WEBP_INLINE uint32_t VP8LHiddenDivisor(uint32_t d) {
++#if defined(__GNUC__)
++  __asm__("" : "+r"(d));
++#endif
++  return d;
++}
++
++// The low 16 bits of a times the low 16 bits of b (a MULU.W).
++static WEBP_INLINE uint32_t VP8LMulU16x16(uint32_t a, uint32_t b) {
++  return (uint32_t)(uint16_t)a * (uint32_t)(uint16_t)b;
++}
++
++// a * b, for a < 2^16.
++static WEBP_INLINE uint64_t VP8LMulU16x32(uint32_t a, uint32_t b) {
++  const uint32_t lo = VP8LMulU16x16(a, b);
++  const uint32_t hi = VP8LMulU16x16(a, b >> 16);
++  return ((uint64_t)hi << 16) + lo;
++}
++
++// a * b.
++static WEBP_INLINE uint64_t VP8LMulU32x32(uint32_t a, uint32_t b) {
++  return ((uint64_t)VP8LMulU16x16(a >> 16, b >> 16) << 32) +
++         VP8LMulU16x16(a, b) + ((uint64_t)VP8LMulU16x16(a, b >> 16) << 16) +
++         ((uint64_t)VP8LMulU16x16(a >> 16, b) << 16);
++}
++
++// x * s modulo 2^64, as x * s, for s < 2^16.
++static WEBP_INLINE uint64_t VP8LMulU64x16(uint64_t x, uint32_t s) {
++  return ((uint64_t)((uint32_t)(x >> 32) * s) << 32) +
++         VP8LMulU16x32(s, (uint32_t)x);
++}
++
++// DivRound(a, d) for a >= 0 and 0 < d < 2^16: three 32-bit divides, a
++// 16-bit piece of a at a time.
++static WEBP_INLINE uint64_t VP8LDivRoundU64(uint64_t a, uint32_t d) {
++  const uint32_t dd = VP8LHiddenDivisor(d);
++  uint32_t hi, mid, lo, r;
++  a += d >> 1;
++  hi = (uint32_t)(a >> 32) / dd;
++  r = (uint32_t)(a >> 32) % dd;
++  mid = ((r << 16) | ((uint32_t)a >> 16)) / dd;
++  r = ((r << 16) | ((uint32_t)a >> 16)) % dd;
++  lo = ((r << 16) | (uint16_t)a) / dd;
++  return ((uint64_t)hi << 32) + ((mid << 16) | lo);
++}
++
++// DivRound(x * m, 100) for an even m < 100: one 32-bit divide.
++// (m * x + 50) / 100 = (m/2 * x + 25) / 50; with x = 50 q + r, that is
++// m/2 * q + (m/2 * r + 25) / 50, and t / 50 = (t * 1311) >> 16 for t < 4681.
++static WEBP_INLINE uint32_t VP8LDivRoundMulBy100(uint32_t x, uint32_t m) {
++  const uint32_t d = VP8LHiddenDivisor(50);
++  const uint32_t q = x / d, r = x % d;
++  return (m >> 1) * q + ((((m >> 1) * r + 25) * 1311) >> 16);
++}
++
+ #define WEBP_INT64_MAX ((int64_t)((1ull << 63) - 1))
+ #define WEBP_UINT64_MAX (~0ull)
+ 
+--- a/src/dsp/lossless_enc.c
++++ b/src/dsp/lossless_enc.c
+@@ -273,8 +273,13 @@
+     // log2(Xf) = log2(floor(Xf)) + log2(1 + (v % y) / v)
+     // The correction factor: log(1 + d) ~ d; for very small d values, so
+     // log2(1 + (v % y) / v) ~ LOG_2_RECIPROCAL * (v % y)/v
+-    correction = LOG_2_RECIPROCAL_FIXED * (orig_v & (y - 1));
+-    return orig_v * (kLog2Table[v] + (log_cnt << LOG_2_PRECISION_BITS)) +
++    // AmigaOS 3.x datatypes (68060): orig_v < 2^16, the log below 2^27 and
++    // the correction below 2^32, so 16-bit multiplies give the same sum
++    // (lossless_common.h).
++    correction = (uint32_t)LOG_2_RECIPROCAL_FIXED * (uint32_t)(orig_v & (y - 1));
++    return VP8LMulU16x32((uint32_t)orig_v,
++                         kLog2Table[v] +
++                             ((uint32_t)log_cnt << LOG_2_PRECISION_BITS)) +
+            correction;
+   } else {
+     // AmigaOS 3.x datatypes: no floating point, so the encoder runs without
+@@ -410,10 +415,15 @@
+ 
+   // Gather info for the bit entropy.
+   if (*val_prev != 0) {
++    // AmigaOS 3.x datatypes (68060): no 64-bit multiply (lossless_common.h);
++    // the streak is 1 most of the time.
++    const uint64_t slog = VP8LFastSLog2(*val_prev);
+     bit_entropy->sum += (*val_prev) * streak;
+     bit_entropy->nonzeros += streak;
+     bit_entropy->nonzero_code = *i_prev;
+-    bit_entropy->entropy += VP8LFastSLog2(*val_prev) * streak;
++    bit_entropy->entropy += (streak == 1) ? slog
++                            : (streak <= 0xffff) ? VP8LMulU64x16(slog, streak)
++                                                 : slog * streak;
+     if (bit_entropy->max_val < *val_prev) {
+       bit_entropy->max_val = *val_prev;
+     }
+--- a/src/enc/vp8l_enc.c
++++ b/src/enc/vp8l_enc.c
+@@ -115,7 +115,10 @@
+ static WEBP_INLINE uint8_t HashPix(uint32_t pix) {
+   // Note that masking with 0xffffffffu is for preventing an
+   // 'unsigned int overflow' warning. Doesn't impact the compiled code.
+-  return ((((uint64_t)pix + (pix >> 19)) * 0x39c5fba7ull) & 0xffffffffu) >> 24;
++  // AmigaOS 3.x datatypes (68060): the low 32 bits of the product depend on
++  // the low 32 bits of the sum only, so a 32-bit multiply gives the same
++  // hash without a 64-bit MULU.L.
++  return (uint8_t)(((pix + (pix >> 19)) * 0x39c5fba7u) >> 24);
+ }
+ 
+ static int AnalyzeEntropy(const uint32_t* argb,
+--- a/src/enc/backward_references_cost_enc.c
++++ b/src/enc/backward_references_cost_enc.c
+@@ -127,10 +127,16 @@
+   const int ix = use_color_cache ? VP8LColorCacheContains(hashers, color) : -1;
+   if (ix >= 0) {
+     // use_color_cache is true and hashers contains color
+-    cost_val += DivRound(GetCacheCost(cost_model, ix) * 68, 100);
++    // AmigaOS 3.x datatypes (68060): the costs are 32-bit, so one 32-bit
++    // divide does (lossless_common.h).
++    cost_val +=
++        VP8LDivRoundMulBy100((uint32_t)GetCacheCost(cost_model, ix), 68);
+   } else {
++    const int64_t literal_cost = GetLiteralCost(cost_model, color);
+     if (use_color_cache) VP8LColorCacheInsert(hashers, color);
+-    cost_val += DivRound(GetLiteralCost(cost_model, color) * 82, 100);
++    cost_val += (literal_cost <= 0xffffffff)
++                    ? VP8LDivRoundMulBy100((uint32_t)literal_cost, 82)
++                    : DivRound(literal_cost * 82, 100);
+   }
+   if (cost[idx] > cost_val) {
+     cost[idx] = cost_val;
+--- a/src/enc/predictor_enc.c
++++ b/src/enc/predictor_enc.c
+@@ -40,6 +40,25 @@
+ //------------------------------------------------------------------------------
+ // Methods to calculate Entropy (Shannon).
+ 
++// AmigaOS 3.x datatypes (68060): PredictionCostBias with no 64-bit multiply
++// or divide (src/dsp/lossless_common.h) for the two exp_val the encoder uses.
++// The decay of exp_val doesn't depend on the counts, so these hold its 15
++// values (exp_val << LOG_2_PRECISION_BITS, then DivRound(6 * exp_val, 10)
++// each time) as 100 * q + r: DivRound(exp_val * c, 100) is then
++// q * c + (r * c + 50) / 100.
++static const uint32_t kExpVal94[15][2] = {
++  { 7885291, 52 }, { 4731174, 91 }, { 2838704, 95 }, { 1703222, 97 },
++  { 1021933, 78 }, { 613160, 27 }, { 367896, 16 }, { 220737, 70 },
++  { 132442, 62 }, { 79465, 57 }, { 47679, 34 }, { 28607, 60 },
++  { 17164, 56 }, { 10298, 74 }, { 6179, 24 }
++};
++static const uint32_t kExpVal240[15][2] = {
++  { 20132659, 20 }, { 12079595, 52 }, { 7247757, 31 }, { 4348654, 39 },
++  { 2609192, 63 }, { 1565515, 58 }, { 939309, 35 }, { 563585, 61 },
++  { 338151, 37 }, { 202890, 82 }, { 121734, 49 }, { 73040, 69 },
++  { 43824, 41 }, { 26294, 65 }, { 15776, 79 }
++};
++
+ // Compute a bias for prediction entropy using a global heuristic to favor
+ // values closer to 0. Hence the final negative sign.
+ // 'exp_val' has a scaling factor of 1/100.
+@@ -47,8 +66,26 @@
+                                   uint64_t exp_val) {
+   const int significant_symbols = 256 >> 4;
+   const uint64_t exp_decay_factor = 6;  // has a scaling factor of 1/10
+-  uint64_t bits = (weight_0 * counts[0]) << LOG_2_PRECISION_BITS;
++  const uint32_t (*const table)[2] =
++      (exp_val == 94) ? kExpVal94 : (exp_val == 240) ? kExpVal240 : NULL;
++  uint64_t bits;
+   int i;
++  if (table != NULL && weight_0 <= 0xffff) {
++    const uint32_t hundred = VP8LHiddenDivisor(100);
++    bits = VP8LMulU16x32((uint32_t)weight_0, counts[0]) << LOG_2_PRECISION_BITS;
++    for (i = 1; i < significant_symbols; ++i) {
++      const uint32_t c = counts[i] + counts[256 - i];
++      const uint32_t q = table[i - 1][0], r = table[i - 1][1];
++      if (c <= (0xffffffffu - 50) / 99) {
++        bits += VP8LMulU32x32(q, c) + (r * c + 50) / hundred;
++      } else {
++        bits += DivRound(((uint64_t)q * 100 + r) * c, 100);
++      }
++    }
++    return (bits >> 63) ? -DivRound((int64_t)bits, 10)
++                        : -(int64_t)VP8LDivRoundU64(bits, 10);
++  }
++  bits = (weight_0 * counts[0]) << LOG_2_PRECISION_BITS;
+   exp_val <<= LOG_2_PRECISION_BITS;
+   for (i = 1; i < significant_symbols; ++i) {
+     bits += DivRound(exp_val * (counts[i] + counts[256 - i]), 100);
+--- a/src/enc/histogram_enc.c
++++ b/src/enc/histogram_enc.c
+@@ -253,9 +253,13 @@
+     // Let's mix in a bit of entropy to favor good clustering when
+     // distributions of these are combined.
+     if (entropy->nonzeros == 2) {
+-      return DivRound(99 * ((uint64_t)entropy->sum << LOG_2_PRECISION_BITS) +
+-                          entropy->entropy,
+-                      100);
++      // AmigaOS 3.x datatypes (68060): the same sum and division with no
++      // 64-bit multiply or divide (src/dsp/lossless_common.h).
++      const uint64_t a =
++          (VP8LMulU16x32(99, entropy->sum) << LOG_2_PRECISION_BITS) +
++          entropy->entropy;
++      return (a >> 63) ? (uint64_t)DivRound((int64_t)a, 100)
++                       : VP8LDivRoundU64(a, 100);
+     }
+     // No matter what the entropy says, we cannot be better than min_limit
+     // with Huffman coding. I am mixing a bit of entropy into the
+@@ -271,10 +275,15 @@
+   }
+ 
+   {
+-    uint64_t min_limit = (uint64_t)(2 * entropy->sum - entropy->max_val)
+-                         << LOG_2_PRECISION_BITS;
+-    min_limit =
+-        DivRound(mix * min_limit + (1000 - mix) * entropy->entropy, 1000);
++    // AmigaOS 3.x datatypes (68060): as above; mix is below 2^16, and the
++    // sums wrap as libwebp's do.
++    const uint64_t a =
++        (VP8LMulU16x32((uint32_t)mix,
++                       2 * entropy->sum - entropy->max_val)
++         << LOG_2_PRECISION_BITS) +
++        VP8LMulU64x16(entropy->entropy, (uint32_t)(1000 - mix));
++    const uint64_t min_limit = (a >> 63) ? (uint64_t)DivRound((int64_t)a, 1000)
++                                         : VP8LDivRoundU64(a, 1000);
+     return (entropy->entropy < min_limit) ? min_limit : entropy->entropy;
+   }
+ }
