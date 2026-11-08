@@ -4,6 +4,7 @@
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "cdxl_core.h"
+#include "cdxl_cube_tables.h"
 #include "../../common/include/odt_planar.h"
 
 static uint32_t get32(const uint8_t *p)
@@ -109,17 +110,35 @@ void cdxl_palette(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb
     }
 }
 
+static const uint8_t cdxl_bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
+
+uint8_t cdxl_cube_pixel(unsigned d, unsigned r, unsigned g, unsigned b)
+{
+    const uint8_t *t = cdxl_cube[d & 15];
+    return (uint8_t)(t[r & 255] + t[256 + (g & 255)] + t[512 + (b & 255)]);
+}
+
 void cdxl_rgb_to_cube(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *out)
 {
-    static const uint8_t bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
     const uint8_t *s = frame + cdxl_image_at(f);
     unsigned x, y;
 
-    for (y = 0; y < f->height; y++)
-        for (x = 0; x < f->width; x++, s += 3) {
-            unsigned d = bayer[y & 3][x & 3] * 16;
-            *out++ = (uint8_t)(((s[0] * 5 + d) >> 8) * 36 + ((s[1] * 5 + d) >> 8) * 6 + ((s[2] * 5 + d) >> 8));
+    /* the cube's parts from the tables (cdxl_cube_tables.h), a row of them
+     * for each of the four dither values on a line: four pixels a turn */
+    for (y = 0; y < f->height; y++) {
+        const uint8_t *b = cdxl_bayer[y & 3];
+        const uint8_t *t0 = cdxl_cube[b[0]], *t1 = cdxl_cube[b[1]], *t2 = cdxl_cube[b[2]], *t3 = cdxl_cube[b[3]];
+        for (x = 0; x + 4 <= f->width; x += 4, s += 12, out += 4) {
+            out[0] = (uint8_t)(t0[s[0]] + t0[256 + s[1]] + t0[512 + s[2]]);
+            out[1] = (uint8_t)(t1[s[3]] + t1[256 + s[4]] + t1[512 + s[5]]);
+            out[2] = (uint8_t)(t2[s[6]] + t2[256 + s[7]] + t2[512 + s[8]]);
+            out[3] = (uint8_t)(t3[s[9]] + t3[256 + s[10]] + t3[512 + s[11]]);
         }
+        for (; x < f->width; x++, s += 3) {
+            const uint8_t *t = cdxl_cube[b[x & 3]];
+            *out++ = (uint8_t)(t[s[0]] + t[256 + s[1]] + t[512 + s[2]]);
+        }
+    }
 }
 
 void cdxl_mono(const uint8_t *frame, const struct cdxl_frame *f, int8_t *out)
@@ -190,5 +209,123 @@ void cdxl_show(const uint8_t *frame, const struct cdxl_frame *f, uint8_t *rgb)
             *rgb++ = (uint8_t)g;
             *rgb++ = (uint8_t)b;
         }
+    }
+}
+
+/* ---- where the frames are ------------------------------------------------- */
+
+int cdxl_same(const struct cdxl_frame *a, const struct cdxl_frame *b)
+{
+    return a->width == b->width && a->height == b->height && a->planes == b->planes && a->layout == b->layout
+           && a->ham == b->ham;
+}
+
+/* The most sound a frame of size bytes like f can hold, a channel */
+static uint32_t audio_room(const struct cdxl_frame *f, uint32_t size)
+{
+    uint32_t used = CDXL_HEAD + cdxl_image_bytes(f);
+    return size > used ? (size - used) / (f->stereo ? 2u : 1u) : 0;
+}
+
+static int index_quick(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    uint8_t head[CDXL_HEAD];
+    struct cdxl_frame last;
+    long len = io->size ? io->size(io->ctx) : -1;
+    uint32_t n, size = ix->first.size;
+    if (len < 0 || !size || (uint32_t)len < size)
+        return -1;
+    n = (uint32_t)len / size;
+    if ((uint32_t)len % size)
+        return -1;
+    if (n > 1 && (io->read(io->ctx, (n - 1) * size, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &last)
+                  || last.size != size || !cdxl_same(&last, &ix->first)))
+        return -1;
+    ix->frames = n;
+    ix->fixed = size;
+    ix->max_size = size;
+    ix->max_audio = audio_room(&ix->first, size);
+    return 0;
+}
+
+static int index_scan(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    uint8_t head[CDXL_HEAD];
+    struct cdxl_frame f;
+    uint32_t at = 0, cap = 0, n = 0;
+    ix->fixed = 0;
+    ix->max_size = ix->max_audio = 0;
+    if (ix->offsets)
+        io->free(io->ctx, ix->offsets);
+    ix->offsets = 0;
+    for (;;) {
+        if (io->read(io->ctx, at, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &f))
+            break;
+        if (n && !cdxl_same(&f, &ix->first))
+            break;
+        if (at + f.size < at)
+            break;
+        if (n + 1 >= cap) {
+            uint32_t *more, k;
+            cap = cap ? cap * 2 : 256;
+            if (!(more = io->alloc(io->ctx, cap * (uint32_t)sizeof *more)))
+                break;
+            for (k = 0; k < n; k++)
+                more[k] = ix->offsets[k];
+            if (ix->offsets)
+                io->free(io->ctx, ix->offsets);
+            ix->offsets = more;
+        }
+        if (!n)
+            ix->first = f;
+        ix->offsets[n++] = at;
+        if (f.size > ix->max_size)
+            ix->max_size = f.size;
+        if (f.audio > ix->max_audio)
+            ix->max_audio = f.audio;
+        at += f.size;
+        ix->offsets[n] = at;
+    }
+    ix->frames = n;
+    return n ? 0 : -1;
+}
+
+int cdxl_index_open(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    uint8_t head[CDXL_HEAD];
+    ix->frames = ix->fixed = ix->max_size = ix->max_audio = 0;
+    ix->offsets = 0;
+    if (io->read(io->ctx, 0, head, CDXL_HEAD) != CDXL_HEAD || cdxl_parse(head, &ix->first))
+        return -1;
+    if (!index_quick(io, ix))
+        return 0;
+    return index_scan(io, ix);
+}
+
+void cdxl_index_free(const struct cdxl_io *io, struct cdxl_index *ix)
+{
+    if (ix->offsets)
+        io->free(io->ctx, ix->offsets);
+    ix->offsets = 0;
+    ix->frames = 0;
+}
+
+int cdxl_read_frame(const struct cdxl_io *io, struct cdxl_index *ix, uint32_t i, uint8_t *buf, struct cdxl_frame *f)
+{
+    uint32_t at, size;
+    int again = ix->fixed != 0;
+    for (;;) {
+        if (i >= ix->frames)
+            return -1;
+        at = ix->fixed ? i * ix->fixed : ix->offsets[i];
+        size = ix->fixed ? ix->fixed : ix->offsets[i + 1] - at;
+        if (size >= CDXL_HEAD && size <= ix->max_size && io->read(io->ctx, at, buf, size) == (long)size
+            && !cdxl_parse(buf, f) && f->size == size && cdxl_same(f, &ix->first))
+            return 0;
+        /* a frame found in constant time and not one like the first: the
+         * frames' sizes vary; frame by frame then, once */
+        if (!again || index_scan(io, ix))
+            return -1;
+        again = 0;
     }
 }

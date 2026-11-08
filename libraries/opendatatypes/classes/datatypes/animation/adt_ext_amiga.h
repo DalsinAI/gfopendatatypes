@@ -31,17 +31,61 @@ static struct adt_BitMap *ax_alloc_bitmap(const struct odt_cenv *e, odt_u32 w, o
 {
     (void)e;
     /* planar, as the cores read and write it: no friend (ABI test: OS
-     * 3.2's frames on an RTG screen) */
+     * 3.2's frames on an RTG screen); not cleared, as every frame and
+     * every remap is drawn whole */
     (void)fr;
-    return (struct adt_BitMap *)AllocBitMap(w, h, depth, BMF_CLEAR, NULL);
+    return (struct adt_BitMap *)AllocBitMap(w, h, depth, 0, NULL);
+}
+
+/* A frame bitmap in any memory (Fast RAM when there is some): the BitMap
+ * and its planes in one block, its pad marked, which is how
+ * ax_free_bitmap knows it from AllocBitMap's */
+#define AX_ANY_MARK 0x4746
+
+struct ax_any {
+    struct BitMap bm;
+    ULONG size;                         /* the block's */
+};
+
+static struct adt_BitMap *ax_alloc_any(const struct odt_cenv *e, odt_u32 w, odt_u32 h, odt_u32 depth)
+{
+    ULONG bpr = ((w + 15) >> 4) << 1, plane = bpr * h, size, p;
+    struct ax_any *a;
+    (void)e;
+    if (!w || !h || !depth || depth > 8 || plane / bpr != h) return NULL;
+    size = sizeof *a + depth * plane;
+    if (!(a = AllocVec(size, MEMF_ANY))) return NULL;
+    InitBitMap(&a->bm, depth, w, h);
+    for (p = 0; p < depth; p++) a->bm.Planes[p] = (PLANEPTR)((UBYTE *)(a + 1) + p * plane);
+    a->bm.pad = AX_ANY_MARK;
+    a->size = size;
+    return (struct adt_BitMap *)&a->bm;
+}
+
+static int ax_is_any(const struct BitMap *bm)
+{
+    return bm->pad == AX_ANY_MARK && bm->Planes[0] == (PLANEPTR)((UBYTE *)bm + sizeof(struct ax_any));
 }
 
 static void ax_free_bitmap(const struct odt_cenv *e, struct adt_BitMap *bm)
 {
     (void)e;
     if (!bm) return;
+    if (ax_is_any((struct BitMap *)bm)) {
+        FreeVec(bm);                    /* the CPU's alone: no blit reads it */
+        return;
+    }
     WaitBlit();
     FreeBitMap((struct BitMap *)bm);
+}
+
+static int ax_in_chip(const struct odt_cenv *e, const struct adt_BitMap *bm)
+{
+    ULONG p;
+    (void)e;
+    for (p = 0; p < bm->Depth && p < 8; p++)
+        if (bm->Planes[p] && bm->Planes[p] != (odt_u8 *)~0UL && !(TypeOfMem(bm->Planes[p]) & MEMF_CHIP)) return 0;
+    return 1;
 }
 
 #ifndef ADT_EXT_BITMAPS_ONLY
@@ -66,6 +110,37 @@ static void ax_release_pen(const struct odt_cenv *e, void *scr, odt_u32 pen)
 {
     (void)e;
     ReleasePen(((struct Screen *)scr)->ViewPort.ColorMap, pen);
+}
+
+/* A frame's ColorMap, 16 colours a GetRGB32 (little stack: the player's) */
+static odt_u32 ax_cmap_colors(const struct odt_cenv *e, void *cmap, odt_u32 n, odt_u8 *rgb)
+{
+    struct ColorMap *cm = cmap;
+    ULONG t[3 * 16], i, k, got;
+    (void)e;
+    got = cm->Count < n ? cm->Count : n;
+    for (i = 0; i < got; i += k) {
+        k = got - i > 16 ? 16 : got - i;
+        GetRGB32(cm, i, k, t);
+        for (n = 0; n < 3 * k; n++) rgb[3 * i + n] = (UBYTE)(t[n] >> 24);
+    }
+    return got;
+}
+
+/* Colours into a screen's palette, 16 a LoadRGB32; never the Workbench's */
+static void ax_load_colors(const struct odt_cenv *e, void *scr, odt_u32 first, odt_u32 n, const odt_u8 *rgb)
+{
+    struct Screen *s = scr;
+    ULONG t[1 + 3 * 16 + 1], i, k, j;
+    (void)e;
+    if ((s->Flags & SCREENTYPE) == WBENCHSCREEN) return;
+    for (i = 0; i < n; i += k) {
+        k = n - i > 16 ? 16 : n - i;
+        t[0] = k << 16 | (first + i);
+        for (j = 0; j < 3 * k; j++) t[1 + j] = rgb[3 * i + j] * 0x01010101UL;
+        t[1 + 3 * k] = 0;
+        LoadRGB32(&s->ViewPort, t);
+    }
 }
 
 static odt_u32 ax_screen_depth(const struct odt_cenv *e, void *scr)
@@ -157,11 +232,19 @@ static odt_u32 ax_clock(const struct odt_cenv *e)
 /* ---- sound: audio.device, one channel, from any task ------------------ */
 
 /* The reply port signals nobody (PA_IGNORE), so the task that stops the
- * sound needn't be the one that started it: completion is polled. */
+ * sound needn't be the one that started it: completion is polled. A sample
+ * longer than one write (131070 bytes) is several writes queued on the
+ * channel at once (adt_sound_split), which audio.device plays one after
+ * the other without a gap. */
+#define AX_WRITES 64                    /* 8 MB of sound a play at most */
+
 struct ax_sound {
     struct SignalSemaphore sem;         /* the player and the application both play */
     struct MsgPort port;
-    struct IOAudio io;
+    struct IOAudio io;                  /* the channel, as OpenDevice gave it */
+    struct IOAudio *w;                  /* AX_WRITES writes, copies of io */
+    ULONG sent;                         /* how many of them are out */
+    odt_u32 at[AX_WRITES], part[AX_WRITES];   /* where each starts in the sample, its length */
     BYTE *chip;                         /* the data, copied to chip memory */
     ULONG chip_len;
     UBYTE open, busy;
@@ -169,12 +252,20 @@ struct ax_sound {
 
 static void ax_sound_stop_(struct ax_sound *s)
 {
+    LONG i;
     if (!s->busy) return;
-    AbortIO((struct IORequest *)&s->io);
-    while (!CheckIO((struct IORequest *)&s->io)) {}   /* audio.device ends an aborted write at once */
-    Forbid();
-    Remove(&s->io.ioa_Request.io_Message.mn_Node);
-    Permit();
+    /* the last first, so none queued behind the one aborted starts */
+    for (i = (LONG)s->sent - 1; i >= 0; i--) {
+        struct IORequest *r = (struct IORequest *)&s->w[i];
+        if (!CheckIO(r)) {
+            AbortIO(r);
+            while (!CheckIO(r)) {}      /* audio.device ends an aborted write at once */
+        }
+        Forbid();
+        Remove(&r->io_Message.mn_Node);
+        Permit();
+    }
+    s->sent = 0;
     s->busy = 0;
 }
 
@@ -208,10 +299,13 @@ static int ax_sound_play(const struct odt_cenv *e, const odt_s8 *data, odt_u32 l
 static int ax_sound_play_(struct ax_sound *s, const odt_s8 *data, odt_u32 len, odt_u32 period, odt_u32 volume,
                           odt_u32 cycles, const UBYTE *channels)
 {
+    odt_u32 *at = s->at, *part = s->part, n, i;
     ax_sound_stop_(s);
-    if (len > 131070UL) len = 131070UL;   /* one write's most: longer, not yet */
-    len &= ~1UL;
-    if (!len) return 0;
+    if (!(n = adt_sound_split(len, cycles, at, part, AX_WRITES))) return 0;
+    if (part[0] != (len & ~1UL)) cycles = 1;   /* several writes: they make the repeats */
+    for (len = 0, i = 0; i < n; i++)    /* the most of the sample a write reads */
+        if (at[i] + part[i] > len) len = at[i] + part[i];
+    if (!s->w && !(s->w = AllocVec(AX_WRITES * sizeof *s->w, MEMF_PUBLIC | MEMF_CLEAR))) return 0;
     if (!s->open) {
         s->port.mp_Node.ln_Type = NT_MSGPORT;
         s->port.mp_Flags = PA_IGNORE;
@@ -233,14 +327,19 @@ static int ax_sound_play_(struct ax_sound *s, const odt_s8 *data, odt_u32 len, o
         s->chip_len = len;
     }
     CopyMem((APTR)data, s->chip, len);
-    s->io.ioa_Request.io_Command = CMD_WRITE;
-    s->io.ioa_Request.io_Flags = ADIOF_PERVOL;
-    s->io.ioa_Data = (UBYTE *)s->chip;
-    s->io.ioa_Length = len;
-    s->io.ioa_Period = (UWORD)(period < 124 ? 124 : period);
-    s->io.ioa_Volume = (UWORD)(volume > 64 ? 64 : volume);
-    s->io.ioa_Cycles = (UWORD)cycles;
-    ax_begin_io((struct IORequest *)&s->io);
+    for (i = 0; i < n; i++) {
+        struct IOAudio *w = &s->w[i];
+        *w = s->io;                     /* the channel and its key */
+        w->ioa_Request.io_Command = CMD_WRITE;
+        w->ioa_Request.io_Flags = ADIOF_PERVOL;
+        w->ioa_Data = (UBYTE *)s->chip + at[i];
+        w->ioa_Length = part[i];
+        w->ioa_Period = (UWORD)(period < 124 ? 124 : period);
+        w->ioa_Volume = (UWORD)(volume > 64 ? 64 : volume);
+        w->ioa_Cycles = (UWORD)cycles;
+        ax_begin_io((struct IORequest *)w);
+        s->sent = i + 1;
+    }
     s->busy = 1;
     return 1;
 }
@@ -259,6 +358,7 @@ static void ax_sound_free(struct ax_sound *s)
     if (!s) return;
     ax_sound_stop_(s);
     if (s->open) CloseDevice((struct IORequest *)&s->io);
+    if (s->w) FreeVec(s->w);
     if (s->chip) FreeVec(s->chip);
     FreeVec(s);
 }
@@ -276,6 +376,19 @@ struct ax_player {
     struct Process *proc;
 };
 
+/* The system time now, through the player's own timer request (not in flight) */
+static void ax_now(struct timerequest *tr, odt_u32 *secs, odt_u32 *micro)
+{
+    tr->tr_node.io_Command = TR_GETSYSTIME;
+    DoIO((struct IORequest *)tr);
+    *secs = tr->tr_time.tv_secs;
+    *micro = tr->tr_time.tv_micro;
+}
+
+/* Ticks by absolute deadlines (adt_deadline, adt_due): tick n is due n / fps
+ * seconds after the start, on UNIT_WAITUNTIL, so the time each tick takes
+ * is not added to the next; when ticks were missed (a slow frame), they
+ * are done at once and the frames between passed over */
 static void ax_player_main(void)
 {
     struct Process *me = (struct Process *)FindTask(NULL);
@@ -286,25 +399,38 @@ static void ax_player_main(void)
     p = (struct ax_player *)GetMsg(&me->pr_MsgPort);
     if ((tport = CreateMsgPort()) != NULL &&
         (tr = (struct timerequest *)CreateIORequest(tport, sizeof *tr)) != NULL &&
-        OpenDevice((CONST_STRPTR) "timer.device", UNIT_MICROHZ, (struct IORequest *)tr, 0) == 0) {
-        ULONG us = 1000000UL / (p->fps ? p->fps : 1);
+        OpenDevice((CONST_STRPTR) "timer.device", UNIT_WAITUNTIL, (struct IORequest *)tr, 0) == 0) {
+        odt_u32 fps = p->fps ? p->fps : 1, s0, m0, done = 0;
+        ax_now(tr, &s0, &m0);
         for (;;) {
-            ULONG got;
+            odt_u32 ds, dm, ns, nm, es, em, due;
+            adt_deadline(done + 1, fps, &ds, &dm);
+            dm += m0;
             tr->tr_node.io_Command = TR_ADDREQUEST;
-            tr->tr_time.tv_secs = us / 1000000UL;
-            tr->tr_time.tv_micro = us % 1000000UL;
+            tr->tr_time.tv_secs = s0 + ds + dm / 1000000UL;
+            tr->tr_time.tv_micro = dm % 1000000UL;
             SendIO((struct IORequest *)tr);
-            got = Wait((1UL << tport->mp_SigBit) | SIGBREAKF_CTRL_C);
-            if (got & SIGBREAKF_CTRL_C) {
+            if (Wait((1UL << tport->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
                 AbortIO((struct IORequest *)tr);
-            }
             WaitIO((struct IORequest *)tr);
             ObtainSemaphore(&p->sem);
             if (p->stop) {
                 ReleaseSemaphore(&p->sem);
                 break;
             }
-            adt_tick(p->env, p->cl, p->obj);
+            ax_now(tr, &ns, &nm);
+            /* the time since the start (a clock set back: from now on) */
+            if (!adt_elapsed(s0, m0, ns, nm, &es, &em)) {
+                s0 = ns;
+                m0 = nm;
+                done = 0;
+                es = em = 0;
+            }
+            due = adt_due(es, em, fps);
+            if (due > done) {
+                adt_tick_n(p->env, p->cl, p->obj, due - done);
+                done = due;
+            }
             ReleaseSemaphore(&p->sem);
         }
         CloseDevice((struct IORequest *)tr);
@@ -327,17 +453,19 @@ static void ax_player_main(void)
 static void *ax_player_start(const struct odt_cenv *e, struct odt_IClass *cl, void *obj, odt_u32 fps)
 {
     struct ax_player *p = AllocVec(sizeof *p, MEMF_PUBLIC | MEMF_CLEAR);
-    struct TagItem t[4];
+    struct TagItem t[5];
     if (!p) return NULL;
     p->env = e;
     p->cl = cl;
     p->obj = obj;
     p->fps = fps;
     InitSemaphore(&p->sem);
-    t[0].ti_Tag = NP_Entry;    t[0].ti_Data = (ULONG)ax_player_main;
-    t[1].ti_Tag = NP_Name;     t[1].ti_Data = (ULONG) "animation.datatype player";
-    t[2].ti_Tag = NP_Priority; t[2].ti_Data = 1;
-    t[3].ti_Tag = TAG_DONE;
+    t[0].ti_Tag = NP_Entry;     t[0].ti_Data = (ULONG)ax_player_main;
+    t[1].ti_Tag = NP_Name;      t[1].ti_Data = (ULONG) "animation.datatype player";
+    t[2].ti_Tag = NP_Priority;  t[2].ti_Data = 1;
+    /* frames are loaded (decoded, by subclasses) and remapped on it */
+    t[3].ti_Tag = NP_StackSize; t[3].ti_Data = 16384;
+    t[4].ti_Tag = TAG_DONE;
     if (!(p->proc = CreateNewProc(t))) {
         FreeVec(p);
         return NULL;

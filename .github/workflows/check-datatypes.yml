@@ -7,7 +7,9 @@
 # depth, Adam7, tRNS and 1,222 damaged streams, against tests/make-png.py and
 # Pillow; on the 68040 under qemu-m68k too, in the m68k job),
 # webm.datatype's picture sizes against crafted headers
-# (Datatypes/tests/test-webm.sh),
+# (Datatypes/tests/test-webm.sh), its dither and CDXL's chunky films from
+# const tables against the formula on every colour
+# (Datatypes/tests/test-webm-dither.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
 # (Datatypes/tests/test-stream.sh), and the writers: gfopenpng.datatype's
 # (Datatypes/tests/test-pngenc.sh), gfopentga's (test-tgaenc.sh), gfopengif's
@@ -52,6 +54,8 @@ jobs:
         run: sh Datatypes/tests/test-cdxl.sh
       - name: webm.datatype picture sizes
         run: sh Datatypes/tests/test-webm.sh
+      - name: webm and CDXL dither from const tables, against the formula on every colour
+        run: sh Datatypes/tests/test-webm-dither.sh
       - name: stream.datatype with gzip and Brotli
         run: sh Datatypes/tests/test-stream.sh
       - name: webm.datatype's reader through its read cache

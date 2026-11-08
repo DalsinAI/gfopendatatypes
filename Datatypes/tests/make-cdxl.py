@@ -26,6 +26,13 @@ FILMS = [
     ("ham8", 72, 18, 8, True, 0x80, 3, 882, False, 22050, 25),
     ("rgb", 40, 24, 24, False, 0x20, 2, 882, True, 22050, 25),
     ("mono1", 17, 9, 1, False, 0x00, 2, 1000, False, 0, 0),   # fps from the sound: 11025 / 1000
+    # frames of different sizes (the sound's length varies): found frame by frame
+    ("vary", 48, 20, 4, False, 0x00, 4, [700, 900, 500, 1100], False, 11025, 12),
+    # sizes that vary yet add up to four of the first's, the last the first's
+    # size: found in constant time, then frame by frame when frame 1 isn't there
+    ("trap", 32, 10, 3, False, 0x00, 4, [800, 700, 900, 800], False, 11025, 12),
+    # a long film of one size: opened in constant time
+    ("long", 16, 8, 1, False, 0x00, 400, 0, False, 0, 25),
 ]
 
 
@@ -81,8 +88,9 @@ def film(rng, name, w, h, planes, ham, layout, frames, audio, stereo, rate, fps)
             idx = [rng.randrange(1 << planes) for _ in range(w * h)]
             image = planes_of(idx, w, h, planes, layout)
             show = shown(pal, planes, ham, idx, w, h)
-        left = bytes(rng.randrange(256) for _ in range(audio))
-        right = bytes(rng.randrange(256) for _ in range(audio)) if stereo else b""
+        a = audio[n] if isinstance(audio, list) else audio
+        left = bytes(rng.randrange(256) for _ in range(a))
+        right = bytes(rng.randrange(256) for _ in range(a)) if stereo else b""
         size = 32 + 2 * colours + len(image) + len(left) + len(right)
         head = bytearray(32)
         head[0] = 1
@@ -90,14 +98,14 @@ def film(rng, name, w, h, planes, ham, layout, frames, audio, stereo, rate, fps)
         struct.pack_into(">III", head, 2, size, prev, n + 1)
         struct.pack_into(">HH", head, 14, w, h)
         head[19] = planes
-        struct.pack_into(">HHH", head, 20, 2 * colours, audio, rate)
+        struct.pack_into(">HHH", head, 20, 2 * colours, a, rate)
         head[26] = fps
         data += head
         if colours:
             data += b"".join(struct.pack(">H", c) for c in pal12)
         data += image + left + right
         rgb += show
-        for i in range(audio):
+        for i in range(a):
             sl = left[i] - 256 if left[i] > 127 else left[i]
             if stereo:
                 sr = right[i] - 256 if right[i] > 127 else right[i]
@@ -105,6 +113,7 @@ def film(rng, name, w, h, planes, ham, layout, frames, audio, stereo, rate, fps)
             pcm.append(sl & 255)
         prev = size
     real_rate = rate or 11025
+    audio = audio[0] if isinstance(audio, list) else audio
     real_fps = fps or (((real_rate + audio // 2) // audio) if audio else 12)
     if real_fps > 60:
         real_fps = 12
