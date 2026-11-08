@@ -58,6 +58,44 @@ def pack_simple(data):
     return bytes(out)
 
 
+def pack_class(data):
+    """ByteRun1 as picture.datatype packs a plane's row: runs of three or
+    more replicated, literals up to 128 that stop where a run of three
+    starts."""
+    out, i, n = bytearray(), 0, len(data)
+    while i < n:
+        r = 1
+        while i + r < n and r < 128 and data[i + r] == data[i]:
+            r += 1
+        if r >= 3:
+            out += bytes([257 - r, data[i]])
+            i += r
+            continue
+        s, l = i, 0
+        while i < n and l < 128:
+            if l and i + 2 < n and data[i] == data[i + 1] == data[i + 2]:
+                break
+            i += 1
+            l += 1
+        out += bytes([l - 1]) + data[s:s + l]
+    return bytes(out)
+
+
+def body_of(rows, depth):
+    """The BODY picture.datatype writes: each row's planes in turn (plane d
+    bit d of each value), a plane's row even bytes, packed with ByteRun1"""
+    out = bytearray()
+    for row in rows:
+        rb = rowbytes(len(row))
+        for d in range(depth):
+            plane = bytearray(rb)
+            for x, v in enumerate(row):
+                if (v >> d) & 1:
+                    plane[x >> 3] |= 0x80 >> (x & 7)
+            out += pack_class(bytes(plane))
+    return bytes(out)
+
+
 def unpack(data, n):
     out, i = bytearray(), 0
     while len(out) < n and i < len(data):
@@ -312,6 +350,8 @@ def expect_ilbm(name, data, sdepth, remap, destmode, sw, sh, keep):
     else:
         out += ["lut " + hx(row) for row in m["lut"]]
     out += ["grey " + hx((px[1] * 77 + px[2] * 151 + px[3] * 28) >> 8 for px in row) for row in argb]
+    out += ["rgb " + hx(b for px in row for b in px[1:]) for row in argb]
+    out += ["rgba " + hx(b for px in row for b in px[1:] + px[:1]) for row in argb]
     if sw:
         out.append("scale 1")
         if keep:
@@ -393,6 +433,11 @@ def expect_ilbm(name, data, sdepth, remap, destmode, sw, sh, keep):
     if bw > 0 and bh > 0:
         has_mask = m["alpha"] is not None or masking in (1, 2, 4)
         out.append("blit 1 1 10 5 %d %d %d" % (bw, bh, 1 if has_mask else 0))
+    if store_argb:
+        body = body_of([[px[1] | px[2] << 8 | px[3] << 16 for px in row] for row in argb], 24)
+    else:
+        body = body_of(m["lut"], m["d"])
+    out.append("body " + hx(body))
     out += ["rt " + hx(b for px in row for b in px[1:]) for row in argb]
     out += ["pens left 0", "live 0"]
     return out
@@ -400,38 +445,62 @@ def expect_ilbm(name, data, sdepth, remap, destmode, sw, sh, keep):
 
 # ---- PDTM_WRITEPIXELARRAY and READPIXELARRAY ---------------------------------------------
 
-def pixw_case(rng, w, h, depth, ncol, fmt):
+def pixw_case(rng, w, h, depth, ncol, fmt, runs=False, lut0=False, rect=None):
+    """The file for one pixw line and what the picture holds after its
+    first write: lut0 makes it an index picture first (zeros), rect is that
+    write's rectangle (else the whole picture); runs repeats pixels and
+    uses the palette's own colours, as a picture does."""
     pal = [(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(ncol)]
     bpp = 3 if fmt == 0 else 4 if fmt <= 2 else 1
-    data = bytes(rng.randrange(256) if fmt != 3 else rng.randrange(max(ncol, 1) + 2) for _ in range(w * h * bpp))
+    if runs:
+        buf = bytearray()
+        for i in range(w * h):
+            if i and rng.randrange(4):
+                buf += buf[-bpp:]
+                continue
+            px = bytearray(rng.randrange(256) for _ in range(bpp))
+            if ncol and fmt <= 2 and rng.randrange(2):
+                k = 1 if fmt == 2 else 0
+                px[k:k + 3] = bytes(pal[rng.randrange(ncol)])
+            buf += px
+        data = bytes(buf)
+    else:
+        data = bytes(rng.randrange(256) if fmt != 3 else rng.randrange(max(ncol, 1) + 2) for _ in range(w * h * bpp))
     blob = struct.pack(">HHBHB", w, h, depth, ncol, fmt) + bytes(c for rgb in pal for c in rgb) + data
     palf = pal + [(0, 0, 0)] * (256 - ncol)
-    store_lut = fmt in (3, 4) and depth <= 8
-    pix = []
-    for i in range(w * h):
-        s = data[i * bpp:(i + 1) * bpp]
-        if fmt == 0:
-            a, r, g, b = 0xff, s[0], s[1], s[2]
-        elif fmt == 1:
-            a, r, g, b = s[3], s[0], s[1], s[2]
-        elif fmt == 2:
-            a, r, g, b = s
-        elif fmt == 4:
-            a, r, g, b = 0xff, s[0], s[0], s[0]
-        else:
-            a, (r, g, b) = 0xff, palf[s[0]]
-        if not store_lut:
-            pix.append((a, r, g, b))
-        elif fmt in (3, 4):
-            pix.append(s[0])
-        else:
-            n = ncol or 1
-            pix.append(min(range(n), key=lambda k: (sum((x - y) ** 2 for x, y in zip(palf[k], (r, g, b))), k)))
+    store_lut = (fmt in (3, 4) or lut0) and depth <= 8
+    pix = [0 if store_lut else (0, 0, 0, 0)] * (w * h)
+    rl, rt, rw, rh = rect if rect else (0, 0, w, h)
+    for y in range(min(rh, h - rt)):
+        for x in range(min(rw, w - rl)):
+            o = (y * w + x) * bpp
+            s = data[o:o + bpp]
+            if fmt == 0:
+                a, r, g, b = 0xff, s[0], s[1], s[2]
+            elif fmt == 1:
+                a, r, g, b = s[3], s[0], s[1], s[2]
+            elif fmt == 2:
+                a, r, g, b = s
+            elif fmt == 4:
+                a, r, g, b = 0xff, s[0], s[0], s[0]
+            else:
+                a, (r, g, b) = 0xff, palf[s[0]]
+            i = (rt + y) * w + rl + x
+            if not store_lut:
+                pix[i] = (a, r, g, b)
+            elif fmt in (3, 4):
+                pix[i] = s[0]
+            else:
+                n = ncol or 1
+                pix[i] = min(range(n), key=lambda k: (sum((u - v) ** 2 for u, v in zip(palf[k], (r, g, b))), k))
     return blob, pal, store_lut, pix
 
 
-def expect_pixw(name, w, h, pal, store_lut, pix):
-    out = ["== pixw " + name, "write 1"]
+def expect_pixw(name, w, h, pal, store_lut, pix, args=""):
+    out = ["== pixw " + name + args]
+    if args.split() and args.split()[0] == "1":
+        out.append("lut0 1")
+    out.append("write 1")
     palf = list(pal) + [(0, 0, 0)] * (256 - len(pal))
 
     def argb(i):
@@ -463,6 +532,41 @@ def expect_pixw(name, w, h, pal, store_lut, pix):
             pix[i] = v if store_lut else (0xff, v, v, v)
     out.append("clip 1")
     out += reads("rd2", 0)
+    out.append("live 0")
+    return out
+
+
+# ---- a V42 picture (PDTA_BitMap) ----------------------------------------------------
+
+def expect_v42(w, h, depth, bw, bh, sw, sh, keep):
+    """picture.datatype with a V42 subclass's bitmap: WRITEPIXELARRAY is
+    refused and leaves the picture as it is; the pixels are the bitmap's,
+    the BitMapHeader's size cut to the bitmap's; PDTM_SCALE and the
+    layout (no screen: the picture's own indexes) scale that size."""
+    out = ["== v42 %d %d %d %d %d %d %d %d" % (w, h, depth, bw, bh, sw, sh, keep), "write 0"]
+    rb = rowbytes(bw)
+    pw = min(w or rb * 8, rb * 8)
+    ph = min(h or bh, bh)
+    mask = (1 << depth) - 1
+
+    def px(x, y):
+        return (x * 3 + y * 5) & mask if x < bw else 0     # the row's padding reads as 0
+
+    rw, rh = w or 32, h or 32
+    for y in range(rh):
+        out.append("lut " + hx(px(x, y) if x < pw and y < ph else 0 for x in range(rw)))
+    dw, dh = pw, ph
+    if sw:
+        out.append("scale 1")
+        dw, dh = sw, sh
+        if keep:
+            if dw * ph > dh * pw:
+                dw = max(dh * pw // ph, 1)
+            else:
+                dh = max(dw * ph // pw, 1)
+    out.append("layout 1 %d %d depth=%d" % (dw, dh, depth))
+    for y in range(dh):
+        out.append("dest " + hx(px(x * pw // dw, y * ph // dh) for x in range(dw)))
     out.append("live 0")
     return out
 
@@ -797,6 +901,33 @@ def main():
         ({"w": 8, "h": 3, "depth": 2, "cmap": pal(4), "nobody": True}, 0, 1, 0, 0, 0, 0),
         ({"w": 8, "h": 3, "depth": 2, "cmap": pal(4), "notform": True}, 0, 1, 0, 0, 0, 0),
         ({"w": 32768, "h": 32768, "depth": 32, "body": b"\x00" * 8}, 0, 1, 0, 0, 0, 0),  # BODY size past 32 bits
+        # layouts scaled up (rows repeated) and down: the cube of pens, true
+        # colour, pens, and masks
+        ({"w": 8, "h": 3, "depth": 24}, 8, 1, 0, 20, 7, 0),
+        ({"w": 13, "h": 9, "depth": 24}, 5, 1, 0, 6, 4, 0),
+        ({"w": 9, "h": 5, "depth": 24}, 7, 1, 0, 9, 11, 0),
+        ({"w": 8, "h": 3, "depth": 24}, 24, 1, 1, 17, 8, 0),
+        ({"w": 14, "h": 6, "depth": 3, "cmap": pal(8), "masking": 2, "transparent": 5}, 4, 1, 0, 30, 13, 0),
+        ({"w": 14, "h": 6, "depth": 4, "cmap": pal(16), "masking": 1}, 8, 1, 0, 14, 20, 0),
+        ({"w": 9, "h": 6, "depth": 4, "cmap": pal(16)}, 0, 1, 0, 20, 14, 0),
+        ({"w": 7, "h": 3, "depth": 32}, 0, 1, 0, 15, 9, 0),
+        # widths about a byte of pixels and a row's word, for the BODY written
+        ({"w": 1, "h": 2, "depth": 1, "cmap": pal(2)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 7, "h": 3, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 8, "h": 2, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 9, "h": 2, "depth": 7, "cmap": pal(128)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 16, "h": 2, "depth": 2, "cmap": pal(4)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 33, "h": 4, "depth": 5, "cmap": pal(32)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 140, "h": 3, "depth": 8, "cmap": pal(256)}, 0, 1, 0, 0, 0, 0),
+        ({"w": 17, "h": 3, "depth": 24}, 0, 1, 0, 0, 0, 0),
+        ({"w": 24, "h": 2, "depth": 32}, 0, 1, 0, 0, 0, 0),
+        # runs: of three and more, longer than 128, and literals cut by them
+        ({"w": 1100, "h": 2, "depth": 2, "cmap": pal(4),
+          "values": [[(x // 300 + y) & 3 if x % 97 else 1 for x in range(1100)] for y in range(2)]}, 0, 1, 0, 0, 0, 0),
+        ({"w": 61, "h": 3, "depth": 8, "cmap": pal(256),
+          "values": [[(x // 9) * 37 + y if x % 5 else x for x in range(61)] for y in range(3)]}, 0, 1, 0, 0, 0, 0),
+        ({"w": 40, "h": 2, "depth": 24,
+          "values": [[(x // 10) * 0x010203 + y for x in range(40)] for y in range(2)]}, 0, 1, 0, 0, 0, 0),
     ]
     for i, (spec, sd, rm, dm, sw, sh, keep) in enumerate(ilbm_cases):
         data = write_ilbm(spec, rng)
@@ -814,6 +945,32 @@ def main():
             f.write(blob)
         script.append("pixw " + name)
         expected += expect_pixw(name, w, h, p, store_lut, pix)
+
+    # (w, h, depth, ncol, fmt, runs, lut0, rect): RGB into an index picture
+    # (the nearest colour), each conversion into a true colour one, odd
+    # widths, and first writes of part of the picture (the rest stays 0)
+    for i, (w, h, depth, ncol, fmt, runs, lut0, rect) in enumerate([
+            (13, 7, 8, 256, 0, True, True, None), (11, 5, 6, 40, 2, True, True, None),
+            (9, 4, 8, 16, 1, False, True, None), (16, 4, 8, 0, 0, True, True, None),
+            (12, 5, 4, 16, 0, True, True, (3, 1, 6, 3)),
+            (37, 9, 24, 200, 3, False, False, None), (19, 3, 24, 0, 1, False, False, None),
+            (17, 4, 24, 0, 4, False, False, None), (33, 5, 24, 0, 2, False, False, None),
+            (31, 3, 8, 64, 3, True, False, None), (21, 6, 24, 0, 0, False, False, (3, 1, 10, 4)),
+            (21, 6, 8, 32, 3, False, False, (2, 2, 30, 9)), (20, 5, 24, 0, 0, False, False, (0, 0, 50, 50))]):
+        blob, p, store_lut, pix = pixw_case(rng, w, h, depth, ncol, fmt, runs, lut0, rect)
+        name = "q%02d.px" % i
+        with open(os.path.join(outdir, name), "wb") as f:
+            f.write(blob)
+        args = " %d %d %d %d %d" % ((1 if lut0 else 0,) + (rect or (0, 0, w, h)))
+        script.append("pixw " + name + args)
+        expected += expect_pixw(name, w, h, p, store_lut, pix, args)
+
+    # V42 pictures: the BitMapHeader the bitmap's size, larger (cut to the
+    # bitmap's), none (the bitmap's own); scaled with and without aspect
+    for args in [(13, 5, 3, 13, 5, 0, 0, 0), (20, 10, 4, 16, 6, 32, 32, 1), (20, 10, 4, 16, 6, 9, 30, 0),
+                 (0, 0, 2, 12, 3, 40, 40, 1), (9, 4, 8, 9, 4, 27, 13, 1)]:
+        script.append("v42 %d %d %d %d %d %d %d %d" % args)
+        expected += expect_v42(*args)
 
     svx_cases = [
         ({"n": 50}, 0), ({"n": 51, "rate": 22050, "vol": 0x8000, "name": "beep"}, 1),

@@ -149,6 +149,7 @@ static odt_s32 e_iff_read(const struct odt_cenv *e, void *iff, void *buf, odt_s3
 { (void)e; return ReadChunkBytes(iff, buf, n); }
 
 static void *x_alloc_chip(const struct odt_cenv *e, odt_u32 n) { (void)e; return AllocVec(n ? n : 2, MEMF_CHIP | MEMF_CLEAR); }
+static void *x_alloc_any(const struct odt_cenv *e, odt_u32 n) { (void)e; return AllocVec(n ? n : 1, MEMF_ANY); }
 
 /* ---- graphics ------------------------------------------------------------ */
 
@@ -421,6 +422,7 @@ static void env_init(struct DTCBase *base)
     e->release_rp = e_release_rp;
     e->class_ext = x;
     x->alloc_chip = x_alloc_chip;
+    x->alloc_any = x_alloc_any;
     x->fill = x_fill;
     x->line = x_line;
 #ifdef DTC_NEED_GFX
