@@ -17,6 +17,11 @@
  * Without a card or a Cradle the video does not open: these codecs are far
  * too slow for a 68k.
  *
+ * 47.3: one connection to the service for the object's life (OSCMD_OPEN and
+ * OSCMD_CLOSE were two trips to the card or the Cradle for every frame),
+ * and the next frame asked for while this one shows, so its trip and its
+ * decoding overlap the showing.
+ *
  * DTM_WRITE in raw mode (47.3) writes the film as HEVC (in MP4) or WMV
  * through media.encode/1 (common/dtencode.c): each frame comes from the
  * host in 24-bit colour at the object's size, with its share of the sound
@@ -33,6 +38,7 @@
  */
 #include <string.h>
 #include <exec/memory.h>
+#include <exec/semaphores.h>
 #include <dos/dos.h>
 #include <dos/var.h>
 #include <graphics/gfx.h>
@@ -121,6 +127,13 @@ typedef struct {
     ULONG soundSlot;
     struct ColorMap *cmaps[RING];  /* HAM8 with own colours: by frame */
     ULONG period;                  /* Paula period for the sound, handed out with every frame */
+    struct SignalSemaphore lock;   /* the connection: one task at a time */
+    struct dt_service svc;         /* the object's one connection to media.decode/1 */
+    UBYTE *frameBuf;               /* a frame as VFRAME gives it (HAM8: its colours first) */
+    UBYTE *aheadBuf;               /* the next frame, asked for while this one shows */
+    LONG aheadIndex;               /* the frame asked for into aheadBuf; -1 none */
+    BOOL noAhead;                  /* in OM_NEW: no read-ahead (it would hold a signal of the
+                                      program's task; the loader's process plays the frames) */
     ULONG format;                  /* as VOPEN named it ('HEVC', 'WMV '...), for DTM_WRITE */
     ULONG flags;                   /* VOPEN's MD_FLAG_* */
 } VideoData;
@@ -267,20 +280,18 @@ static BOOL wantHam8(void)
 }
 
 /* Frame index from the host, drawn into "into" (a bitmap animation.datatype
- * hands back to be used again) or into a new 8-bit one. svc is opened by
- * the caller's own process: animation.datatype loads frames from its own.
- * In HAM8 with its own colours the frame's base colours go into its slot's
- * colour map (and to *pal when pal is given). NULL with *nomem set when
- * the memory ran out. */
-static struct BitMap *fetchFrame(VideoData *d, struct dt_service *svc, ULONG index, struct BitMap *into,
-                                 BOOL *nomem, UBYTE *pal)
+ * hands back to be used again) or into a new 8-bit one: the read-ahead's
+ * answer when it is that frame, else asked for now; then the next frame is
+ * asked for, to come while this one shows. In HAM8 with its own colours
+ * the frame's base colours go into its slot's colour map (and to *pal when
+ * pal is given). NULL with *nomem set when the memory ran out. */
+static struct BitMap *fetchFrame(VideoData *d, ULONG index, struct BitMap *into, BOOL *nomem, UBYTE *pal)
 {
     struct OSBuffer buf[4];
-    ULONG extra[4], skip = d->ham8 ? HAM8_PALETTE : 0;
+    ULONG extra[4], skip = d->ham8 ? HAM8_PALETTE : 0, size = skip + d->width * d->height;
     struct BitMap *bm;
     struct RastPort rp;
-    UBYTE *chunky;
-    BOOL ok = FALSE;
+    UBYTE *chunky = NULL;
 
     /* The chip RAM first: when it has run out, no frame is decoded for nothing. */
     *nomem = TRUE;
@@ -288,20 +299,33 @@ static struct BitMap *fetchFrame(VideoData *d, struct dt_service *svc, ULONG ind
      * can't be had frees a new bitmap */
     if (!(bm = into ? into : AllocBitMap(d->width, d->height, 8, 0, NULL)))
         return NULL;
-    if (!(chunky = AllocVec(skip + d->width * d->height, MEMF_ANY))) {
+    if (!d->frameBuf && !(d->frameBuf = AllocVec(size, MEMF_ANY))) {
         if (!into)
             FreeBitMap(bm);
         return NULL;
     }
     *nomem = FALSE;
     memset(buf, 0, sizeof buf);
-    buf[1].ob_Data = chunky;
-    buf[1].ob_Length = skip + d->width * d->height;
-    extra[0] = index;
     extra[1] = d->ham8 ? MD_PIX_HAM8 : MD_PIX_CUBE;
     extra[2] = d->ham8 && !d->ownColours ? MD_HAM8_FIXED : 0;
     extra[3] = 0;
-    if (dt_service_call(svc, MD_VFRAME, d->handle, 2, buf, extra, NULL, NULL) == OSERR_OK) {
+    if (d->svc.sent) {
+        if (dt_service_wait(&d->svc, NULL, NULL) == OSERR_OK && d->aheadIndex == (LONG)index) {
+            UBYTE *t = d->frameBuf;
+            d->frameBuf = d->aheadBuf;
+            d->aheadBuf = t;
+            chunky = d->frameBuf;
+        }
+        d->aheadIndex = -1;
+    }
+    if (!chunky) {
+        buf[1].ob_Data = d->frameBuf;
+        buf[1].ob_Length = size;
+        extra[0] = index;
+        if (dt_service_call(&d->svc, MD_VFRAME, d->handle, 2, buf, extra, NULL, NULL) == OSERR_OK)
+            chunky = d->frameBuf;
+    }
+    if (chunky) {
         InitRastPort(&rp);
         rp.BitMap = bm;
         /* HAM8's control bits are bits 7-6: planes 7 and 8, as AGA reads them. */
@@ -317,19 +341,24 @@ static struct BitMap *fetchFrame(VideoData *d, struct dt_service *svc, ULONG ind
             if (pal)
                 memcpy(pal, chunky, HAM8_PALETTE);
         }
-        ok = TRUE;
-    }
-    FreeVec(chunky);
-    if (!ok) {
+    } else {
         if (!into)
             FreeBitMap(bm);
         bm = NULL;
+    }
+    /* The next frame, while this one shows. */
+    if (!d->noAhead && index + 1 < d->frames && (d->aheadBuf || (d->aheadBuf = AllocVec(size, MEMF_ANY)))) {
+        buf[1].ob_Data = d->aheadBuf;
+        buf[1].ob_Length = size;
+        extra[0] = index + 1;
+        if (dt_service_send(&d->svc, MD_VFRAME, d->handle, 2, buf, extra))
+            d->aheadIndex = index + 1;
     }
     return bm;
 }
 
 /* Frame index's sound into its slot in the chip RAM ring; its length, or 0. */
-static ULONG fetchSound(VideoData *d, struct dt_service *svc, ULONG index, BYTE **at)
+static ULONG fetchSound(VideoData *d, ULONG index, BYTE **at)
 {
     struct OSBuffer buf[4];
     ULONG extra[4] = { index, SOUND_RATE, 0, 0 }, got = 0;
@@ -340,25 +369,33 @@ static ULONG fetchSound(VideoData *d, struct dt_service *svc, ULONG index, BYTE 
     memset(buf, 0, sizeof buf);
     buf[1].ob_Data = *at;
     buf[1].ob_Length = d->soundSlot;
-    if (dt_service_call(svc, MD_VSOUND, d->handle, 2, buf, extra, &got, NULL) != OSERR_OK)
+    if (dt_service_call(&d->svc, MD_VSOUND, d->handle, 2, buf, extra, &got, NULL) != OSERR_OK)
         return 0;
     return got <= d->soundSlot ? got : 0;
 }
 
 static void freeData(VideoData *d)
 {
-    struct dt_service svc;
     struct OSBuffer buf[4];
     ULONG extra[4] = { 0, 0, 0, 0 };
     int i;
 
-    if (d->handle && dt_service_open(&svc, "media.decode/1")) {
-        memset(buf, 0, sizeof buf);
-        dt_service_call(&svc, MD_VCLOSE, d->handle, 0, buf, extra, NULL, NULL);
-        dt_service_close(&svc);
-        vlog("video closed on the host");
+    if (d->svc.open) {
+        if (d->svc.sent)                   /* first: it may be writing into aheadBuf */
+            dt_service_wait(&d->svc, NULL, NULL);
+        if (d->handle) {
+            memset(buf, 0, sizeof buf);
+            dt_service_call(&d->svc, MD_VCLOSE, d->handle, 0, buf, extra, NULL, NULL);
+            vlog("video closed on the host");
+        }
+        dt_service_close(&d->svc);
     }
     d->handle = 0;
+    if (d->frameBuf)
+        FreeVec(d->frameBuf);
+    if (d->aheadBuf)
+        FreeVec(d->aheadBuf);
+    d->frameBuf = d->aheadBuf = NULL;
     if (d->keyFrame) {
         WaitBlit();
         FreeBitMap(d->keyFrame);
@@ -482,7 +519,6 @@ static LONG openOnHost(Object *o, struct dt_service *svc, ULONG extra[4], UBYTE 
 static BOOL loadVideo(Class *cl, Object *o)
 {
     VideoData *d = INST_DATA(cl, o);
-    struct dt_service svc;
     ULONG extra[4], handle = 0, fps1000 = 0, fps, mode, flags;
     UBYTE info[24], pal[HAM8_PALETTE];
     STRPTR name = NULL;
@@ -491,9 +527,11 @@ static BOOL loadVideo(Class *cl, Object *o)
     LONG err = DTERROR_INVALID_DATA, st;
 
     memset(d, 0, sizeof *d);
+    InitSemaphore(&d->lock);
+    d->aheadIndex = -1;
     title[0] = 0;
     GetDTAttrs(o, DTA_Name, (ULONG)&name, TAG_DONE);
-    if (!dt_service_open(&svc, "media.decode/1")) {
+    if (!dt_service_open(&d->svc, "media.decode/1")) {
         SetIoErr(ERROR_NOT_IMPLEMENTED);       /* no card and no paired Cradle */
         return FALSE;
     }
@@ -511,7 +549,7 @@ static BOOL loadVideo(Class *cl, Object *o)
         extra[1] /= 2;
     }
     extra[2] = extra[3] = 0;
-    if ((st = openOnHost(o, &svc, extra, info, &handle, &fps1000, title, sizeof title)) != OSERR_OK
+    if ((st = openOnHost(o, &d->svc, extra, info, &handle, &fps1000, title, sizeof title)) != OSERR_OK
         || get32(info) != MD_KIND_ANIMATION) {
         if (st == VERR_NOMEM)
             err = ERROR_NO_FREE_STORE;
@@ -541,7 +579,10 @@ static BOOL loadVideo(Class *cl, Object *o)
             SetDTAttrs(o, NULL, NULL, ADTA_Period, d->period, ADTA_Volume, 64, ADTA_Cycles, 1, TAG_DONE);
         }
     }
-    if (!(d->keyFrame = fetchFrame(d, &svc, 0, NULL, &nomem, pal))) {
+    d->noAhead = TRUE;
+    d->keyFrame = fetchFrame(d, 0, NULL, &nomem, pal);
+    d->noAhead = FALSE;
+    if (!d->keyFrame) {
         if (nomem)
             err = ERROR_NO_FREE_STORE;
         goto out;
@@ -571,7 +612,6 @@ static BOOL loadVideo(Class *cl, Object *o)
         TAG_DONE);
     ok = TRUE;
 out:
-    dt_service_close(&svc);
     if (!ok) {
         freeData(d);
         SetIoErr(err);
@@ -726,21 +766,16 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         struct adtFrame *alf = (struct adtFrame *)msg;
         ULONG index = alf->alf_TimeStamp;
         struct BitMap *bm, *given = alf->alf_BitMap;
-        struct dt_service svc;
         BYTE *sample = NULL;
         ULONG n = 0;
         BOOL nomem;
         if (index >= d->frames)
             index = d->frames - 1;
         vlog("loading ts=%lu given=%lx", (unsigned long)alf->alf_TimeStamp, (unsigned long)given);
-        if (dt_service_open(&svc, "media.decode/1")) {
-            bm = fetchFrame(d, &svc, index, given, &nomem, NULL);
-            n = fetchSound(d, &svc, index, &sample);
-            dt_service_close(&svc);
-        } else {
-            bm = NULL;
-            nomem = FALSE;
-        }
+        ObtainSemaphore(&d->lock);
+        bm = fetchFrame(d, index, given, &nomem, NULL);
+        n = fetchSound(d, index, &sample);
+        ReleaseSemaphore(&d->lock);
         if (nomem)
             SetIoErr(ERROR_NO_FREE_STORE);
         alf->alf_Frame = index;

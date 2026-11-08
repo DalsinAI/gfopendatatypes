@@ -17,6 +17,10 @@
  * RAM. GFOpenBench 0.1 and a test tool did that on AmiCradle's Instance-32
  * (10 and 11 October 2026); this class answers FALSE instead.
  *
+ * The services card (47.7): when this machine has one, the same pngdecode.c
+ * built for the card's host decodes the file there (common/dtnative.c),
+ * byte for byte as here; else, or when it can't, this CPU does.
+ *
  * PNG out (47.4): OIM_ENCODEPNG (datatypes/gfopenimage.h) encodes ARGB pixels,
  * the program's or the object's own, to a PNG file in memory, and DTM_WRITE
  * with DTWM_RAW writes the picture as PNG to a file (pngencode.c, deflate
@@ -48,6 +52,7 @@
 #include "dtlib.h"
 #include <datatypes/gfopenimage.h>
 #include "pngdecode.h"
+#include "dtnative.h"
 #include "pngencode.h"
 #include "zlibrary.h"
 
@@ -118,10 +123,23 @@ static BOOL loadPNG(Class *cl, Object *o)
         SetIoErr(DTERROR_INVALID_DATA);
         return FALSE;
     }
-    if ((idat = big_alloc(h->idat_len)))
+    /* The services card first, a whole frame (dtnative.h). When it
+     * decodes, that buffer is the picture. When it doesn't, it is freed
+     * and the CPU path below holds only a strip. */
+    if ((argb = big_alloc(h->width * h->height * 4))) {
+        ULONG info[4], pw, ph;
+        if (dt_card_decode(DT_NATIVE_PNG, 0, 0, file, size, argb, h->width * h->height * 4, info, &pw, &ph)
+            && pw == h->width && ph == h->height)
+            ok = TRUE;
+        else {
+            FreeVec(argb);
+            argb = NULL;
+        }
+    }
+    if (!ok && (idat = big_alloc(h->idat_len)))
         png_gather(file, size, idat);
     FreeVec(file);
-    if (idat && (raw = big_alloc(h->raw_len)) && (work = AllocVec(PNG_WORKSIZE, MEMF_ANY))) {
+    if (!ok && idat && (raw = big_alloc(h->raw_len)) && (work = AllocVec(PNG_WORKSIZE, MEMF_ANY))) {
         if (png_unpack(h, idat, raw, work, &rows) == 0)
             ok = TRUE;
         else
@@ -130,12 +148,12 @@ static BOOL loadPNG(Class *cl, Object *o)
     if (work) FreeVec(work);
     if (idat) FreeVec(idat);
 
-    /* The rows go to picture.datatype a strip at a time as they are
-     * converted: the picture is held once, in picture.datatype. */
-    if (ok && !(argb = big_alloc(h->width * 4 * strip_rows(h->width))))
+    /* The CPU's rows go to picture.datatype a strip at a time as they are
+     * converted: the picture is held once, in picture.datatype. The card's
+     * picture is already a whole frame. */
+    if (ok && raw && !(argb = big_alloc(h->width * 4 * strip_rows(h->width))))
         ok = FALSE;
     if (ok) {
-        ULONG y, n, most = strip_rows(h->width);
         bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)h->width;
         bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h->height;
         bmh->bmh_Depth = 32;           /* ARGB, alpha or not */
@@ -147,12 +165,17 @@ static BOOL loadPNG(Class *cl, Object *o)
             PDTA_SourceMode, PMODE_V43,
             PDTA_AlphaChannel, h->alpha ? TRUE : FALSE,
             TAG_DONE);
-        for (y = 0; y < h->height && ok; y += n) {
-            n = h->height - y < most ? h->height - y : most;
-            png_strip(h, raw, &rows, argb, n);
+        if (raw) {
+            ULONG y, n, most = strip_rows(h->width);
+            for (y = 0; y < h->height && ok; y += n) {
+                n = h->height - y < most ? h->height - y : most;
+                png_strip(h, raw, &rows, argb, n);
+                ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h->width * 4,
+                    0, y, h->width, n) ? TRUE : FALSE;
+            }
+        } else
             ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h->width * 4,
-                0, y, h->width, n) ? TRUE : FALSE;
-        }
+                0, 0, h->width, h->height) ? TRUE : FALSE;
         if (!ok)
             err = ERROR_NO_FREE_STORE;
     }

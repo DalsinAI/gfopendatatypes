@@ -22,8 +22,17 @@
  *   - the video is closed (VCLOSE) when the object goes, and every block
  *     freed.
  * Without the service, without VUPLOAD, when the service finds no sound or
- * VSOUND fails, the clip opens and plays silent. A clip without sound never
- * calls the service.
+ * VSOUND fails, the clip opens and plays silent.
+ *
+ * Frames (47.2): with VINDEX the service gives every frame (VFRAME in
+ * MD_PIX_WEBM, by this reader's frame number, at the clip's size), and the
+ * picture drawn is the service's for that very frame, in order and out of
+ * order; in a play each frame after the second was asked for while the one
+ * before showed (the read-ahead), and none is left out at the end. The
+ * object opens the service once, frames and sound together, whether the
+ * clip has sound or not. A service without VINDEX, one that counts another
+ * number of frames, or one whose VFRAME fails part way leaves the frames to
+ * libvpx (from that frame on), the sound as it was.
  *
  *   webmsoundtest [-audio N] file.webm...
  *
@@ -140,9 +149,11 @@ struct BitMap *AllocBitMap(ULONG width, ULONG height, ULONG depth, ULONG flags, 
 }
 void FreeBitMap(struct BitMap *bm) { free(bm); }
 void InitRastPort(struct RastPort *rp) { rp->BitMap = NULL; }
+static int lastDrawn = -1;             /* the first byte of the last picture drawn */
 void WriteChunkyPixels(struct RastPort *rp, ULONG x0, ULONG y0, ULONG x1, ULONG y1, UBYTE *array, LONG modulo)
 {
-    (void)rp; (void)x0; (void)y0; (void)x1; (void)y1; (void)array; (void)modulo;
+    (void)rp; (void)x0; (void)y0; (void)x1; (void)y1; (void)modulo;
+    lastDrawn = array[0] | array[(x1 + 1) * (y1 + 1) - 1] << 8;
 }
 void WaitBlit(void) {}
 
@@ -231,11 +242,14 @@ typedef struct {
     ULONG hostFps1000;         /* the steady rate VOPEN answers */
     ULONG limit;               /* the largest buffer the link carries, 0: any */
     int expectSound;
+    int vindex;                /* 0 no VINDEX (older); 1 the reader's count; 2 one frame more */
+    ULONG vframeFailsAt;       /* VFRAME fails from this frame on (0: never) */
+    int expectHost;            /* the frames come from the service */
 } Case;
 
 static const Case *cfg;
 static const UBYTE *fileData;
-static ULONG fileSize, clipMs;
+static ULONG fileSize, clipMs, clipFrames, clipW, clipH;
 
 #define UPLOAD_ID 0x55AA0001UL
 #define VIDEO_ID 0x00001234UL
@@ -248,7 +262,18 @@ static struct {
     int upDone, videoOpen;
     ULONG *vsFrame, *vsCount, vsN, vsCap;   /* every VSOUND: the frame, the samples given */
     ULONG vsRate;
+    int vindexes, vframes, vframesSync, aheadSent, aheadWaited, aheadOut;
+    int sent;                                    /* the read-ahead: one request kept until waited for */
+    UWORD sentOp;
+    ULONG sentArg, sentFlags, sentExtra[4];
+    struct OSBuffer sentBuf[4];
 } svc;
+
+/* The picture the service gives for frame n: its first and last bytes. */
+static int pattern(ULONG n)
+{
+    return (UBYTE)(n * 7 + 1) | (UBYTE)(n * 13 + 5) << 8;
+}
 
 BOOL dt_service_open(struct dt_service *s, const char *name)
 {
@@ -260,9 +285,59 @@ BOOL dt_service_open(struct dt_service *s, const char *name)
     return TRUE;
 }
 
+static LONG serve(struct dt_service *s, UWORD op, ULONG arg, ULONG flags, const struct OSBuffer buf[4],
+                  const ULONG extra[4], ULONG *result, ULONG *aux);
+
+LONG dt_service_call(struct dt_service *s, UWORD op, ULONG arg, ULONG flags, const struct OSBuffer buf[4],
+                     const ULONG extra[4], ULONG *result, ULONG *aux)
+{
+    check(!svc.sent || buf[1].ob_Data != svc.sentBuf[1].ob_Data || !buf[1].ob_Data,
+          "a call writes where the read-ahead writes", NULL);
+    if (op == 4)
+        svc.vframesSync++;
+    return serve(s, op, arg, flags, buf, extra, result, aux);
+}
+
+BOOL dt_service_send(struct dt_service *s, UWORD op, ULONG arg, ULONG flags, const struct OSBuffer buf[4],
+                     const ULONG extra[4])
+{
+    check(s->open, "read-ahead while not open", NULL);
+    if (svc.sent)
+        return FALSE;
+    s->sent = TRUE;
+    svc.sent = 1;
+    svc.aheadSent++;
+    svc.aheadOut++;
+    svc.sentOp = op;
+    svc.sentArg = arg;
+    svc.sentFlags = flags;
+    memcpy(svc.sentBuf, buf, sizeof svc.sentBuf);
+    memcpy(svc.sentExtra, extra, sizeof svc.sentExtra);
+    return TRUE;
+}
+
+LONG dt_service_wait(struct dt_service *s, ULONG *result, ULONG *aux)
+{
+    if (!svc.sent)
+        return OSERR_BADREQUEST;
+    svc.sent = 0;
+    s->sent = FALSE;
+    svc.aheadWaited++;
+    svc.aheadOut--;
+    return serve(s, svc.sentOp, svc.sentArg, svc.sentFlags, svc.sentBuf, svc.sentExtra, result, aux);
+}
+
+ULONG dt_service_where(struct dt_service *s)
+{
+    (void)s;
+    return 1;
+}
+
 void dt_service_close(struct dt_service *s)
 {
     check(s->open, "service closed that was not open", NULL);
+    if (s->sent)
+        dt_service_wait(s, NULL, NULL);
     s->open = FALSE;
     svc.closes++;
 }
@@ -275,8 +350,8 @@ static void put32(UBYTE *p, ULONG v)
     p[3] = (UBYTE)v;
 }
 
-LONG dt_service_call(struct dt_service *s, UWORD op, ULONG arg, ULONG flags, const struct OSBuffer buf[4],
-                     const ULONG extra[4], ULONG *result, ULONG *aux)
+static LONG serve(struct dt_service *s, UWORD op, ULONG arg, ULONG flags, const struct OSBuffer buf[4],
+                  const ULONG extra[4], ULONG *result, ULONG *aux)
 {
     ULONG b0 = buf[0].ob_Length, b1 = buf[1].ob_Length, i;
     (void)flags;
@@ -391,6 +466,33 @@ LONG dt_service_call(struct dt_service *s, UWORD op, ULONG arg, ULONG flags, con
             *aux = rate;
         return OSERR_OK;
     }
+    case 32:                                    /* VINDEX */
+        svc.vindexes++;
+        if (!cfg->vindex || arg != VIDEO_ID || !svc.videoOpen)
+            return OSERR_BADREQUEST;
+        if (result)
+            *result = clipFrames + (cfg->vindex == 2);
+        if (aux)
+            *aux = clipW << 16 | clipH;
+        return OSERR_OK;
+    case 4: {                                   /* VFRAME, MD_PIX_WEBM: frame n's pattern */
+        ULONG n = extra[0];
+        svc.vframes++;
+        if (!cfg->vindex || arg != VIDEO_ID || !svc.videoOpen || extra[1] != 3 || extra[2] != clipW || extra[3] != clipH)
+            return OSERR_BADREQUEST;
+        if (b1 < clipW * clipH)
+            return OSERR_TOOSMALL;
+        if (cfg->vframeFailsAt && n >= cfg->vframeFailsAt)
+            return OSERR_LOST;
+        if (n >= clipFrames)
+            n = clipFrames - 1;
+        memset(buf[1].ob_Data, 0, clipW * clipH);
+        ((UBYTE *)buf[1].ob_Data)[0] = (UBYTE)pattern(n);
+        ((UBYTE *)buf[1].ob_Data)[clipW * clipH - 1] = (UBYTE)(pattern(n) >> 8);
+        if (result)
+            *result = n;
+        return OSERR_OK;
+    }
     case 5:                                     /* VCLOSE */
         if (arg == VIDEO_ID && svc.videoOpen) {
             svc.videoOpen = 0;
@@ -412,6 +514,8 @@ static ULONG steady(ULONG i, ULONG fps)
 
 /* Loads frame i; checks its sound against the VSOUND requests it made.
  * *mismatch counts frames whose sound is wrong (printed for the first). */
+static int fellBack;
+
 static void loadOne(ULONG i, int *mismatch)
 {
     struct adtFrame alf;
@@ -422,8 +526,21 @@ static void loadOne(ULONG i, int *mismatch)
     memset(&alf, 0, sizeof alf);
     alf.MethodID = ADTM_LOADFRAME;
     alf.alf_TimeStamp = i;
+    lastDrawn = -1;
     dt_dispatch(&cls, theObject, (Msg)&alf);
     why[0] = 0;
+    /* Once VFRAME has failed, libvpx makes every frame (which, with the
+     * fake libvpx here, draws nothing new). */
+    if (cfg->vframeFailsAt && i >= cfg->vframeFailsAt)
+        fellBack = 1;
+    if (!alf.alf_BitMap)
+        bad = snprintf(why, sizeof why, "frame %lu: no picture", i);
+    else if (cfg->expectHost && !fellBack && lastDrawn != pattern(i))
+        bad = snprintf(why, sizeof why, "frame %lu: the picture drawn is not the service's for it (%x, %x)", i,
+                       lastDrawn, pattern(i));
+    if (bad && !(*mismatch)++)
+        check(0, cfg->name, why);
+    bad = 0;
     if (!cfg->expectSound) {
         if (alf.alf_Sample || alf.alf_SampleLength)
             bad = snprintf(why, sizeof why, "frame %lu has %lu samples, expected none", i, alf.alf_SampleLength);
@@ -473,6 +590,7 @@ static void runCase(const Case *c, const char *path, ULONG frames)
     free(svc.vsCount);
     memset(&svc, 0, sizeof svc);
     largestAny = largestChip = largestRead = 0;
+    fellBack = 0;
     setPeriod = setFps = 0;
     theFile = open(path, O_RDONLY);
     theName = path;
@@ -489,14 +607,16 @@ static void runCase(const Case *c, const char *path, ULONG frames)
 
 #define CHECK(cond, ...) do { snprintf(what, sizeof what, "%s: %s", path, c->name); \
         snprintf(detail, sizeof detail, __VA_ARGS__); check(cond, what, detail); } while (0)
-    if (c->service && c->expectSound) {
+    if (c->service && c->upload) {
         CHECK(svc.largestBuf <= PIECE, "largest buffer sent %lu bytes, more than a %lu-byte part", svc.largestBuf, PIECE);
-        CHECK(svc.wholeSends == 0, "the whole file sent %lu times", svc.wholeSends);
+        if (fileSize > PIECE)
+            CHECK(svc.wholeSends == 0, "the whole file sent %lu times", svc.wholeSends);
         CHECK(svc.probes == 0 && svc.decodes == 0, "%d PROBE and %d DECODE sends of the file", svc.probes, svc.decodes);
         CHECK(svc.uploadsStarted == 1 && svc.vopensUpload == 1 && svc.vopensWhole == 0,
               "%d uploads, %d VOPENs of the upload, %d of the whole file", svc.uploadsStarted, svc.vopensUpload,
               svc.vopensWhole);
-        CHECK(largestAny < fileSize, "a %lu-byte block for a %lu-byte file", largestAny, fileSize);
+        if (fileSize > PIECE)
+            CHECK(largestAny < fileSize, "a %lu-byte block for a %lu-byte file", largestAny, fileSize);
         CHECK(largestRead <= PIECE, "a %lu-byte Read", largestRead);
         CHECK(svc.refused == 0, "%d requests over the link's %lu bytes", svc.refused, c->limit);
     }
@@ -506,11 +626,23 @@ static void runCase(const Case *c, const char *path, ULONG frames)
         CHECK(svc.vopens == 0 && svc.probes == 0 && svc.decodes == 0,
               "%d VOPEN, %d PROBE, %d DECODE without the service or VUPLOAD", svc.vopens, svc.probes, svc.decodes);
 
+    CHECK(svc.opens == (c->service ? 1 : 0), "the service opened %d times for one object", svc.opens);
+
     /* a play, frame by frame */
     for (i = 0; i < frames; i++)
         loadOne(i, &mismatch);
-    snprintf(what, sizeof what, "%s: %s: every frame's sound as VSOUND gives it", path, c->name);
+    snprintf(what, sizeof what, "%s: %s: every frame's picture and sound as the service gives them", path, c->name);
     check(!mismatch, what, NULL);
+    if (c->expectHost && !c->vframeFailsAt && frames > 2) {
+        CHECK(svc.vframesSync == 2 && svc.aheadWaited >= (int)frames - 2,
+              "a play waited for %d frames (frames 0 and 1 expected); %d came from the read-ahead of %lu",
+              svc.vframesSync, svc.aheadWaited, frames);
+    }
+    if (!c->expectHost)
+        CHECK(svc.vframes == 0, "%d VFRAMEs without the service's frames", svc.vframes);
+    if (c->vframeFailsAt)
+        CHECK(svc.vframes <= (int)c->vframeFailsAt + 2, "%d VFRAMEs, though it failed at frame %lu", svc.vframes,
+              c->vframeFailsAt);
     if (c->expectSound) {
         ULONG k;
         for (k = 0; k < svc.vsN && svc.vsFrame[k] == sequence; k++)
@@ -537,13 +669,15 @@ static void runCase(const Case *c, const char *path, ULONG frames)
     m.MethodID = OM_DISPOSE;
     dt_dispatch(&cls, theObject, (Msg)&m);
     CHECK(svc.vopens == 0 || svc.vcloses == 1, "%d VOPENs, %d VCLOSEs", svc.vopens, svc.vcloses);
+    CHECK(svc.aheadOut == 0, "%d read-aheads left out", svc.aheadOut);
     CHECK(!svc.videoOpen, "the video is still open on the service");
     CHECK(nblocks == 0, "%d blocks not freed", nblocks);
     CHECK(svc.opens == svc.closes, "service opened %d times, closed %d", svc.opens, svc.closes);
 out:
     close((int)theFile);
     free(theObject);
-    printf("%s: %s: %lu VSOUNDs, %d uploads, largest send %lu, largest chip block %lu\n", path, c->name, svc.vsN,
+    printf("%s: %s: %d VFRAMEs (%d waited for, %d read ahead), %lu VSOUNDs, %d uploads, largest send %lu, "
+           "largest chip block %lu\n", path, c->name, svc.vframes, svc.vframesSync, svc.aheadWaited, svc.vsN,
            svc.uploadsStarted, svc.largestBuf, largestChip);
 }
 
@@ -565,17 +699,24 @@ static UBYTE *readFile(const char *path, ULONG *size)
 int main(int argc, char **argv)
 {
     static const Case withSound[] = {
-        { "rates agree", 1, 1, 1, 0, 25000, 0, 1 },
-        { "a link of 256 KB", 1, 1, 1, 0, 25000, 256 * 1024, 1 },
-        { "service at 50 a second", 1, 1, 1, 0, 50000, 0, 1 },
-        { "service at 12.5 a second", 1, 1, 1, 0, 12500, 0, 1 },
-        { "service at 29.97 a second", 1, 1, 1, 0, 29970, 0, 1 },
-        { "no service", 0, 0, 0, 0, 25000, 0, 0 },
-        { "no VUPLOAD", 1, 0, 1, 0, 25000, 0, 0 },
-        { "no sound found", 1, 1, 0, 0, 25000, 0, 0 },
-        { "VSOUND fails", 1, 1, 1, 1, 25000, 0, 0 },
+        { "rates agree", 1, 1, 1, 0, 25000, 0, 1, 1, 0, 1 },
+        { "a link of 256 KB", 1, 1, 1, 0, 25000, 256 * 1024, 1, 1, 0, 1 },
+        { "service at 50 a second", 1, 1, 1, 0, 50000, 0, 1, 1, 0, 1 },
+        { "service at 12.5 a second", 1, 1, 1, 0, 12500, 0, 1, 1, 0, 1 },
+        { "service at 29.97 a second", 1, 1, 1, 0, 29970, 0, 1, 1, 0, 1 },
+        { "no service", 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0 },
+        { "no VUPLOAD", 1, 0, 1, 0, 25000, 0, 0, 1, 0, 0 },
+        { "no sound found", 1, 1, 0, 0, 25000, 0, 0, 1, 0, 1 },
+        { "VSOUND fails", 1, 1, 1, 1, 25000, 0, 0, 1, 0, 1 },
+        { "older service, no VINDEX", 1, 1, 1, 0, 25000, 0, 1, 0, 0, 0 },
+        { "VINDEX counts a frame more", 1, 1, 1, 0, 25000, 0, 1, 2, 0, 0 },
+        { "VFRAME fails from frame 10", 1, 1, 1, 0, 25000, 0, 1, 1, 10, 1 },
     };
-    static const Case noSound = { "no audio track", 1, 1, 1, 0, 25000, 0, 0 };
+    static const Case noSound[] = {
+        { "no audio track", 1, 1, 1, 0, 25000, 0, 0, 1, 0, 1 },
+        { "no audio track, older service", 1, 1, 1, 0, 25000, 0, 0, 0, 0, 0 },
+        { "no audio track, no service", 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0 },
+    };
     int a, audio = -1;
     unsigned c;
 
@@ -597,6 +738,9 @@ int main(int argc, char **argv)
             continue;
         }
         clipMs = info.durationMs;
+        clipFrames = info.frameCount;
+        clipW = info.width;
+        clipH = info.height;
         if (audio >= 0 && (int)(info.audioTracks != 0) != audio) {
             printf("FAIL %s: %u audio tracks\n", argv[a], (unsigned)info.audioTracks);
             failures++;
@@ -605,9 +749,8 @@ int main(int argc, char **argv)
             for (c = 0; c < sizeof withSound / sizeof withSound[0]; c++)
                 runCase(&withSound[c], argv[a], info.frameCount);
         } else {
-            runCase(&noSound, argv[a], info.frameCount);
-            if (svc.opens)
-                check(0, argv[a], "a clip without sound called the service");
+            for (c = 0; c < sizeof noSound / sizeof noSound[0]; c++)
+                runCase(&noSound[c], argv[a], info.frameCount);
         }
         webm_free(&info);
         free((void *)fileData);

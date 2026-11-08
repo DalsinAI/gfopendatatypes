@@ -50,6 +50,11 @@
  * A read or write of the pixels with no pixel array is refused, as in
  * gfopenpng.datatype (see there).
  *
+ * The services card (47.5): when this machine has one, the same gifdecode.c
+ * built for the card's host decodes the picture there (common/dtnative.c),
+ * byte for byte as here: frame 0's indexes, or the screen after the frame
+ * asked for. OIM_READFRAME and the animation's frames stay on this CPU.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
@@ -74,6 +79,7 @@
 #include "dtlib.h"
 #include <datatypes/gfopenimage.h>
 #include "gifdecode.h"
+#include "dtnative.h"
 #include "gifencode.h"
 
 /* V44's tags for files of several pictures (the NDK's numbers). */
@@ -180,7 +186,15 @@ static BOOL writeLUT8(Class *cl, Object *o, struct gifdata *d, struct BitMapHead
         FreeVec(lut8);
         return FALSE;
     }
-    gif_frame_lut8(d->file, d->size, &d->info, f, lut8, work, f->transparent ? f->trans : 0, &holes);
+    {
+        /* The services card first, with this same decoder (dtnative.h). */
+        ULONG info[4], pw, ph;
+        if (dt_card_decode(DT_NATIVE_GIF, 1, 0, d->file, d->size, lut8, pixels, info, &pw, &ph)
+            && pw == d->info.width && ph == d->info.height)
+            holes = info[3];
+        else
+            gif_frame_lut8(d->file, d->size, &d->info, f, lut8, work, f->transparent ? f->trans : 0, &holes);
+    }
     if (work != d->canvas.work)
         FreeVec(work);
     if (holes && !f->transparent) {
@@ -274,8 +288,15 @@ static BOOL loadGIF(Class *cl, Object *o, struct TagItem *attrs, struct gifhand 
     else if ((d->canvas.argb || (d->canvas.argb = big_alloc(pixels * 4)))
         && (d->canvas.work || (d->canvas.work = AllocVec(GIF_WORKSIZE, MEMF_ANY)))
         && (!d->info.restores || d->canvas.saved || (d->canvas.saved = big_alloc(pixels * 4)))) {
-        gif_show(d->file, d->size, &d->info, d->frame, &d->canvas, which);
-        alpha = gif_has_alpha(&d->info, &d->canvas) ? TRUE : FALSE;
+        ULONG info[4], pw, ph;
+        if (dt_card_decode(DT_NATIVE_GIF, 0, which, d->file, d->size, d->canvas.argb, pixels * 4, info, &pw, &ph)
+            && pw == d->info.width && ph == d->info.height) {
+            alpha = (info[2] & DT_NATIVE_ALPHA) ? TRUE : FALSE;
+            d->canvas.shown = -1;     /* the card's screen: OIM_READFRAME starts afresh */
+        } else {
+            gif_show(d->file, d->size, &d->info, d->frame, &d->canvas, which);
+            alpha = gif_has_alpha(&d->info, &d->canvas) ? TRUE : FALSE;
+        }
         bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)d->info.width;
         bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)d->info.height;
         bmh->bmh_Depth = 32;          /* ARGB */

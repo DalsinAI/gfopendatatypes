@@ -11,6 +11,10 @@
  * With neither a card nor a Cradle the document does not open yet (a text
  * view laid out on the 68k comes later).
  *
+ * 47.2: the file goes to the service once (kept there by PROBE, named by
+ * each RENDER), not with every page, and the next page is rendered while
+ * this one goes into the picture, when there is memory for a second page.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
@@ -31,10 +35,10 @@
 #include "dtservice.h"
 
 const char LibName[] = "gfopendoc.datatype";
-const char LibIdString[] = "gfopendoc.datatype 47.1 (5.10.2026) AmiCradle Team, laid out by doc.render/1";
+const char LibIdString[] = "gfopendoc.datatype 47.2 (7.11.2026) AmiCradle Team, laid out by doc.render/1";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
-static const char version[] __attribute__((used)) = "$VER: gfopendoc.datatype 47.1 (5.10.2026)";
+const UWORD LibRevision = 2;
+static const char version[] __attribute__((used)) = "$VER: gfopendoc.datatype 47.2 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -93,9 +97,11 @@ static BOOL loadDoc(Class *cl, Object *o)
 {
     struct BitMapHeader *bmh = NULL;
     struct dt_service svc;
-    struct OSBuffer buf[4];
-    ULONG extra[4], size = 0, pages, shown, w, h, total, got_w, got_h, p;
-    UBYTE info[24], *data, *argb = NULL;
+    struct dt_file file = { NULL, 0, 0, { 0 } };
+    struct OSBuffer buf[4], abuf[4];
+    ULONG extra[4], aextra[4], size = 0, pages, shown, w, h, total, got_w, got_h, p;
+    UBYTE info[24], *data, *argb = NULL, *next = NULL;
+    LONG ahead = -1;
     STRPTR name = NULL;
     BOOL ok = FALSE;
     LONG err = DTERROR_INVALID_DATA;
@@ -116,11 +122,13 @@ static BOOL loadDoc(Class *cl, Object *o)
     extra[0] = envNumber("GFOpenImage/DocWidth", 800, 100);
     extra[1] = extra[3] = 0;
     extra[2] = dt_name_hint(name);             /* CSV, Markdown: no signature */
-    buf[0].ob_Data = data;
-    buf[0].ob_Length = size;
+    file.data = data;
+    file.size = size;
     buf[1].ob_Data = info;
     buf[1].ob_Length = sizeof info;
-    if (dt_service_call(&svc, DR_PROBE, 0, 2, buf, extra, &pages, NULL) != OSERR_OK || get32(info) != DR_KIND_DOCUMENT)
+    /* The file goes once: kept on the host by PROBE, named by RENDER. */
+    if (dt_file_call(&svc, &file, DR_PROBE, 0, 2, buf, extra, &pages, NULL, FALSE) != OSERR_OK
+        || get32(info) != DR_KIND_DOCUMENT)
         goto out;
     w = get32(info + 16);
     h = get32(info + 20);
@@ -148,11 +156,46 @@ static BOOL loadDoc(Class *cl, Object *o)
         err = ERROR_NO_FREE_STORE;
         goto out;
     }
-    buf[1].ob_Data = argb;
-    buf[1].ob_Length = w * h * 4;
+    if (shown > 1)
+        next = AllocVec(w * h * 4, MEMF_ANY);  /* the read-ahead's page: none when memory is short */
     for (p = 0; p < shown; p++) {
-        if (dt_service_call(&svc, DR_RENDER, p, 2, buf, extra, &got_w, &got_h) != OSERR_OK || got_w != w || got_h != h)
-            goto out;
+        BOOL have = FALSE;
+        if (ahead == (LONG)p) {
+            /* Rendered while the page before went into the picture. */
+            if (dt_service_wait(&svc, &got_w, &got_h) == OSERR_OK && got_w == w && got_h == h) {
+                UBYTE *t = argb;
+                argb = next;
+                next = t;
+                have = TRUE;
+            }
+            ahead = -1;
+            if (p + 1 == shown)
+                file.kept = 0;                 /* let go with that RENDER (DT_DROP) */
+        }
+        if (!have) {
+            buf[0].ob_Data = NULL;
+            buf[0].ob_Length = 0;
+            buf[1].ob_Data = argb;
+            buf[1].ob_Length = w * h * 4;
+            if (dt_file_call(&svc, &file, DR_RENDER, p, 2, buf, extra, &got_w, &got_h, p + 1 == shown) != OSERR_OK
+                || got_w != w || got_h != h)
+                goto out;
+        }
+        /* The next page, while this one goes into the picture. */
+        if (next && p + 1 < shown) {
+            memcpy(aextra, extra, sizeof aextra);
+            memset(abuf, 0, sizeof abuf);
+            if (file.kept)
+                aextra[3] = DT_KEPT(file.kept) | (p + 2 == shown ? DT_DROP : 0);
+            else {
+                abuf[0].ob_Data = data;
+                abuf[0].ob_Length = size;
+            }
+            abuf[1].ob_Data = next;
+            abuf[1].ob_Length = w * h * 4;
+            if (dt_service_send(&svc, DR_RENDER, p + 1, 2, abuf, aextra))
+                ahead = p + 1;
+        }
         if (!DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, w * 4, 0, p * (h + GAP), w, h))
             goto out;
         if (p + 1 < shown && !writeGap(cl, o, w, p * (h + GAP) + h))
@@ -160,9 +203,14 @@ static BOOL loadDoc(Class *cl, Object *o)
     }
     ok = TRUE;
 out:
+    if (svc.sent)
+        dt_service_wait(&svc, NULL, NULL);     /* before its page goes */
+    dt_file_release(&svc, &file);
+    dt_service_close(&svc);
     if (argb)
         FreeVec(argb);
-    dt_service_close(&svc);
+    if (next)
+        FreeVec(next);
     FreeVec(data);
     if (!ok)
         SetIoErr(err);

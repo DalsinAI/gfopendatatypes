@@ -124,9 +124,10 @@ XFLAGS="-I$W -I$W/src $ACSTRING" compile "$W" "$WORK/obj-libwebp" \
 # webpcore.c: libwebp's tables set up in dt_init(), and an animation's first
 # frame on its background colour (tests/test-webpcore.sh).
 XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" \
-    common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c webp/webpcore.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtnative.c webp/webpclass.c webp/webpencode.c webp/webpcore.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/webp.datatype" \
-    "$WORK"/obj-webp/common_dtstart.o "$WORK"/obj-webp/common_dtlib.o "$WORK"/obj-webp/webp_webpclass.o \
+    "$WORK"/obj-webp/common_dtstart.o "$WORK"/obj-webp/common_dtlib.o "$WORK"/obj-webp/common_dtservice.o \
+    "$WORK"/obj-webp/common_dtnative.o "$WORK"/obj-webp/webp_webpclass.o \
     "$WORK"/obj-webp/webp_webpencode.o "$WORK"/obj-webp/webp_webpcore.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/webp.datatype.map"
 echo "webp.datatype: $(wc -c < "$OUT/Classes/DataTypes/webp.datatype") bytes"

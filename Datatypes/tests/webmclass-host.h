@@ -37,6 +37,7 @@ typedef ULONG Tag;
 #define MEMF_CLEAR 0x10000UL
 #define CMD_NONSTD 9
 struct MsgPort { int mp_Dummy; };
+struct Task { int tc_Dummy; };
 struct IORequest { struct MsgPort *io_ReplyPort; UWORD io_Command; BYTE io_Error; };
 struct SignalSemaphore { int ss_Count; };
 APTR AllocVec(ULONG size, ULONG flags);

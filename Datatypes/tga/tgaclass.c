@@ -27,6 +27,10 @@
  * kind that happens to be called .tga still opens as what it is when its own
  * datatype knows it, and one that is not a TGA fails as invalid data.
  *
+ * The services card (47.3): when this machine has one, the same tgadecode.c
+ * built for the card's host decodes the file there (common/dtnative.c),
+ * byte for byte as here; else, or when it can't, this CPU does.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <exec/memory.h>
@@ -43,6 +47,7 @@
 
 #include "dtlib.h"
 #include "tgadecode.h"
+#include "dtnative.h"
 #include "tgaencode.h"
 #include <datatypes/gfopenimage.h>
 #include <proto/utility.h>
@@ -120,6 +125,38 @@ static BOOL loadTGA(Class *cl, Object *o)
         FreeVec(file);
         SetIoErr(DTERROR_INVALID_DATA);
         return FALSE;
+    }
+    /* The services card first, a whole frame (dtnative.h). When it
+     * decodes, that buffer is the picture and the strip path is not
+     * taken. When it doesn't, this CPU holds only a strip. */
+    if ((argb = big_alloc(h.width * h.height * 4))) {
+        ULONG info[4], pw, ph;
+        if (dt_card_decode(DT_NATIVE_TGA, 0, 0, file, size, argb, h.width * h.height * 4, info, &pw, &ph)
+            && pw == h.width && ph == h.height) {
+            UBYTE alpha = (info[2] & DT_NATIVE_ALPHA) ? 1 : 0;
+            bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)h.width;
+            bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h.height;
+            bmh->bmh_Depth = 32;             /* ARGB, alpha or not */
+            bmh->bmh_Masking = alpha ? mskHasAlpha : mskNone;
+            SetDTAttrs(o, NULL, NULL,
+                DTA_ObjName, (ULONG)(name ? FilePart(name) : (STRPTR)"TGA"),
+                DTA_NominalHoriz, h.width,
+                DTA_NominalVert, h.height,
+                PDTA_SourceMode, PMODE_V43,
+                PDTA_AlphaChannel, alpha ? TRUE : FALSE,
+                TAG_DONE);
+            ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h.width * 4,
+                0, 0, h.width, h.height) ? TRUE : FALSE;
+            if (!ok)
+                err = ERROR_NO_FREE_STORE;
+            FreeVec(argb);
+            FreeVec(file);
+            if (!ok)
+                SetIoErr(err);
+            return ok;
+        }
+        FreeVec(argb);
+        argb = NULL;
     }
     /* The rows go to picture.datatype a strip at a time as they are
      * decoded: the picture is held once, in picture.datatype. */

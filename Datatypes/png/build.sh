@@ -24,12 +24,12 @@ SOFT="-specs=$HERE/../build/m68k-soft-m68040.specs"
 CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer -fno-delete-null-pointer-checks -DNDEBUG -Wall -Wno-pointer-sign"
 rm -rf "$WORK"
 mkdir -p "$WORK" "$OUT/Classes/DataTypes" "$OUT/Devs/DataTypes"
-for f in common/dtstart.c common/dtlib.c common/zlibrary.c png/pngdecode.c png/pngencode.c png/pngclass.c; do
+for f in common/dtstart.c common/dtlib.c common/dtservice.c common/dtnative.c common/zlibrary.c png/pngdecode.c png/pngencode.c png/pngclass.c; do
     (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/include" -I"$HERE/png" ${ACFLAGS:-} -c "$f" -o "$WORK/$(basename "$f" .c).o")
 done
 # dtstart.o first, so the library's first code is a safe return.
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpng.datatype" \
-    "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/zlibrary.o" "$WORK/pngdecode.o" "$WORK/pngencode.o" \
+    "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/dtservice.o" "$WORK/dtnative.o" "$WORK/zlibrary.o" "$WORK/pngdecode.o" "$WORK/pngencode.o" \
     "$WORK/pngclass.o" ${ACLIB:-} -lamiga \
     -Wl,-Map="$WORK/gfopenpng.datatype.map"
 echo "gfopenpng.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpng.datatype") bytes"
