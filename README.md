@@ -49,33 +49,39 @@ What runs after that depends on the format.
 **On this CPU.** PNG, TGA, GIF, AIFF, WAV, gzip, Brotli, CDXL and the
 eight system classes are our own code. WebP (libwebp), WebM (libvpx) and
 music modules (libxmp) are too. FLAC, Ogg Vorbis and MP3 are as well when
-there is no AkikoPlus and no paired Cradle. A picture is handed to
+there is no Mitchy and no paired Cradle. A picture is handed to
 picture.datatype as 32-bit ARGB; PNG and TGA a strip of about 32 rows at
 a time, so the picture is not held twice. A film plays a frame at a time:
 WebM in 256 colours, CDXL as the frames lie in the file.
 
-**On AkikoPlus.** AVIF, HEIC, camera RAW and the other picture formats
+**On Mitchy.** AVIF, HEIC, camera RAW and the other picture formats
 gfopenpicture names, and AAC, WMA, Opus, MIDI, SID, documents and the
 container films (MP4, MKV, AVI, WMV, MPEG), are not decoded on the 68k.
-The class sends the file to `media.decode/1` or `doc.render/1` on
-AkikoPlus, through `gfopenservice.device`. AkikoPlus is the board that
-holds the media: decode, encode, document layout and CDXL
-(`media.decode/1`, `media.encode/1`, `doc.render/1`, `media.cdxl/1`).
-In the runtime it is still the services host (`a1200-x86/native/services.c`,
-MAGIC `ACSV`). A real Amiga with no AkikoPlus asks a paired Cradle on the
-LAN for the same services. One object keeps one connection for its life,
-and the program's task shares it with animation.datatype's loader. The
-file goes up once; the calls after that name it. The next frame or page
-is asked for while this one is showing. An older service, which cannot
-keep the file, is sent it again and still works. With neither AkikoPlus
-nor a Cradle those files do not open.
+The class sends the file to `media.decode/1` or `doc.render/1` through
+`gfopenservice.device`. Mitchy is the services card (product 13, MAGIC
+`ACSV`). Its device is `mitchy.device`; `gfopenservice.device` stays and
+opens that, so a program built with the old name needs no change. A real
+Amiga with no Mitchy asks a paired Cradle on the LAN for the same
+services. One object keeps one connection for its life, and the program's
+task shares it with animation.datatype's loader. The file goes up once;
+the calls after that name it. The next frame or page is asked for while
+this one is showing. An older service, which cannot keep the file, is
+sent it again and still works. With neither Mitchy nor a Cradle those
+files do not open.
 
-**On AkikoPlus, the same decoders.** PNG, TGA, GIF and WebP also
-have a copy of these sources built for AkikoPlus's host. When it is
-there they decode there, and the bytes are the ones this CPU would have
-made. `ENV:GFOpenImage/CardDecode` set to 0 keeps them here. WebM frames
-can come from AkikoPlus the same way. libvpx takes the film back when
-the service is missing, older, or does not count the same frames.
+**On Mitchy, the same decoders.** PNG, TGA, GIF and WebP also have a
+copy of these sources built for Mitchy's host. When it is there they
+decode there, and the bytes are the ones this CPU would have made.
+`ENV:GFOpenImage/CardDecode` set to 0 keeps them here. WebM frames can
+come from Mitchy the same way. libvpx takes the film back when the
+service is missing, older, or does not count the same frames.
+
+AkikoPlus is a different board: the media board, product 18, CLASS 5,
+not fitted unless the runtime is asked (`a1200native -K`). It does
+`akiko.swap/1` and `akiko.c2p/1` on the host. `media.decode/1` and
+`media.cdxl/1` are offered there too; Mitchy keeps them for the callers
+that already have them. `akikoplus.library`, the Amiga's side, is not
+built yet.
 
 **Saving.** `DTM_WRITE` is one of the object's methods, so MultiView
 offers Save As. Any film animation.datatype can play (WebM, CDXL,
@@ -85,7 +91,7 @@ animation.datatype on the 68k, H.264 baseline, the sound kept as 8-bit
 PCM, with no service. PNG, TGA, GIF, WebP, AIFF, WAV, gzip and a CDXL's
 own bytes are written here too. HEIC, AAC, M4A, WMA, HEVC and WMV are the
 other way: the class sends the pixels or the samples to `media.encode/1`
-on AkikoPlus, and its FFmpeg writes the file. There is no encoder for those
+on Mitchy, and its FFmpeg writes the file. There is no encoder for those
 in this pack. A format the class cannot write is refused. It is not
 replaced with one it can.
 
