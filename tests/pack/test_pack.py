@@ -15,6 +15,11 @@
    CDXL datatype: a Novice install; an install over it; the uninstall,
    which must leave the disk as it was; the same with the library left out
    and with some datatypes left out; and the refusals (OS 3.1, a 68030).
+4. The descriptors the builds really write (Datatypes/descriptors.sh, with
+   stand-ins for the hooks' load files): each in its class's choice, those
+   with recognition code (DTCD) as written, all of them installed into
+   DEVS:DataTypes and taken out again. Which file each one picks is
+   tests/recognition/test_recognition.py's.
 
 MIT, Copyright (c) 2026 AmiCradle Team.
 """
@@ -312,8 +317,58 @@ def main() -> int:
         run(disk, out2 / "GFOpenDatatypes", "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "and that pack installs and comes out cleanly")
 
+        shipping(tmp)
+
     print("all passed" if not fails else f"{fails} failed")
     return 1 if fails else 0
+
+
+def shipping(tmp: Path) -> None:
+    """The real descriptors (descriptors.sh) through the pack and the Installer."""
+    dt = tmp / "dtreal"
+    devs = dt / "Devs/DataTypes"
+    devs.mkdir(parents=True)
+    (dt / "Classes/DataTypes").mkdir(parents=True)
+    hooks = tmp / "hooks"
+    hooks.mkdir()
+    for h in ("matroska", "mpegaudio", "oggtheora", "docservice"):
+        (hooks / h).write_bytes(b"\0\0\x03\xf3DTHOOK:" + h.encode() + b"\0")
+    r = subprocess.run(["sh", "-c", 'set -eu; HERE="$1"; DTHOOKS="$2"; . "$HERE/descriptors.sh"; desc_all "$3"',
+                        "sh", str(ROOT / "Datatypes"), str(hooks), str(dt)], capture_output=True, text=True)
+    check(r.returncode == 0, f"descriptors.sh writes {len(list(devs.iterdir()))} descriptors")
+    if r.returncode:
+        print(r.stderr)
+        return
+    import build_pack  # noqa: E402
+    base = {d.name: build_pack.base_name(d.read_bytes()) for d in devs.iterdir()}
+    for cls in set(base.values()) | set(SUPERCLASSES):
+        (dt / f"Classes/DataTypes/{cls}.datatype").write_bytes(f"\0$VER: {cls}.datatype 47.9 (7.11.2026)\0".encode())
+    out = tmp / "packreal"
+    r = subprocess.run([sys.executable, "-I", ROOT / "tools/build_pack.py", "--no-build", "--version", "0.1",
+                        "--datatypes-out", dt, "--library-out", tmp / "none", "--zlib-out", tmp / "none", "--out", out],
+                       capture_output=True, text=True)
+    check(r.returncode == 0, "build_pack.py with the real descriptors")
+    if r.returncode:
+        print(r.stderr)
+        return
+    man = json.loads((out / "GFOpenDatatypes.json").read_text())
+    top = out / "GFOpenDatatypes"
+    placed = {f["pack"][len("Devs/DataTypes/"):]: c["class"] for c in man["choices"] for f in c["files"]
+              if f["pack"].startswith("Devs/DataTypes/")}
+    check(placed == {n: f"{b}.datatype" for n, b in base.items()}, "each descriptor in its class's choice")
+    coded = sorted(n for n in base if b"DTCD" in (devs / n).read_bytes())
+    check(coded == ["CSV", "MKV", "MP3", "Markdown", "Ogg-Theora"]
+          and all((top / "Devs/DataTypes" / n).read_bytes() == (devs / n).read_bytes() for n in coded),
+          f"the ones with recognition code, as written: {', '.join(coded)}")
+    check(not any(t == "Devs" and n in base for t, n in build_pack.RETIRED),
+          "no descriptor of the pack's is one it retires")
+    disk = os32_disk()
+    before = disk.snapshot()
+    run(disk, top, "Install-GFOpenDatatypes")
+    check(all(disk.files.get(mi.norm(f"DEVS:DataTypes/{n}")) == (devs / n).read_bytes() for n in base),
+          f"a Novice install puts all {len(base)} in DEVS:DataTypes")
+    run(disk, top, "Uninstall-GFOpenDatatypes")
+    check(disk.snapshot() == before, "and the uninstall takes them out again")
 
 
 if __name__ == "__main__":
