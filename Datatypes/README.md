@@ -184,7 +184,20 @@ How they are made:
   loaders; its depackers, ProWizard and Ogg Vorbis samples are left out
   (`openmodule/xmpglue.c`, `openmodule/novorbis.c`).
 - **Descriptors** are written by `common/mkdtdesc.py`, which reproduces the
-  system's own `DEVS:DataTypes/PNG` byte for byte.
+  system's own `DEVS:DataTypes/PNG` byte for byte, from one list of them all,
+  `descriptors.sh` (a `desc_<datatype>` function each, which the build
+  scripts call). datatypes.library tries only the descriptors of the data's
+  kind (binary, text: `DT_TEXT=1`, IFF: `DT_IFF=1`), a longer mask first and
+  then the lower priority (0 before 1), so a descriptor comes ahead of
+  another by a longer mask, not by `DT_PRIORITY`. Where a mask can't tell
+  (Matroska from WebM, MPEG audio with no tag, Ogg Theora from Ogg sound,
+  Markdown and CSV with no service to lay them out) the descriptor carries
+  recognition code (a DTCD chunk, `DT_CODE`): `hooks/`, plain C in
+  `hooks/dthooks.h` built into a small load file each by `hooks/build.sh`.
+  `tests/recognition/test_recognition.py` puts every descriptor through the
+  library's own recognition (`libraries/opendatatypes/dt_core.c`) under
+  qemu-m68k on a corpus of made-up file headers, in both orders, and runs
+  the hooks as built (with the stove) as the library runs them.
 
 ## Tested
 

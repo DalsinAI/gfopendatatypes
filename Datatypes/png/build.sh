@@ -33,9 +33,6 @@ $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpng.datatype" \
     "$WORK/pngclass.o" ${ACLIB:-} -lamiga \
     -Wl,-Map="$WORK/gfopenpng.datatype.map"
 echo "gfopenpng.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpng.datatype") bytes"
-# The signature and the IHDR chunk that must come next (length 13): sixteen
-# bytes, longer than the system's PNG descriptor, so it is tried first.
-python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenPNG" GFOpenPNG gfopenpng pict png "#?" \
-    '$VER: GFOpenPNG 47.3 (11.10.2026)' 0x89 "'P'" "'N'" "'G'" 0x0d 0x0a 0x1a 0x0a 0x00 0x00 0x00 0x0d \
-    "'I'" "'H'" "'D'" "'R'"
-echo "Devs/DataTypes/GFOpenPNG: $(wc -c < "$OUT/Devs/DataTypes/GFOpenPNG") bytes"
+# Its descriptor: descriptors.sh.
+. "$HERE/descriptors.sh"
+desc_gfopenpng "$OUT"

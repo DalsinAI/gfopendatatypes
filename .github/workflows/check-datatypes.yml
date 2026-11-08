@@ -25,6 +25,9 @@
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
 # (tests/m68k/test_opendatatypes_class.sh) needs an amicradle-guest
 # checkout (GUEST=) and runs in amicradle-guest's own CI.
+# The descriptors (Datatypes/descriptors.sh) through datatypes.library's own
+# recognition on a corpus of made-up headers, under qemu-m68k
+# (tests/recognition/test_recognition.py).
 # The bitplanes-to-pixels helper ilbm, picture and cdxl share
 # (common/include/odt_planar.h) against the loop it replaced, on the host
 # (Datatypes/tests/test-planar.sh).
@@ -100,6 +103,8 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh
       - name: animation.datatype's MP4 writer (H.264), read back by FFmpeg and the host encoder
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh
+      - name: the descriptors, which datatype each kind of file goes to (datatypes.library's recognition)
+        run: QEMU_M68K=qemu-m68k python3 -I tests/recognition/test_recognition.py
       - name: libwebp's 68060 patch as 68040 code (same files, no more instructions)
         run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-webp060.sh
       - name: webp.datatype's libwebp tables and animations as 68040 code
