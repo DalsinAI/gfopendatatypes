@@ -54,6 +54,37 @@ Options go through attributes the datatype documents (quality, lossless,
 compression level, bit rate), with defaults that need no attribute at all.
 Each datatype's README lists them.
 
+**Another format than the datatype's own** (7 November 2026, for MP4) is
+raw mode with `OIA_WriteFormat` in `dtw_AttrList`
+(`Datatypes/include/datatypes/gfopenimage.h`), as `SDTA_WriteCoded` asks
+gzip.datatype for its coded bytes: `DoMethod(o, DTM_WRITE, NULL, fh,
+DTWM_RAW, tags)` with `OIA_WriteFormat, OIWF_MP4`. The class that can
+write that format answers it whatever the subclass: animation.datatype
+writes any film as an MP4, so anim, cdxl, webm, gfopenvideo and an
+animated GIF all save as MP4 with no writer of their own, the way they all
+save as an IFF ANIM. A subclass with a raw writer of its own hands raw mode
+on to its superclass when the tag names a format it doesn't write itself:
+cdxl for any tag; gfopenvideo, once it writes HEVC and WMV through the
+service, for `'MP4 '`. A format the class
+can't write fails with `ERROR_NOT_IMPLEMENTED`, never writes the
+datatype's own format instead; no tag (or 0) is the datatype's own format,
+as before. Why not the other ways:
+
+- a new `DTWM_` mode: `dtw_Mode` has the NDK's two values and subclasses
+  test it either way round (anything but `DTWM_RAW` to the superclass, or
+  only `DTWM_IFF`), so what a third value does would depend on how each
+  subclass was written. Either way a subclass with a raw writer of its own
+  has to learn to hand the request on, as cdxl now does; the tag keeps the
+  mode the NDK's and is how `SDTA_WriteCoded` already asks for more;
+- the converter of section 1, an empty object of the target class with the
+  frames written in: animation.datatype has no method to write frames into
+  an object (only pictures and sounds do), and the target class for MP4,
+  gfopenvideo.datatype, reads through the service and has no frames of its
+  own to keep.
+
+`OIA_Quality` (1 to 100) and `OIA_Compression` (0 the fastest to 9) are
+the MP4's options, and `OIA_WriteSound` FALSE leaves its sound out.
+
 A format whose encoder the Team may not ship (section 3's "no" rows) answers
 `DTWM_RAW` as in 2: the original file while the object is unchanged, else
 `ERROR_NOT_IMPLEMENTED`. It still writes IFF.
@@ -71,7 +102,7 @@ the order they are tried in):
 | --- | --- | --- | --- |
 | **A cores board core**: AmiCradle's cores board ($DA15 product 7, up to eight translated 68040 cores) | 2 | `gfopenmulticore.library` jobs (`OMC_Submit`, `OMC_Wait`), DalsinAI/gfopenmulticore | 68k compute: decoding and encoding (libwebp, libvpx, our PNG and TGA code), mixing, and pixel work too. A job calls no OS, touches no Chip RAM and writes only its granted buffers |
 | **The GPU** | 4 (new) | `gfopengpu.library` (the one library: GFOpenGPU, GFOpenGfx and SDL 2) | Pixel work: scaling, colour conversion, dithering to 256 colours or HAM8, presenting video frames. Video decode where a driver offers it, through `gfopenmedia.library` once it exists |
-| **A services card or a paired Cradle** | 3 | `gfopenservice.device`: `media.decode/1`, `doc.render/1`, and the encode calls section 4 adds, DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
+| **A services card or a paired Cradle** | 3 | `gfopenservice.device`: `media.decode/1`, `doc.render/1`, and `media.encode/1` for writing (section 3), DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
 | **This CPU**, a single 68k | 1 | plain calls | Everything that has 68k code, when nothing above is there |
 
 The order, per kind of work:
@@ -126,25 +157,47 @@ legal advice; the "no" rows need the Team's word before anyone writes them.
 **The Team's ruling (6 November 2026)** on those rows: "mp4 we merge in,
 the others we use ffmpeg". MP4 (H.264 video, the MP4 container) is written
 by the datatypes themselves, its encoder merged into GFOpenDatatypes; HEIC,
-AAC and WMA (and HEVC and WMV with them) are written by the service's FFmpeg
-(`gfopenservice.device`'s encode calls), never by code in the pack. The
-rows below still say what the patents are; the ruling is what decides.
+AAC and WMA (and HEVC and WMV with them) are written by the service's FFmpeg,
+never by code in the pack.
+
+The service had no encode call until 7 November 2026, when `media.encode/1`
+was added (DalsinAI/gfopenservice `docs/MEDIA_ENCODE.md`, ops 16 to 21:
+FORMATS, BEGIN, PUT, FINISH, READ, CLOSE). A datatype asks FORMATS what the
+host's FFmpeg writes, sends the object's pixels, samples or frames in
+pieces, and the file comes back into `DTM_WRITE`'s file handle
+(`Datatypes/common/dtencode.c`; the requests themselves, `common/encodemsg.c`,
+are tested on the host and as 68040 code by `tests/test-encodemsg.sh`). FFmpeg
+runs as its own program on the host (the services card's host or a paired
+Cradle), so its encoders (x265, AAC, WMA, WMV) and their licences and patents
+stay there; the HEIC container is the service's own MIT code. With no card or
+Cradle, or one whose FFmpeg lacks the encoder, the write fails with
+`ERROR_NOT_IMPLEMENTED`. `OIA_WriteFormat` and `OIA_Quality` in `DTM_WRITE`'s
+attributes choose the file and its quality (`include/datatypes/gfopenimage.h`).
+The rows below still say what the patents are; the ruling is what decides.
+
+Done for MP4 (7 November 2026): animation.datatype writes any film as an
+MP4 on this CPU (section 1's `OIA_WriteFormat OIWF_MP4`): H.264 baseline
+video from minih264e (CC0, `upstream/minih264/`, with our big-endian
+patches), integer only, no FPU, no 64-bit multiplies, and the film's sound
+as 8-bit PCM (`twos`, mono or stereo), not AAC, which the ruling leaves to
+the service. `libraries/opendatatypes/classes/datatypes/animation/README.md`
+says what it writes and how fast.
 
 ### The Team's datatypes (`Datatypes/`)
 
 | Datatype | Raw write today | Raw write to add | Licence | Ladder today | Ladder to add |
 | --- | --- | --- | --- | --- | --- |
 | webp | lossless WebP (#6) | lossy WebP, as an option | yes: libwebp's encoder is in the same BSD tarball | this CPU | encode and decode as core jobs; the service |
-| webm | none | WebM, VP8 or VP9, with Opus or Vorbis sound | yes: libvpx (BSD, WebM patent grant); Opus and Vorbis are BSD and royalty-free | this CPU (sound by the service) | frames as core jobs; dithering on the GPU |
+| webm | MP4 (H.264, PCM sound) through animation.datatype | WebM, VP8 or VP9, with Opus or Vorbis sound | yes: libvpx (BSD, WebM patent grant); Opus and Vorbis are BSD and royalty-free | this CPU (sound by the service) | frames as core jobs; dithering on the GPU |
 | gfopenpng | PNG (#2) | done | yes: our own code | this CPU | core jobs |
 | gfopentga | TGA 2.0, RLE or not (#6) | done | yes: our own code, Truevision's public spec | this CPU | core jobs |
-| cdxl | the film as it plays (#6) | done | yes: our own code | this CPU | GPU for chunky films' dithering |
+| cdxl | the film as it plays (#6); MP4 through animation.datatype | done | yes: our own code | this CPU | GPU for chunky films' dithering |
 | gfopenmodule | the module as it came | (IFF: the song rendered to 8SVX) | yes for 8SVX (libxmp, MIT); a module can't be made from sound | cores, service, this CPU | the GPU has nothing to do here |
-| gfopengif | one-frame GIF89a: colour indexes as they are, else exact or median cut to 256; an animated GIF writes IFF ANIM through the animation class | an animated GIF out | yes: our own code; the LZW patents ended in 2003 and 2004 | this CPU | core jobs |
-| gfopenpicture | none | AVIF, JPEG XL, QOI, OpenEXR, Radiance HDR, JPEG 2000, DDS through the service | yes: libavif, libjxl, OpenJPEG and OpenEXR are BSD; AV1 is royalty-free. HEIC by the service's FFmpeg (the ruling above); camera RAW and fonts have nothing to write; PSD and XCF later | the service | scaling on the GPU |
-| gfopensound | none | FLAC, Ogg Vorbis, Opus, ALAC, MP3 through the service | yes: FLAC, Vorbis, Opus (BSD), ALAC (Apache 2.0), MP3 (LAME runs in the service; the patents ended in 2017). AAC and WMA by the service's FFmpeg (the ruling above; encoder licences and patents); MIDI, SID and modules can't be made from sound | the service | decode as core jobs where there is 68k code (FLAC first) |
+| gfopengif | one-frame GIF89a: colour indexes as they are, else exact or median cut to 256; an animated GIF writes IFF ANIM, or MP4, through the animation class | an animated GIF out | yes: our own code; the LZW patents ended in 2003 and 2004 | this CPU | core jobs |
+| gfopenpicture | HEIC (47.2), by the service's FFmpeg through `media.encode/1`, alpha included | AVIF, JPEG XL, QOI, OpenEXR, Radiance HDR, JPEG 2000, DDS through the service | yes: libavif, libjxl, OpenJPEG and OpenEXR are BSD; AV1 is royalty-free. HEIC by the service's FFmpeg (the ruling above; x265 runs in FFmpeg's process on the host, the HEIF boxes are the service's MIT code); camera RAW and fonts have nothing to write; PSD and XCF later | the service | scaling on the GPU |
+| gfopensound | AAC as M4A or ADTS, and WMA (47.2), by the service's FFmpeg through `media.encode/1` | FLAC, Ogg Vorbis, Opus, ALAC, MP3 through the service | yes: FLAC, Vorbis, Opus (BSD), ALAC (Apache 2.0), MP3 (LAME runs in the service; the patents ended in 2017). AAC and WMA by the service's FFmpeg (the ruling above; encoder licences and patents stay in FFmpeg's process on the host); MIDI, SID and modules can't be made from sound | the service | decode as core jobs where there is 68k code (FLAC first) |
 | gfopendoc | none | the document as it came; converted by the service to ODF, PDF or DOCX | yes: LibreOffice (MPL 2.0) runs as its own program on the Cradle | the service | page scaling on the GPU |
-| gfopenvideo | none | WebM (VP9 or AV1 with Opus), MKV with the same, MPEG-1 | yes for those (royalty-free; MPEG-1's patents have ended). MP4/H.264 merged into the datatypes (the ruling above); HEVC and WMV by the service's FFmpeg | the service | HAM8 and 256-colour conversion on the GPU, then cores |
+| gfopenvideo | HEVC in MP4 (AAC sound) and WMV (WMA sound) (47.3), by the service's FFmpeg through `media.encode/1`; `OIWF_MP4` goes up to animation.datatype, which writes H.264 and PCM on this CPU | WebM (VP9 or AV1 with Opus), MKV with the same, MPEG-1 | yes for those (royalty-free; MPEG-1's patents have ended). MP4/H.264 merged into the datatypes (the ruling above); HEVC and WMV by the service's FFmpeg (in its own process on the host) | the service | HAM8 and 256-colour conversion on the GPU, then cores |
 | stream, gzip, brotli | plain bytes; gzip coded again on request, `SDTA_WriteCoded` (#6) | a Brotli encoder (our own, from RFC 7932) | yes: zlib licence and MIT | this CPU | core jobs for compression |
 
 ### datatypes.library's system classes (`libraries/opendatatypes/`)
@@ -154,7 +207,7 @@ rows below still say what the patents are; the ruling is what decides.
 | picture | ILBM | the ladder for scaling and remapping (`PDTM_SCALE`, the pen remap) |
 | sound | 8SVX | none |
 | text, ascii | FTXT, and raw text | none |
-| animation, anim | ANIM (ANIM-5 deltas, interleave 0) from any subclass's frames | sound and per-frame colours in the ANIM |
+| animation, anim | ANIM (ANIM-5 deltas, interleave 0) from any subclass's frames; MP4 (H.264 baseline, the sound as 8-bit PCM, per-frame colours and durations) from the same, raw mode with `OIA_WriteFormat` | sound and per-frame colours in the ANIM |
 | ilbm, 8svx | through picture and sound | raw write of their own forms |
 
 ## 4. Order of work
@@ -167,12 +220,19 @@ rows below still say what the patents are; the ruling is what decides.
    `tests/dtsave.c`.
 3. ANIM write in the animation class, so every animation datatype writes
    IFF (done, 5 November 2026: `adt_anim_write`; to check on an Amiga with
-   `dtsave`).
+   `dtsave`). MP4 write in the same class (done, 7 November 2026:
+   `adt_mp4_write`, `OIA_WriteFormat OIWF_MP4`; to check on an Amiga with
+   `dtsave SRC DST MP4`), so every animation datatype writes MP4.
 4. Core jobs for webp, gfopenpng and gfopentga decoding and encoding; GPU
    dithering for webm, cdxl and gfopenvideo.
-5. The service's encode calls (`media.encode/1`, `doc.convert/1`, in
-   gfopenservice), then raw write for gfopenpicture, gfopensound, gfopendoc,
-   gfopenvideo and webm.
+5. The service's encode calls: `media.encode/1` is there (7 November 2026)
+   with the ruling's formats (HEIC, AAC/M4A, WMA, HEVC, WMV), and
+   gfopenpicture, gfopensound and gfopenvideo write them. Still to come: its
+   royalty-free formats (AVIF, JPEG XL..., FLAC, Opus..., WebM) as more
+   FORMATS answers, `doc.convert/1`, and raw write for gfopendoc and webm.
+   The emulator's services card needs `media.encode/1` in its table of host
+   libraries (amicradle `services.c`) before its machines have it; the LAN
+   Cradle offers it already.
 
 Each step: a lab copy of an OS 3.2 instance, the same answer on every rung
 against this CPU's, and the timings in the datatype's README.

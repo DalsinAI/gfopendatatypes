@@ -20,28 +20,40 @@ outputs = [
 
 [test]
 host_parallel = true
-# The host job from .github/workflows/check-datatypes.yml, unchanged.
+# The host job from .github/workflows/check-datatypes.yml.
 host = [
   "sh Datatypes/tests/test-tga.sh",
   "sh Datatypes/tests/test-gif.sh",
   "sh Datatypes/tests/test-cdxl.sh",
   "sh Datatypes/tests/test-webm.sh",
+  "sh Datatypes/tests/test-webm-dither.sh",
   "sh Datatypes/tests/test-stream.sh",
   "sh Datatypes/tests/test-webm-read.sh",
+  "QEMU_M68K=qemu-m68k sh Datatypes/tests/test-pngdec.sh",
   "sh Datatypes/tests/test-pngenc.sh",
   "sh Datatypes/tests/test-tgaenc.sh",
   "sh Datatypes/tests/test-gifenc.sh",
   "sh Datatypes/tests/test-webpenc.sh",
+  "sh Datatypes/tests/test-webp060.sh",
+  "sh Datatypes/tests/test-webpcore.sh",
   "sh Datatypes/tests/test-gzenc.sh",
   "python3 Datatypes/tests/test-romtag.py",
   "sh Datatypes/tests/test-planar.sh",
   "sh Datatypes/tests/test-dtservice.sh",
   "sh Datatypes/tests/test-service-rung.sh",
+  # media.encode/1's requests (HEIC, M4A, WMA... by the service's FFmpeg),
+  # host and 68040 byte for byte; the round trip when gfopenservice is beside
+  "QEMU_M68K=qemu-m68k sh Datatypes/tests/test-encodemsg.sh",
+  "sh Datatypes/tests/test-ilbmbr1.sh",
   # The m68k job (Debian's m68k-linux GCC under qemu-m68k): here until
   # ac090-run exists, then it moves to the nightly cross-check.
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_picsound.sh",
   "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh",
+  "QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh",
+  # The descriptors through datatypes.library's recognition (and, with the
+  # stove, the hooks as built, run as the library runs them).
+  "QEMU_M68K=qemu-m68k python3 -I tests/recognition/test_recognition.py",
 ]
 # T3: AmigaDOS scripts on a real boot of the open ROM, T2's outputs in SYS:Test/
 lab = ["tests/lab/smoke.script"]

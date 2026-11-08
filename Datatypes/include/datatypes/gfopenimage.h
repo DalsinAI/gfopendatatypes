@@ -32,8 +32,10 @@
 /* (LONG, in DTM_WRITE's dtw_AttrList) How much a raw write compresses: 0
  * stores (gfopentga.datatype: no run-length encoding; gfopenpng.datatype:
  * deflate level 0), 1 to 9 a deflate level where the format has one, -1 or
- * no tag the datatype's default. A datatype whose format has no choice
- * ignores it. */
+ * no tag the datatype's default. For an encoder that trades time for size
+ * (webp's effort) 0 is the fastest and 9 the smallest; an MP4's H.264 is
+ * fastest at 0, its default, and searches most at 9. A datatype whose
+ * format has no choice ignores it. */
 #define OIA_Compression (OIA_Dummy + 4)
 
 /* ---- Pictures with more than one frame (gfopengif.datatype) ----------------- */
@@ -48,6 +50,50 @@
  * NETSCAPE2.0 loop count: browsers show that many repeats after the first
  * time through). */
 #define OIA_LoopCount  (OIA_Dummy + 6)
+
+/* ---- Raw writes in another format (DTM_WRITE, DTWM_RAW) ----------------------- */
+
+/* (ULONG, in DTM_WRITE's dtw_AttrList with DTWM_RAW) The file a raw write
+ * makes, instead of (or naming) the datatype's own format. 0 or no tag: the
+ * datatype's own, as before. A format the class can't write fails with
+ * ERROR_NOT_IMPLEMENTED; it never writes another format instead.
+ *
+ * On this CPU, with no service:
+ *   OIWF_MP4   animation.datatype (GFOpenDatatypes 47.100 and up) writes any
+ *              film, whatever its subclass (anim, cdxl, webm, gfopenvideo,
+ *              an animated GIF); a subclass hands formats it doesn't write
+ *              itself up to it.
+ * By the service's FFmpeg (media.encode/1, a services card or a paired
+ * Cradle; never on the 68k; without one, or one whose FFmpeg can't,
+ * ERROR_NOT_IMPLEMENTED):
+ *   OIWF_HEIC  gfopenpicture.datatype, alpha included
+ *   OIWF_M4A, OIWF_AAC (ADTS), OIWF_WMA   gfopensound.datatype
+ *   OIWF_HEVC (in MP4, AAC sound), OIWF_WMV (WMA sound)   gfopenvideo.datatype
+ * gfopenpicture, gfopensound and gfopenvideo with no tag write their own
+ * format when the service writes it (an AAC as M4A, unless its name ends in
+ * .aac); an object of theirs made with no source (DTST_RAM) writes the
+ * first of their list. Classes that don't know the tag ignore it. */
+#define OIA_WriteFormat (OIA_Dummy + 16)
+#define OIWF_MP4       0x4D503420UL    /* 'MP4 ': H.264 baseline video, the sound as 8-bit PCM ('twos') */
+#define OIWF_HEIC      0x48454943UL    /* 'HEIC' */
+#define OIWF_M4A       0x4D344120UL    /* 'M4A ': AAC-LC in MP4 */
+#define OIWF_AAC       0x41414320UL    /* 'AAC ': AAC-LC as ADTS */
+#define OIWF_WMA       0x574D4120UL    /* 'WMA ': Windows Media Audio 2 */
+#define OIWF_HEVC      0x48455643UL    /* 'HEVC': HEVC video in MP4 */
+#define OIWF_WMV       0x574D5620UL    /* 'WMV ': Windows Media Video 8 */
+
+/* (LONG, in dtw_AttrList) A lossy raw write's quality: 0 the smallest file
+ * to 100 the best picture, -1 or no tag the datatype's default. MP4: H.264's
+ * quantiser 10 + (100 - quality) x 41 / 100, rounded (default 60, QP 26).
+ * The service's formats: x265's CRF 51 to 0 (default 20 for HEIC, 23 for
+ * HEVC), AAC and WMA 16 to 160 kbit/s a channel (default 64), WMV qscale 31
+ * to 2 (default 5). */
+#define OIA_Quality    (OIA_Dummy + 17)
+
+/* (BOOL, in dtw_AttrList) FALSE leaves the sound out of a film's raw write
+ * (default TRUE: an MP4 carries the film's sound as PCM, which browsers
+ * don't play). */
+#define OIA_WriteSound (OIA_Dummy + 18)
 
 /* Writes frame oirf_Frame, composited over the frames before it as web
  * browsers show it, into the program's pixels: the whole picture, four
@@ -111,5 +157,69 @@ struct oiEncodePNG {
 };
 #define OIEF_PREMULTIPLIED 1UL         /* colour premultiplied by alpha: undone first */
 #define OIEF_OPAQUE        2UL         /* leave alpha out: an RGB file */
+
+/* ---- Sounds read and written by programs (gfopensound, gfopenmodule,
+ * gfopenaiff and gfopenwave.datatype) --------------------------------------- */
+
+/* A converter's way in and out. Opened with OIA_Reader, a sound sets up
+ * no playing: its PCM comes, a piece at a time, from OIM_READSOUND,
+ * streamed from the file at the sound's own rate (a module: mixed at
+ * OIA_MixRate), so nothing is decoded whole. A program asks OIA_Channels
+ * first: a datatype that answers it answers OIM_READSOUND; one that
+ * doesn't has the sound in SDTA_Sample as sound.datatype has always kept
+ * it. Saving goes the other way: a DTST_RAM object of gfopenaiff or
+ * gfopenwave.datatype made with OIA_PCM, written with DTM_WRITE (DTWM_RAW). */
+
+/* (BOOL, I) Open for reading: OIM_READSOUND, no playing. */
+#define OIA_Reader     (OIA_Dummy + 7)
+
+/* (ULONG, I) gfopenmodule.datatype read with OIA_Reader: the rate it
+ * mixes at, 4000 to 96000 (default 44100). */
+#define OIA_MixRate    (OIA_Dummy + 8)
+
+/* (ULONG, I) gfopenmodule.datatype read with OIA_Reader: 0 nearest,
+ * 1 linear, 2 spline (default 2). */
+#define OIA_MixInterp  (OIA_Dummy + 9)
+
+/* (ULONG, IG) Channels in OIM_READSOUND's frames and in OIA_PCM: 1 or 2. */
+#define OIA_Channels   (OIA_Dummy + 10)
+
+/* (WORD *, I) gfopenaiff and gfopenwave.datatype with DTA_SourceType
+ * DTST_RAM: the sound, 16-bit, interleaved when stereo, SDTA_SampleLength
+ * frames at SDTA_SamplesPerSec; the datatype copies it. */
+#define OIA_PCM        (OIA_Dummy + 11)
+
+/* (ULONG, in DTM_WRITE's dtw_AttrList) Bits a sample in the file written,
+ * 8 or 16 (default 16). The program dithers; the datatype takes the high
+ * byte. */
+#define OIA_SampleBits (OIA_Dummy + 12)
+
+/* (BOOL, in DTM_WRITE's dtw_AttrList) Only the samples, no header: raw
+ * PCM, big-endian from gfopenaiff.datatype, little-endian from gfopenwave
+ * (8-bit: signed from gfopenaiff, unsigned from gfopenwave, as each format
+ * keeps them). */
+#define OIA_Headerless (OIA_Dummy + 13)
+
+/* Writes up to oirs_Frames frames of the sound, 16-bit signed big-endian,
+ * interleaved when OIA_Channels is 2, at oirs_Buffer, from where the last
+ * call stopped. Answers how many it wrote: 0 at the end, and 0 with
+ * IoErr() set when it can't. */
+#define OIM_READSOUND  (TAG_USER + 0x0DA15903)
+struct oiReadSound {
+    ULONG MethodID;
+    struct GadgetInfo *oirs_GInfo;     /* NULL */
+    WORD *oirs_Buffer;
+    ULONG oirs_Frames;
+};
+
+/* sound.datatype V44's own (NDK 3.5 and later), for headers that lack them */
+#ifndef SDTA_SampleType
+#define SDTA_SampleType (DTA_Dummy + 500 + 30)
+#define SDTA_Frequency  (DTA_Dummy + 500 + 32)
+#define SDTST_M8S  0
+#define SDTST_S8S  1
+#define SDTST_M16S 2
+#define SDTST_S16S 3
+#endif
 
 #endif

@@ -27,7 +27,9 @@ mkdir "$tmp/files"
 
 python3 -I "$here/opendatatypes_textanim_ref.py" "$tmp/files" "$tmp/script.txt" "$tmp/expected.txt" "${SEED:-2026}"
 
-CORES="text/text_core ascii/ascii_core animation/animation_core anim/anim_core"
+# animation.datatype's core is three files: the class, its MP4 writer and
+# that writer's H.264 encoder (test_opendatatypes_mp4write.sh tests those)
+CORES="text/text_core ascii/ascii_core animation/animation_core animation/mp4_core animation/mp4_h264 anim/anim_core"
 for build in "-O0 -m68040" "-O2 -m68040"; do
     set -- $build
     opt=$1 cpu=$2
@@ -37,8 +39,10 @@ for build in "-O0 -m68040" "-O2 -m68040"; do
         # shellcheck disable=SC2086
         "$cc" -std=gnu99 $opt $cpu -fno-lto -fno-builtin -fno-tree-loop-distribute-patterns \
             -fno-delete-null-pointer-checks -Wall -Wextra -Werror -c "$cls/$c.c" -o "$o"
+        # calls to the other cores are checked once all are built
         und=$("${prefix}nm" -u "$o" | awk '{print $NF}' |
-              grep -v '^__\(mul\|div\|udiv\|mod\|umod\)[sd]i3$' | tr '\n' ' ' || true)
+              grep -v '^__\(mul\|div\|udiv\|mod\|umod\)[sd]i3$' | grep -v '^\(adt_mp4_\|mp4h_\)' |
+              tr '\n' ' ' || true)
         [ -z "$und" ] || { echo "FAIL $build $c: the core calls $und"; fail=1; }
         bad=$("${prefix}nm" "$o" | awk '{print $NF}' |
               grep -E '^(__cxa_|__gxx_personality|_ZTI|_ZTS|_ZTV|_GLOBAL__sub_I_|_ZGV|_Znw|_Zna|_ZdlPv|_ZdaPv)' |
@@ -49,6 +53,12 @@ for build in "-O0 -m68040" "-O2 -m68040"; do
         [ -z "$data" ] || { echo "FAIL $build $c: the core keeps state in $data"; fail=1; }
         objs="$objs $o"
     done
+    # shellcheck disable=SC2086
+    def=$("${prefix}nm" -g --defined-only $objs | awk 'NF == 3 {print $3}' | sort -u)
+    # shellcheck disable=SC2086
+    und=$("${prefix}nm" -u $objs | awk 'NF && $NF !~ /:$/ {print $NF}' | sort -u |
+          grep -v '^__\(mul\|div\|udiv\|mod\|umod\)[sd]i3$' | grep -vxF "$def" | tr '\n' ' ' || true)
+    [ -z "$und" ] || { echo "FAIL $build: the cores call $und"; fail=1; }
     # shellcheck disable=SC2086
     "$cc" -std=gnu99 $opt $cpu -static -Wall -Wextra -Werror -Wno-format -I"$cls" \
         "$here/opendatatypes_textanim_test.c" $objs -o "$tmp/t"

@@ -72,6 +72,26 @@ static odt_s32 x_text_length(const struct odt_cenv *e, void *font, odt_u32 style
     SetSoftStyle(&rp, style, AskSoftStyle(&rp));
     return TextLength(&rp, (CONST_STRPTR)s, n);
 }
+/* One RastPort for a whole layout's measuring: InitRastPort and SetFont
+ * once, then each width only sets the soft style (as x_text_length's fresh
+ * one would have it) and asks TextLength */
+static void *x_measure_open(const struct odt_cenv *e, void *font)
+{
+    struct RastPort *rp = AllocVec(sizeof *rp, MEMF_ANY);
+    (void)e;
+    if (!rp) return NULL;
+    InitRastPort(rp);
+    SetFont(rp, (struct TextFont *)font);
+    return rp;
+}
+static odt_s32 x_measure_len(const struct odt_cenv *e, void *rport, odt_u32 style, const char *s, odt_u32 n)
+{
+    struct RastPort *rp = rport;
+    (void)e;
+    SetSoftStyle(rp, style, AskSoftStyle(rp));
+    return TextLength(rp, (CONST_STRPTR)s, n);
+}
+static void x_measure_close(const struct odt_cenv *e, void *rp) { (void)e; FreeVec(rp); }
 static void x_text(const struct odt_cenv *e, void *rport, void *font, odt_u32 style, odt_s32 fg, odt_s32 x, odt_s32 y,
                    const char *s, odt_u32 n)
 {
@@ -134,7 +154,7 @@ static int x_double_click(const struct odt_cenv *e, odt_u32 s1, odt_u32 m1, odt_
 
 static const struct tdt_ext text_ext = {
     x_open_font, x_close_font, x_default_font, x_font_size, x_text_length, x_text, x_fill, x_clip, x_unclip, x_pen,
-    x_double_click
+    x_double_click, x_measure_open, x_measure_len, x_measure_close
 };
 
 static int text_ext_init(struct DTCBase *base)

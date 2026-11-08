@@ -13,11 +13,19 @@
  *     dtsave SRC DST [AS gfopentga|gfopenpng|...] [STORE]
  *     dtsave SRC DST SAMEBYTES
  *     dtsave SRC DST IFF
+ *     dtsave SRC DST MP4 [QUALITY n] [STORE] [NOSOUND]
  *
  * IFF saves any datatype's object in its group's IFF form (DTWM_IFF:
  * ILBM, 8SVX, FTXT, ANIM), opens DST again and checks it is the same kind
  * of object with the same size (and, for a film, frame count); tests/dtanim
  * on SRC and DST then compares the frames.
+ *
+ * MP4 saves a film as an MP4 (DTWM_RAW with OIA_WriteFormat OIWF_MP4:
+ * animation.datatype's H.264 writer, whatever the film's datatype), with
+ * OIA_Quality n, OIA_Compression 0 (STORE: the fastest) and OIA_WriteSound
+ * FALSE (NOSOUND) when given, then reads DST's boxes back: ftyp, mdat,
+ * moov, and how many video samples moov's stsz lists (the film's frames).
+ * Prints the time it took; FFmpeg on a host decodes DST.
  *
  * Prints "SRC -> DST: SAME w x h alpha=0|1 bytes=N" or what went wrong;
  * returns 0, or 10 when the pictures differ, 20 on an error. Built by
@@ -170,6 +178,84 @@ static int save_iff(const char *src, const char *dst)
     return gid2 == gid && w2 == w && h2 == h && f2 == f ? 0 : 10;
 }
 
+static ULONG be32(const UBYTE *p) { return (ULONG)p[0] << 24 | (ULONG)p[1] << 16 | (ULONG)p[2] << 8 | p[3]; }
+
+/* The box type inside [p, end): its contents and size, or NULL */
+static const UBYTE *mp4box(const UBYTE *p, const UBYTE *end, const char *t, ULONG *len)
+{
+    while (p + 8 <= end) {
+        ULONG n = be32(p);
+        if (n < 8 || n > (ULONG)(end - p)) return NULL;
+        if (!memcmp(p + 4, t, 4)) {
+            *len = n - 8;
+            return p + 8;
+        }
+        p += n;
+    }
+    return NULL;
+}
+
+static int save_mp4(const char *src, const char *dst, LONG quality, int store, int nosound)
+{
+    struct TagItem tags[] = { { OIA_WriteFormat, OIWF_MP4 }, { OIA_Quality, (ULONG)quality },
+                              { OIA_Compression, store ? 0 : (ULONG)-1 }, { OIA_WriteSound, !nosound },
+                              { TAG_DONE, 0 } };
+    Object *o = NewDTObject((APTR)src, TAG_DONE);
+    ULONG w = 0, h = 0, f = 0, len, samples = 0, tracks = 0;
+    struct DateStamp t0, t1;
+    UBYTE *buf = NULL;
+    const UBYTE *moov, *p;
+    LONG bytes, ticks;
+    BPTR fh;
+    int ok = 0;
+    if (!o) {
+        printf("%s: NEWDTOBJECT_FAIL ioerr=%ld\n", src, (long)IoErr());
+        return 20;
+    }
+    GetDTAttrs(o, ADTA_Width, (ULONG)&w, ADTA_Height, (ULONG)&h, ADTA_Frames, (ULONG)&f, TAG_DONE);
+    if (!(fh = Open((STRPTR)dst, MODE_NEWFILE))) {
+        printf("%s: can't open, ioerr=%ld\n", dst, (long)IoErr());
+        DisposeDTObject(o);
+        return 20;
+    }
+    DateStamp(&t0);
+    if (!DoMethod(o, DTM_WRITE, NULL, fh, DTWM_RAW, (ULONG)tags)) {
+        printf("%s -> %s: WRITE_FAIL ioerr=%ld\n", src, dst, (long)IoErr());
+        Close(fh);
+        DisposeDTObject(o);
+        return 20;
+    }
+    DateStamp(&t1);
+    bytes = Seek(fh, 0, OFFSET_CURRENT);
+    Close(fh);
+    DisposeDTObject(o);
+    ticks = (t1.ds_Days - t0.ds_Days) * 24 * 60 * 50 * 60 + (t1.ds_Minute - t0.ds_Minute) * 60 * 50 +
+            (t1.ds_Tick - t0.ds_Tick);
+    /* read it back: ftyp, mdat, then moov with its tracks */
+    if (bytes > 48 && (buf = malloc(bytes)) && (fh = Open((STRPTR)dst, MODE_OLDFILE))) {
+        if (Read(fh, buf, bytes) == bytes && !memcmp(buf + 4, "ftyp", 4) && !memcmp(buf + 36, "mdat", 4) &&
+            be32(buf + 32) <= (ULONG)bytes - 32 &&
+            (moov = mp4box(buf + 32 + be32(buf + 32), buf + bytes, "moov", &len))) {
+            const UBYTE *end = moov + len;
+            for (p = moov; (p = mp4box(p, end, "trak", &len)); p += len) {
+                const UBYTE *q = p, *qe = p + len;
+                ULONG l = len;
+                tracks++;
+                if (tracks == 1 && (q = mp4box(q, qe, "mdia", &l)) && (q = mp4box(q, q + l, "minf", &l)) &&
+                    (q = mp4box(q, q + l, "stbl", &l)) && (q = mp4box(q, q + l, "stsz", &l)))
+                    samples = be32(q + 8);
+            }
+            ok = tracks >= 1 && samples == f;
+        }
+        Close(fh);
+    }
+    free(buf);
+    printf("%s -> %s: %s MP4 %lux%lu frames=%lu tracks=%lu bytes=%ld seconds=%ld.%02ld\n", src, dst,
+           ok ? "WRITTEN" : "BAD", (unsigned long)w, (unsigned long)h, (unsigned long)samples, (unsigned long)tracks,
+           (long)bytes, (long)(ticks / 50), (long)(ticks % 50 * 2));
+    return ok ? 0 : 10;
+}
+
 int main(int argc, char **argv)
 {
     const char *src, *dst, *as = NULL;
@@ -179,10 +265,12 @@ int main(int argc, char **argv)
     ULONG w = 0, h = 0, al = 0, w2 = 0, h2 = 0, al2 = 0, i, diff = 0, ok;
     BPTR fh;
     LONG bytes = 0;
-    int rc = 20, k, st = 0, bytes_mode = 0, iff_mode = 0;
+    int rc = 20, k, st = 0, bytes_mode = 0, iff_mode = 0, mp4_mode = 0, nosound = 0;
+    LONG quality = -1;
 
     if (argc < 3) {
-        printf("usage: dtsave SRC DST [AS class] [STORE] | SRC DST SAMEBYTES | SRC DST IFF\n");
+        printf("usage: dtsave SRC DST [AS class] [STORE] | SRC DST SAMEBYTES | SRC DST IFF |\n"
+               "       SRC DST MP4 [QUALITY n] [STORE] [NOSOUND]\n");
         return 20;
     }
     src = argv[1];
@@ -196,11 +284,17 @@ int main(int argc, char **argv)
             bytes_mode = 1;
         else if (!strcmp(argv[k], "IFF"))
             iff_mode = 1;
+        else if (!strcmp(argv[k], "MP4"))
+            mp4_mode = 1;
+        else if (!strcmp(argv[k], "QUALITY") && k + 1 < argc)
+            quality = atol(argv[++k]);
+        else if (!strcmp(argv[k], "NOSOUND"))
+            nosound = 1;
     }
     if (!(DataTypesBase = OpenLibrary((CONST_STRPTR)"datatypes.library", 43)))
         return 20;
-    if (bytes_mode || iff_mode) {
-        rc = bytes_mode ? same_bytes(src, dst) : save_iff(src, dst);
+    if (bytes_mode || iff_mode || mp4_mode) {
+        rc = bytes_mode ? same_bytes(src, dst) : mp4_mode ? save_mp4(src, dst, quality, st, nosound) : save_iff(src, dst);
         CloseLibrary(DataTypesBase);
         return rc;
     }
@@ -208,9 +302,16 @@ int main(int argc, char **argv)
         goto out;
     target = o;
     if (as) {
+        /* What a V43 picture subclass does when it loads (gfopentga's
+         * loadTGA, gfopenpng's, AROS's png.datatype): the BitMapHeader
+         * filled in, then its name, the nominal size and V43 mode set in
+         * one SetDTAttrs, then the pixels. OS 3.2's own picture.datatype is
+         * known to take pixels that way; the object is made in V43 mode
+         * from the start as well. */
         struct BitMapHeader *bmh = NULL;
         if (!(target = NewDTObject(NULL, DTA_SourceType, DTST_RAM, DTA_BaseName, (ULONG)as,
-                                   DTA_GroupID, GID_PICTURE, PDTA_DestMode, PMODE_V43, TAG_DONE))) {
+                                   DTA_GroupID, GID_PICTURE, PDTA_DestMode, PMODE_V43,
+                                   PDTA_SourceMode, PMODE_V43, TAG_DONE))) {
             printf("%s: no empty %s object, ioerr=%ld\n", src, as, (long)IoErr());
             goto out;
         }
@@ -222,9 +323,25 @@ int main(int argc, char **argv)
         bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h;
         bmh->bmh_Depth = 32;
         bmh->bmh_Masking = al ? mskHasAlpha : mskNone;
-        SetDTAttrs(target, NULL, NULL, PDTA_SourceMode, PMODE_V43, PDTA_AlphaChannel, al, TAG_DONE);
+        SetDTAttrs(target, NULL, NULL,
+                   DTA_ObjName, (ULONG)FilePart((STRPTR)dst),
+                   DTA_NominalHoriz, w,
+                   DTA_NominalVert, h,
+                   PDTA_SourceMode, PMODE_V43,
+                   PDTA_AlphaChannel, al,
+                   TAG_DONE);
+        SetIoErr(0);
         if (!DoMethod(target, PDTM_WRITEPIXELARRAY, (ULONG)a, PBPAFMT_ARGB, w * 4, 0, 0, w, h)) {
-            printf("%s: WRITEPIXELARRAY into %s failed\n", src, as);
+            /* what the object says of itself, for the lab's log */
+            ULONG sm = ~0UL, nh = ~0UL, nv = ~0UL;
+            LONG e = IoErr();
+            struct BitMapHeader *b2 = NULL;
+            GetDTAttrs(target, PDTA_SourceMode, (ULONG)&sm, PDTA_BitMapHeader, (ULONG)&b2,
+                       DTA_NominalHoriz, (ULONG)&nh, DTA_NominalVert, (ULONG)&nv, TAG_DONE);
+            printf("%s: WRITEPIXELARRAY into %s failed, ioerr=%ld sourcemode=%ld bmhd=%s%lux%lux%u nominal=%ldx%ld\n",
+                   src, as, (long)e, (long)sm, b2 == bmh ? "" : "(moved) ",
+                   b2 ? (unsigned long)b2->bmh_Width : 0UL, b2 ? (unsigned long)b2->bmh_Height : 0UL,
+                   b2 ? b2->bmh_Depth : 0, (long)nh, (long)nv);
             goto out;
         }
     }

@@ -107,6 +107,10 @@ struct dtc_ext {
     int (*audio_play)(const struct odt_cenv *env, void **player, const struct dtc_audio_plan *plan);
     void (*audio_stop)(const struct odt_cenv *env, void **player);
     odt_u32 audio_clock;                /* 3546895 PAL, 3579545 NTSC */
+
+    /* AllocVec(n, MEMF_ANY), not cleared: for memory the core writes every
+     * byte of before it reads any; env->free frees it. NULL: env->alloc. */
+    void *(*alloc_any)(const struct odt_cenv *env, odt_u32 n);
 };
 #define DTC_EXT(env) ((const struct dtc_ext *)(env)->class_ext)
 

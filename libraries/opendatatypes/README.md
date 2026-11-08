@@ -42,7 +42,14 @@ or `guess` until then. Measured so far (labs at 1cba45a and 1ea835e):
 
 - Recognition looks at the first 1084 bytes, from a file or from memory.
 - Text is every byte but the C1 controls (0x80-0x9f) and the C0 controls
-  other than BEL to CR, DC1, DC3 and ESC.
+  other than BEL to CR, DC1, DC3 and ESC. Ours, not OS 3.2's: data with a
+  byte 0x80-0x9f is still text when all of it is valid UTF-8 with no C1
+  control in it (OS 3.2 calls most UTF-8 text binary: every CJK character,
+  the euro sign, dashes and curly quotes have such a byte), and UTF-16
+  with a byte order mark is text when every unit is a character text
+  allows and a space, tab or line end is among them. Everything else is
+  as OS 3.2 has it: CP1252's 0x80-0x9f (curly quotes, the euro) still
+  make data binary, Latin-1 above 0x9f is still text.
   Text tries only the ASCII types, binary only the binary types, IFF (FORM,
   CAT or LIST: FORM from 6 bytes on) only the IFF types; then the
   library's own type. No data gives no type and leaves IoErr alone; types
@@ -65,6 +72,13 @@ or `guess` until then. Measured so far (labs at 1cba45a and 1ea835e):
   ours answer DOS packets from a PA_SOFTINT port (read, seek, examine).
 
 Open: whether the mask outranks the priority in every case.
+
+Recognition's own costs: each descriptor's pattern is parsed
+(ParsePatternNoCase) the first time recognition asks it and the token kept
+with the descriptor, "#?" never ("#?" fits every name); before, every
+pattern asked was allocated, parsed and freed for every file. IFF data's
+file is parsed as IFF (AllocIFF, InitIFFasDOS, OpenIFF) only when
+recognition code is about to run on it, not for every IFF file.
 
 ## datatypesclass (step D2)
 
@@ -126,7 +140,7 @@ or open ("ABI test": `DatatypesABITest OBJ` has the PROBE line).
 | GetDTAttrsA's answer | how many tags the object knew; NULL object 0 | ABI test |
 | DTA_Methods of a class with none of its own | datatypesclass's list | ABI test |
 | DTM_FRAMEBOX default | FRAMEF_SPECIFY keeps the frame; else the contents' frame, else the kept one; 1 | ABI test |
-| DTM_WRITE DTWM_RAW default | the source's bytes (a file, the file under an IFF type's handle, or memory), the file's position put back; otherwise 0, ERROR_NOT_IMPLEMENTED | ABI test |
+| DTM_WRITE DTWM_RAW default | the source's bytes (a file, the file under an IFF type's handle, or memory), the file's position put back; a file over 256 bytes is copied 32 KB a packet (16 KB, then 256 bytes, when memory is short); otherwise 0, ERROR_NOT_IMPLEMENTED | ABI test |
 | SaveDTObjectA that fails | the file deleted, IoErr kept (else DTERROR_COULDNT_SAVE) | ABI test |
 | SaveDTObjectA's icon | ENV:Sys/def_project, else icon.library's default project | ABI test |
 | DTM_PROCLAYOUT default | GM_LAYOUT's part only | ABI test |

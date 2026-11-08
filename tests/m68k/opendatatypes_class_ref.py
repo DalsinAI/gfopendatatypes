@@ -20,6 +20,11 @@ DL, DT = 10, 20                # the GadgetInfo's domain
 MEM = [(i * 7 + 1) & 255 for i in range(300)]
 
 
+def raw_byte(i):
+    """byte i of the source file the raw copy reads (the mock's raw_byte)"""
+    return (i * 7 + (i >> 8) + 3) & 255
+
+
 def tdiv(a, b):
     """C's division, toward zero"""
     q = abs(a) // abs(b)
@@ -52,6 +57,7 @@ class Obj:
         self.dragging = self.dragsel = self.band_on = 0
         self.dx = self.dy = self.lx = self.ly = self.dtv = self.dth = 0
         self.active = 0
+        self.raw_len = self.raw_bigfail = 0
         self.layout_proc = None
         self.printer_proc = None
 
@@ -281,12 +287,35 @@ class Model:
             self.p("write 9 300 %02x..%02x" % (MEM[0], MEM[-1]))
             self.p("written 1")
         elif o.kind in ("file", "iff"):
-            # the file's bytes from the start, the position put back
+            # the file's bytes from the start, the position put back: the
+            # first read through a 256-byte buffer, the rest through 32 KB
+            # (16 KB when 32 isn't free, 256 bytes when neither is)
             self.p("seek 7 0 -1")
+            size, tried, pos, packets = 256, False, 0, 2
+            while True:
+                n = min(size, o.raw_len - pos)
+                self.p("read 7 %d %d" % (size, n))
+                packets += 1
+                if n <= 0:
+                    break
+                self.p("write 9 %d %02x..%02x" % (n, raw_byte(pos), raw_byte(pos + n - 1)))
+                packets += 1
+                pos += n
+                if n == size and not tried:
+                    tried = True
+                    if o.raw_bigfail < 1:
+                        size = 32768
+                    elif o.raw_bigfail < 2:
+                        size = 16384
             self.p("seek 7 0 -1")
             self.p("written 1")
+            if o.raw_len:
+                self.p("raw %d bytes, %d DOS packets" % (pos, packets))
         else:
             self.p("written 0")
+
+    def rawfile(self, n, bigfail):
+        self.o.raw_len, self.o.raw_bigfail = n, bigfail
 
     def dispose(self, from_proc=0):
         o = self.o
@@ -405,6 +434,22 @@ def main():
         if "p" in what:
             cmd("print")
             m.print_()
+        cmd("dispose")
+        m.dispose()
+
+    # DTM_WRITE's raw copy of a file (and the file under an IFF handle) of
+    # each size around the buffers', with the big buffers refused or not:
+    # every byte checked, the DOS packets counted
+    for kind, n, bigfail in (("file", 0, 0), ("file", 1, 0), ("file", 255, 0), ("file", 256, 0),
+                             ("file", 257, 0), ("file", 33024, 0), ("file", 33025, 0), ("file", 70001, 0),
+                             ("iff", 70001, 0), ("file", 70001, 1), ("file", 70001, 2), ("file", 300000, 0),
+                             ("file", 1048576, 0)):
+        cmd("new %s 50 80" % kind)
+        m.new(kind, 50, 80, False)
+        cmd("rawfile %d %d" % (n, bigfail))
+        m.rawfile(n, bigfail)
+        cmd("write")
+        m.write()
         cmd("dispose")
         m.dispose()
 

@@ -3,13 +3,20 @@
 # UBSan: gfopentga.datatype's (Datatypes/tests/test-tga.sh), gfopengif.datatype's
 # (Datatypes/tests/test-gif.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),
+# gfopenpng.datatype's (Datatypes/tests/test-pngdec.sh: every colour type,
+# depth, Adam7, tRNS and 1,222 damaged streams, against tests/make-png.py and
+# Pillow; on the 68040 under qemu-m68k too, in the m68k job),
 # webm.datatype's picture sizes against crafted headers
-# (Datatypes/tests/test-webm.sh),
+# (Datatypes/tests/test-webm.sh), its dither and CDXL's chunky films from
+# const tables against the formula on every colour
+# (Datatypes/tests/test-webm-dither.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
 # (Datatypes/tests/test-stream.sh), and the writers: gfopenpng.datatype's
 # (Datatypes/tests/test-pngenc.sh), gfopentga's (test-tgaenc.sh), gfopengif's
 # (test-gifenc.sh), webp's
-# lossless one with libwebp patched as for the Amiga (test-webpenc.sh) and
+# lossless one with libwebp patched as for the Amiga (test-webpenc.sh; the
+# 68060 patch's sums in test-webp060.sh, webp/webpcore.c in
+# test-webpcore.sh, both also as 68040 code in the m68k job) and
 # gzip's (test-gzenc.sh), each read back by our decoders and by Pillow or
 # Python's zlib; and the datatypes' RomTag versions
 # (Datatypes/tests/test-romtag.py); and webm.datatype's reader through its
@@ -18,6 +25,9 @@
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
 # (tests/m68k/test_opendatatypes_class.sh) needs an amicradle-guest
 # checkout (GUEST=) and runs in amicradle-guest's own CI.
+# The descriptors (Datatypes/descriptors.sh) through datatypes.library's own
+# recognition on a corpus of made-up headers, under qemu-m68k
+# (tests/recognition/test_recognition.py).
 # The bitplanes-to-pixels helper ilbm, picture and cdxl share
 # (common/include/odt_planar.h) against the loop it replaced, on the host
 # (Datatypes/tests/test-planar.sh).
@@ -28,6 +38,10 @@
 # from gfopenservice's media.decode/1 against the datatypes' own code, when a
 # gfopenservice checkout with its host side built is beside this one (else
 # only the datatypes' side is built and run).
+# The requests gfopenpicture, gfopensound
+# and gfopenvideo send media.encode/1 for HEIC, M4A, WMA, HEVC and WMV
+# (Datatypes/tests/test-encodemsg.sh), on the host and as 68040 code.
+# ILBM ByteRun1 across rows (Datatypes/tests/test-ilbmbr1.sh).
 # The Amiga builds need the os32-gcc16 stove and are made on the build PC.
 name: Datatypes
 on:
@@ -50,10 +64,14 @@ jobs:
         run: sh Datatypes/tests/test-tga.sh
       - name: gfopengif.datatype decoder
         run: sh Datatypes/tests/test-gif.sh
+      - name: gfopenpng.datatype decoder
+        run: sh Datatypes/tests/test-pngdec.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
       - name: webm.datatype picture sizes
         run: sh Datatypes/tests/test-webm.sh
+      - name: webm and CDXL dither from const tables, against the formula on every colour
+        run: sh Datatypes/tests/test-webm-dither.sh
       - name: stream.datatype with gzip and Brotli
         run: sh Datatypes/tests/test-stream.sh
       - name: webm.datatype's reader through its read cache
@@ -66,6 +84,10 @@ jobs:
         run: sh Datatypes/tests/test-gifenc.sh
       - name: webp.datatype's lossless WebP writer
         run: sh Datatypes/tests/test-webpenc.sh
+      - name: libwebp's 68060 patch gives libwebp's own sums
+        run: QEMU_M68K= sh Datatypes/tests/test-webp060.sh
+      - name: webp.datatype's libwebp tables and animations (webp/webpcore.c)
+        run: QEMU_M68K= sh Datatypes/tests/test-webpcore.sh
       - name: gzip.datatype's gzip writer
         run: sh Datatypes/tests/test-gzenc.sh
       - name: the datatypes' RomTags carry their version
@@ -76,12 +98,18 @@ jobs:
         run: sh Datatypes/tests/test-dtservice.sh
       - name: the service rung, pixel for pixel
         run: sh Datatypes/tests/test-service-rung.sh
+      - name: media.encode/1's requests from gfopenpicture, gfopensound and gfopenvideo (common/encodemsg.c)
+        run: sh Datatypes/tests/test-encodemsg.sh
+      - name: ILBM ByteRun1 across rows
+        run: sh Datatypes/tests/test-ilbmbr1.sh
   m68k:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: m68k cross GCC, G++ and qemu-m68k
-        run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user
+      - name: m68k cross GCC, G++, qemu-m68k, FFmpeg and Pillow
+        run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user ffmpeg python3-pil
+      - name: gfopenpng.datatype decoder, also as 68040 code (big-endian)
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-pngdec.sh
       - name: GFOpenDatatypes (datatypes.library) core
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh
       - name: GFOpenDatatypes picture, ilbm, sound and 8svx datatype cores
@@ -90,3 +118,13 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh
       - name: animation.datatype's IFF ANIM writer, read back by anim.datatype's reader
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh
+      - name: media.encode/1's requests as 68040 code, byte for byte the host's
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-encodemsg.sh
+      - name: animation.datatype's MP4 writer (H.264), read back by FFmpeg and the host encoder
+        run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh
+      - name: the descriptors, which datatype each kind of file goes to (datatypes.library's recognition)
+        run: QEMU_M68K=qemu-m68k python3 -I tests/recognition/test_recognition.py
+      - name: libwebp's 68060 patch as 68040 code (same files, no more instructions)
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-webp060.sh
+      - name: webp.datatype's libwebp tables and animations as 68040 code
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-webpcore.sh

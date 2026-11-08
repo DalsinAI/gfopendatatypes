@@ -119,12 +119,9 @@ typedef struct {
 
 ULONG dt_instsize = sizeof(WebMData);
 
-static WebMDitherTables ditherTables;
-
 BOOL dt_init(void)
 {
-    webm_dither_init(&ditherTables);
-    return TRUE;
+    return TRUE;                   /* the dither's tables are const (webm_dither_tables.h) */
 }
 
 void dt_cleanup(void)
@@ -175,7 +172,7 @@ static BOOL decodeOne(WebMData *d, ULONG index)
     while ((img = vpx_codec_get_frame(&d->codec, &iter)))
         last = img;
     if (last)
-        webm_dither(&ditherTables, last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
+        webm_dither(last, d->chunky, d->chunkySize, d->info.width, d->info.height, d->info.width);
     d->lastDecoded = index;
     return TRUE;
 }
@@ -208,10 +205,11 @@ static ULONG decodeRequest(APTR arg)
 }
 
 /* The decoded frame in a bitmap: "into" when animation.datatype hands one
- * back to be used again (see gfopenvideo's ADTM_LOADFRAME), else a new one. */
+ * back to be used again (see gfopenvideo's ADTM_LOADFRAME), else a new one,
+ * not cleared: WriteChunkyPixels fills every pixel of it. */
 static struct BitMap *frameBitMap(WebMData *d, struct BitMap *into)
 {
-    struct BitMap *bm = into ? into : AllocBitMap(d->info.width, d->info.height, 8, BMF_CLEAR, NULL);
+    struct BitMap *bm = into ? into : AllocBitMap(d->info.width, d->info.height, 8, 0, NULL);
     struct RastPort rp;
     if (!bm)
         return NULL;

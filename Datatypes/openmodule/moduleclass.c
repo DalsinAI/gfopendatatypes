@@ -24,6 +24,12 @@
  * gfopenservice.device; else this CPU.
  * OIA_DecodedBy and OIA_Stats (include/datatypes/gfopenimage.h) say which.
  *
+ * For programs (47.4): opened with OIA_Reader, nothing plays: no AHI and
+ * no Paula. The player mixes 16-bit stereo at OIA_MixRate (default 44100)
+ * with OIA_MixInterp (default spline), on a cores board core or this CPU
+ * (not the service, which mixes with another library at its own rate),
+ * and OIM_READSOUND hands it out a piece at a time, once through the song.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team. libxmp keeps its MIT licence.
  */
 #include <stdio.h>
@@ -60,10 +66,10 @@
 #include "ahidev.h"
 
 const char LibName[] = "gfopenmodule.datatype";
-const char LibIdString[] = "gfopenmodule.datatype 47.4 (7.11.2026) AmiCradle Team, played by libxmp 4.7.3";
+const char LibIdString[] = "gfopenmodule.datatype 47.4 (8.11.2026) AmiCradle Team, played by libxmp 4.7.3";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 4;
-static const char version[] __attribute__((used)) = "$VER: gfopenmodule.datatype 47.4 (7.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: gfopenmodule.datatype 47.4 (8.11.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -128,7 +134,7 @@ enum { RUNG_NONE, RUNG_CPU, RUNG_CORE, RUNG_SERVICE };
 /* Player commands: PC_QUIT by message, the others by mi->want and
  * SIGBREAKF_CTRL_F, so they can be given from any task (a click on the
  * gadget comes from input.device's) without waiting; the latest wins. */
-enum { PC_NONE, PC_PLAY, PC_PAUSE, PC_STOP, PC_REWIND, PC_QUIT };
+enum { PC_NONE, PC_PLAY, PC_PAUSE, PC_STOP, PC_REWIND, PC_QUIT, PC_READ };
 
 /* Player states */
 enum { PS_STOPPED, PS_PLAYING, PS_PAUSED, PS_DRAINING };
@@ -153,6 +159,8 @@ struct ModInst {
     char title[XMP_NAME_SIZE + 1];
     char type[XMP_NAME_SIZE + 1];
     struct timeval replay;         /* SDTA_ReplayPeriod's answer: OM_GET hands out its address */
+    UWORD reader;                  /* OIA_Reader: OIM_READSOUND, no playing */
+    ULONG mixRate, mixInterp;      /* OIA_MixRate, OIA_MixInterp */
 };
 
 ULONG dt_instsize = sizeof(struct ModInst);
@@ -162,6 +170,8 @@ struct PlayerMsg {
     ULONG pm_Cmd;
     struct ModInst *pm_Inst;
     LONG pm_Result;
+    WORD *pm_Buf;                  /* PC_READ: where, and how many frames */
+    ULONG pm_Frames;
 };
 
 static ULONG get32(const UBYTE *b)
@@ -289,6 +299,7 @@ struct Player {
     BOOL timer;
     ULONG efreq;
     ULONG chunks, mixTicks, mixFrames, jobs, jobTicks, svcCalls, svcTicks;
+    ULONG readDone;                /* OIA_Reader: frames handed out */
 };
 
 static ULONG eclock(struct Player *p)
@@ -957,13 +968,35 @@ static void chooseRung(struct Player *p, struct Audio *a, BOOL cores)
         }
         mi->coreFailed = 1;
     }
-    if (serviceStart(p, a->ahi)) {
+    if (!mi->reader && serviceStart(p, a->ahi)) {
         mi->rung = RUNG_SERVICE;
         return;
     }
     serviceStop(p);
 cpu:
     mi->rung = RUNG_CPU;
+}
+
+/* PC_READ: the next n frames, 16-bit stereo, at out; once through the
+ * song, then 0. */
+static LONG readMix(struct Player *p, struct Audio *a, WORD *out, ULONG n)
+{
+    struct ModInst *mi = p->mi;
+    ULONG done = 0;
+    while (done < n && p->readDone < mi->frames) {
+        ULONG k = n - done;
+        UBYTE *src;
+        if (k > a->chunk) k = a->chunk;
+        if (k > mi->frames - p->readDone) k = mi->frames - p->readDone;
+        if (!(src = fill(p, a, k))) {
+            p->readDone = mi->frames;
+            break;
+        }
+        CopyMem(src, out + done * 2, k * 4);
+        done += k;
+        p->readDone += k;
+    }
+    return (LONG)done;
 }
 
 static void playerMain(void)
@@ -1012,7 +1045,7 @@ static void playerMain(void)
 
     /* AHI's unit 0, the one AHI prefs sets up, in 16-bit stereo at its own
      * rate; without AHI, Paula as before. */
-    if (!envPaula() && (a.ahiDev = (struct AHIRequest *)CreateIORequest(a.port, sizeof(struct AHIRequest)))) {
+    if (!mi->reader && !envPaula() && (a.ahiDev = (struct AHIRequest *)CreateIORequest(a.port, sizeof(struct AHIRequest)))) {
         a.ahiDev->ahir_Version = 4;
         if (!OpenDevice((CONST_STRPTR)AHINAME, AHI_DEFAULT_UNIT, (struct IORequest *)a.ahiDev, 0))
             a.ahi = TRUE;
@@ -1021,8 +1054,9 @@ static void playerMain(void)
             a.ahiDev = NULL;
         }
     }
-    if (a.ahi) {
-        mi->rate = ahiRate();
+    if (a.ahi || mi->reader) {                 /* a reader: as AHI's, at its own rate */
+        if (a.ahi)
+            mi->rate = ahiRate();
         mi->period = (SysBase->ex_EClockFrequency * 5 + mi->rate / 2) / mi->rate;
         p->bpf = 4;
         p->xmpFormat = 0;                      /* 16-bit stereo */
@@ -1098,7 +1132,9 @@ static void playerMain(void)
     dlog("rung %ld, %s, %lu channels, rate %lu", (long)mi->rung, a.ahi ? "AHI" : "Paula",
          (unsigned long)info.mod->chn, (unsigned long)mi->rate);
 
-    if (a.ahi) {
+    if (mi->reader) {
+        /* nothing to play through */
+    } else if (a.ahi) {
         for (i = 0; i < a.nbuf; i++) {
             if (!(a.areq[i] = AllocVec(sizeof(struct AHIRequest), MEMF_PUBLIC | MEMF_CLEAR)) ||
                 !(a.abuf[i] = AllocVec(a.chunk * 4, MEMF_PUBLIC))) {
@@ -1183,6 +1219,11 @@ static void playerMain(void)
         }
 
         while ((pm = (struct PlayerMsg *)GetMsg(mi->port))) {
+            if (pm->pm_Cmd == PC_READ) {
+                pm->pm_Result = mi->reader ? readMix(p, &a, pm->pm_Buf, pm->pm_Frames) : 0;
+                ReplyMsg(&pm->pm_Msg);
+                continue;
+            }
             if (pm->pm_Cmd == PC_QUIT) {
                 quit = TRUE;
                 start = pm;                       /* replied on the way out */
@@ -1305,6 +1346,34 @@ static LONG sendCommand(struct ModInst *mi, ULONG cmd)
     return pm.pm_Result;
 }
 
+/* OIM_READSOUND: the player mixes the next frames into the caller's buffer */
+static ULONG readSound(struct ModInst *mi, struct oiReadSound *m)
+{
+    struct PlayerMsg pm;
+    struct MsgPort *reply;
+
+    if (!mi->reader || !mi->port || !m->oirs_Buffer) {
+        SetIoErr(mi->reader ? ERROR_REQUIRED_ARG_MISSING : ERROR_NOT_IMPLEMENTED);
+        return 0;
+    }
+    if (!(reply = CreateMsgPort())) {
+        SetIoErr(ERROR_NO_FREE_STORE);
+        return 0;
+    }
+    memset(&pm, 0, sizeof pm);
+    pm.pm_Msg.mn_ReplyPort = reply;
+    pm.pm_Msg.mn_Length = sizeof pm;
+    pm.pm_Cmd = PC_READ;
+    pm.pm_Inst = mi;
+    pm.pm_Buf = m->oirs_Buffer;
+    pm.pm_Frames = m->oirs_Frames;
+    PutMsg(mi->port, &pm.pm_Msg);
+    WaitPort(reply);
+    GetMsg(reply);
+    DeleteMsgPort(reply);
+    return (ULONG)pm.pm_Result;
+}
+
 /* Reads the file, starts the player, which loads the module; FALSE (with
  * the reason in IoErr()) when libxmp can't. */
 static BOOL loadModule(Class *cl, Object *o)
@@ -1324,6 +1393,10 @@ static BOOL loadModule(Class *cl, Object *o)
     if (mi->period < 124)
         mi->period = 124;
     mi->rate = (SysBase->ex_EClockFrequency * 5 + mi->period / 2) / mi->period;
+    if (mi->reader) {                          /* the rate asked for, exactly: nothing plays it */
+        mi->rate = mi->mixRate;
+        mi->interp = mi->mixInterp;
+    }
 
     GetDTAttrs(o, DTA_Name, (ULONG)&name, TAG_DONE);
     if (!(mi->data = dt_read_source(o, &mi->size)))
@@ -1439,6 +1512,16 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
             memset(mi, 0, sizeof *mi);
             mi->volume = 64;
             takeAttrs(mi, ((struct opSet *)msg)->ops_AttrList, TRUE);
+            {
+                struct TagItem *at = ((struct opSet *)msg)->ops_AttrList;
+                mi->reader = GetTagData(OIA_Reader, FALSE, at) ? 1 : 0;
+                mi->mixRate = GetTagData(OIA_MixRate, 44100, at);
+                if (mi->mixRate < 4000 || mi->mixRate > 96000)
+                    mi->mixRate = 44100;
+                mi->mixInterp = GetTagData(OIA_MixInterp, XMP_INTERP_SPLINE, at);
+                if (mi->mixInterp > XMP_INTERP_SPLINE)
+                    mi->mixInterp = XMP_INTERP_SPLINE;
+            }
             if (!loadModule(cl, obj)) {
                 LONG err = IoErr();
                 CoerceMethod(cl, obj, OM_DISPOSE);
@@ -1495,16 +1578,25 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         case OIA_Rung:
             *g->opg_Storage = mi->rung;
             return TRUE;
+        case OIA_Channels:
+            if (!mi->reader)
+                break;
+            *g->opg_Storage = 2;
+            return TRUE;
         }
         return DoSuperMethodA(cl, o, msg);
     }
     case DTM_TRIGGER:
+        if (((struct ModInst *)INST_DATA(cl, o))->reader)
+            return FALSE;                      /* a reader plays nothing */
         trigger(INST_DATA(cl, o), ((struct dtTrigger *)msg)->dtt_Function);
         return TRUE;
+    case OIM_READSOUND:
+        return readSound(INST_DATA(cl, o), (struct oiReadSound *)msg);
     case GM_GOACTIVE: {
         /* A click plays, as it does a sound. */
         mi = INST_DATA(cl, o);
-        if (mi->state != PS_PLAYING && mi->state != PS_DRAINING)
+        if (!mi->reader && mi->state != PS_PLAYING && mi->state != PS_DRAINING)
             want(mi, PC_PLAY);
         return GMR_NOREUSE;
     }

@@ -11,7 +11,9 @@ GFOpenBrowser) opens the formats they read.
 | `gfopentga.datatype` | `Datatypes/tga` | TGA (our own decoder) |
 | `webp.datatype` | `Datatypes/webp` (libwebp 1.6.0) | WebP pictures |
 | `webm.datatype` | `Datatypes/webm` (libvpx 1.17.0) | WebM films |
-| `gfopensound.datatype` | `Datatypes/opensound` | sound class (our own) |
+| `gfopensound.datatype` | `Datatypes/opensound` (stb_vorbis, dr_mp3, dr_flac) | sound class (our own); FLAC, Ogg Vorbis and MP3 on this CPU from 47.2 |
+| `gfopenaiff.datatype` | `Datatypes/pcm` | AIFF and AIFC, read and written (our own) |
+| `gfopenwave.datatype` | `Datatypes/pcm` | WAV, read and written (our own) |
 | `gfopenmodule.datatype` | `Datatypes/openmodule` (libxmp 4.7.3) | music modules: MOD, MED, Oktalyzer, DigiBooster, XM, S3M, IT |
 | `gfopendoc.datatype` | `Datatypes/opendoc` | documents |
 | `cdxl.datatype` | `Datatypes/cdxl` | CDXL films |
@@ -73,6 +75,10 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 
 - `sh Datatypes/tests/test-tga.sh` and `sh Datatypes/tests/test-cdxl.sh`:
   the decoders on the host under AddressSanitizer and UBSan (CI runs both).
+- `sh Datatypes/tests/test-pngdec.sh`: gfopenpng's decoder against
+  `tests/make-png.py`'s pictures (every colour type and depth, Adam7, tRNS)
+  and Pillow, and 1,222 damaged streams, under the same sanitizers; with
+  `QEMU_M68K=qemu-m68k` as 68040 code too (`BIG=1`: the 1024x768 pictures).
 - `sh Datatypes/tests/test-webm.sh`: webm.datatype's reader and dither
   against crafted picture sizes, under the same sanitizers.
 - `sh Datatypes/tests/test-webm-read.sh`: webm.datatype's reader through its
@@ -80,6 +86,16 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
   sanitizers.
 - `sh tests/achelpers/test_achelpers.sh`: the AC090 helpers and dtlib.c's
   memory functions under qemu-m68k.
+- `sh Datatypes/tests/test-acstring.sh`: libwebp and libvpx with
+  `achelpers/ac_string.h` forced in (as `AC_HELPERS=1` builds them) decode
+  and encode the same as without, as 68040 code under qemu-m68k (needs the
+  amicradle-guest checkout, as the build does).
+- `sh Datatypes/tests/test-webpenc.sh`, `test-webp060.sh` and
+  `test-webpcore.sh`: webp.datatype's encoder; the 68060 patch's sums against
+  libwebp's own and the encoder's files with and without it (with the
+  instructions it runs under qemu-m68k); and `webp/webpcore.c` (libwebp's
+  tables set up in `dt_init()`, an animation's first frame on its background
+  colour), on the host and as 68040 code.
 - `sh Datatypes/tests/test-planar.sh`: `common/include/odt_planar.h`
   against the bit-at-a-time loop it replaced, under AddressSanitizer and
   UBSan (and as 68040 code with `QEMU_M68K=qemu-m68k`).

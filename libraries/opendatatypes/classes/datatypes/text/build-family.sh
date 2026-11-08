@@ -14,7 +14,10 @@
 #                                    open build of its superclass
 #   tests/<ABI test>                 OS 3.2's classes and ours, side by side
 # The cores are plain C (as datatypes.library's are); the core calls
-# nothing but libgcc, checked with nm.
+# nothing but libgcc, checked with nm. A class whose core is in more than
+# one file lists the others in <class>/extra-cores (animation: the MP4
+# writer and its H.264 encoder); they are built and checked the same way,
+# and calls between them are allowed.
 set -eu
 SOFT040="-specs=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../../../../../build/m68k-soft-m68040.specs"   # the 68040 soft-float link (build/m68k-soft-m68040.specs)
 
@@ -39,17 +42,28 @@ for NAME in "$@"; do
   FD=$(find "$P" -name "${NAME}_lib.fd" 2>/dev/null | head -1)
   if [ -n "$FD" ]; then python3 "$DIR/../../../common/check_fd.py" "$FD" "$DIR/$NAME/$NAME.lvo"
   else echo "$NAME.lvo: no ${NAME}_lib.fd in the NDK (-30 is the class call)"; fi
+  objs=
+  for c in "${NAME}_core" $(cat "$DIR/$NAME/extra-cores" 2>/dev/null || true); do
+    # shellcheck disable=SC2086
+    "$CC" $COREFLAGS -c "$DIR/$NAME/$c.c" -o "$OUT/obj/$c.o"
+    objs="$objs $OUT/obj/$c.o"
+  done
   # shellcheck disable=SC2086
-  "$CC" $COREFLAGS -c "$DIR/$NAME/${NAME}_core.c" -o "$OUT/obj/${NAME}_core.o"
-  und=$("$NM" -u "$OUT/obj/${NAME}_core.o" | awk '{print $NF}' |
-        grep -v '^_*\(mul\|div\|udiv\|mod\|umod\)[sd]i3$' || true)
+  def=$("$NM" -g --defined-only $objs | awk 'NF == 3 {print $3}' | sort -u)
+  # shellcheck disable=SC2086
+  und=$("$NM" -u $objs | awk 'NF && $NF !~ /:$/ {print $NF}' | sort -u |
+        grep -v '^_*\(mul\|div\|udiv\|mod\|umod\)[sd]i3$' | grep -vxF "$def" || true)
   [ -z "$und" ] || { echo "the $NAME core calls $und" >&2; exit 1; }
+  # no writable data in the cores: what a library holds is its shell's
+  # shellcheck disable=SC2086
+  wr=$("$P/bin/m68k-amigaos-objdump" -h $objs | awk '$2 ~ /^\.(data|bss)$/ && $3 !~ /^0+$/ {print $2}' || true)
+  [ -z "$wr" ] || { echo "the $NAME core has writable data ($wr)" >&2; exit 1; }
   for file in "$NAME.datatype" "open$NAME.datatype"; do
     side=
     [ "$file" = "$NAME.datatype" ] || side=-DDTC_SIDE_BY_SIDE
     # shellcheck disable=SC2086
     "$CC" $LIBFLAGS $side -DLIBNAME="\"$file\"" -I"$DIR/$NAME" -o "$OUT/datatypes/$file" \
-      "$DIR/$NAME/open${NAME}_class.c" "$OUT/obj/${NAME}_core.o" -lgcc
+      "$DIR/$NAME/open${NAME}_class.c" $objs -lgcc
     echo "$OUT/datatypes/$file ($(wc -c < "$OUT/datatypes/$file") bytes)"
     und=$("$NM" -u "$OUT/datatypes/$file" || true)
     [ -z "$und" ] || { echo "undefined in $file: $und" >&2; exit 1; }
