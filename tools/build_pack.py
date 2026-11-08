@@ -85,6 +85,8 @@ LABELS = {
     "webp": "WebP pictures (webp)",
     "openpicture": "AVIF, HEIC, JPEG XL, RAW... by a Cradle (openpicture)",
     "opensound": "FLAC, Ogg, MP3, AAC... by a Cradle (opensound)",
+    "gfopenaiff": "AIFF sounds, read and saved (gfopenaiff)",
+    "gfopenwave": "WAV sounds, read and saved (gfopenwave)",
     "openmodule": "Music modules: MOD, MED, XM, S3M, IT (openmodule)",
     "webm": "WebM films (webm)",
     "openvideo": "MP4, MKV, AVI... by a Cradle (openvideo)",

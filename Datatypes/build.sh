@@ -246,11 +246,29 @@ OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/stream/build.sh"
 # --- gfopensound.datatype -------------------------------------------------------
 # FLAC, Ogg (Vorbis, Opus), AAC/M4A, ALAC, WMA and MP3, decoded by the
 # media.decode/1 service on the services card or a paired Cradle.
+# With neither, FLAC, Ogg Vorbis and MP3 are decoded on this CPU
+# (opensound/snddec.c: dr_flac, stb_vorbis and dr_mp3, single files SOURCES
+# pins, fetched and checked here), which is also how OIA_Reader reads them.
+# libm: libnix's soft floating point, calling the ROM math libraries.
+single() {       # FILE SHA256: a single upstream file into $WORK/single
+    t="$TARBALLS/$1"
+    [ -f "$t" ] || sh "$HERE/../tools/fetch-tarball.sh" "$1" "$TARBALLS" || exit 2
+    echo "$2  $t" | sha256sum -c - >/dev/null || { echo "SHA-256 mismatch: $t"; exit 2; }
+    mkdir -p "$WORK/single" && cp "$t" "$WORK/single/$1"
+}
+single stb_vorbis.c 4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636
+single dr_mp3.h f5c8020eeebb79877184432efdd2651f24869f5bb8f379d45450fd0aed1ee915
+single dr_flac.h b8078eeb5d523502eb7964508cd7ec8450bc79d383bec90aa17fd9e2fefd9c24
+(cd "$WORK/single" && patch -p1 -s < "$HERE/patches/stb_vorbis-1.22-comment-list-null.patch")
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opensound" \
-    common/dtstart.c common/dtlib.c common/dtservice.c opensound/soundclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtstack.c opensound/soundclass.c
+# -fwrapv: dr_flac's prediction overflows a signed int on a damaged file;
+# wrapping is what the 68k does anyway, and now the compiler knows it.
+XFLAGS="-I$WORK/single -w -fwrapv" compile "$HERE" "$WORK/obj-snddec" opensound/snddec.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopensound.datatype" \
     "$WORK"/obj-opensound/common_dtstart.o "$WORK"/obj-opensound/common_dtlib.o \
-    "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/opensound_soundclass.o $ACLIB -lamiga \
+    "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/common_dtstack.o \
+    "$WORK"/obj-opensound/opensound_soundclass.o "$WORK"/obj-snddec/opensound_snddec.o $ACLIB -lamiga -lm \
     -Wl,-Map="$WORK/gfopensound.datatype.map"
 echo "gfopensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
 sounddesc() {    # FILE NAME ID MASK...
@@ -268,6 +286,11 @@ python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/WMA" "Windows Media audi
     '$VER: WMA 47.1 (5.10.2026)' 0x30 0x26 0xb2 0x75 0x8e 0x66 0xcf 0x11
 echo "Devs/DataTypes/WMA: $(wc -c < "$OUT/Devs/DataTypes/WMA") bytes"
 sounddesc MP3-ID3 "MP3 (ID3)" mp3 "'I'" "'D'" "'3'"
+# An MP3 with no ID3 tag starts with a frame's sync: by its name, as the
+# two bytes alone would take too many other files.
+python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/MP3" "MP3" gfopensound soun mp3 "#?.mp3" \
+    '$VER: MP3 47.2 (8.11.2026)' 0xff ANY
+echo "Devs/DataTypes/MP3: $(wc -c < "$OUT/Devs/DataTypes/MP3") bytes"
 sounddesc AAC "AAC (ADTS)" aac 0xff 0xf1
 # Tunes the host plays: MIDI through FluidSynth, SID through sidplayfp.
 # shellcheck disable=SC2046
@@ -284,6 +307,33 @@ sounddesc XM "FastTracker module" xm $(chars "Extended Module: ")
 sounddesc IT "Impulse Tracker module" it $(chars "IMPM")
 # shellcheck disable=SC2046
 sounddesc S3M "Scream Tracker module" s3m $(i=0; while [ $i -lt 44 ]; do printf 'ANY '; i=$((i+1)); done) $(chars "SCRM")
+
+# --- gfopenaiff.datatype and gfopenwave.datatype --------------------------------
+# AIFF/AIFC and WAV, read (8 to 32 bits, float too) and written (DTM_WRITE,
+# DTWM_RAW: AIFF or WAV, 16 or 8 bits, or headerless PCM): pcm/pcmclass.c,
+# built twice over pcm/pcmcore.c, which tests/test-pcm.sh checks on x86 or
+# ARM64 cores. Their descriptors' masks are longer than the system's AIFF
+# and WAVE ones (the first chunk too), so they are tried first.
+for k in aiff wave; do
+    def=; [ $k = wave ] && def=-DPCM_CLASS_WAVE
+    XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/pcm $def $ACFLAGS" compile "$HERE" "$WORK/obj-$k" \
+        common/dtstart.c common/dtlib.c pcm/pcmcore.c pcm/pcmclass.c
+    $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopen$k.datatype" \
+        "$WORK"/obj-$k/common_dtstart.o "$WORK"/obj-$k/common_dtlib.o \
+        "$WORK"/obj-$k/pcm_pcmcore.o "$WORK"/obj-$k/pcm_pcmclass.o $ACLIB -lamiga \
+        -Wl,-Map="$WORK/gfopen$k.datatype.map"
+    echo "gfopen$k.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopen$k.datatype") bytes"
+done
+# shellcheck disable=SC2046
+DT_IFF=1 python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenAIFF" "AIFF sound" gfopenaiff soun aiff "#?" \
+    '$VER: GFOpenAIFF 47.1 (8.11.2026)' $(chars "FORM") ANY ANY ANY ANY $(chars "AIFFCOMM")
+# shellcheck disable=SC2046
+DT_IFF=1 python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenAIFC" "AIFF-C sound" gfopenaiff soun aifc "#?" \
+    '$VER: GFOpenAIFC 47.1 (8.11.2026)' $(chars "FORM") ANY ANY ANY ANY $(chars "AIFC")
+# shellcheck disable=SC2046
+python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenWAVE" "WAV sound" gfopenwave soun wave "#?" \
+    '$VER: GFOpenWAVE 47.1 (8.11.2026)' $(chars "RIFF") ANY ANY ANY ANY $(chars "WAVEfmt ")
+for f in GFOpenAIFF GFOpenAIFC GFOpenWAVE; do echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"; done
 
 # --- gfopenmodule.datatype -----------------------------------------------------
 # Music modules: libxmp mixes them a chunk at a time for a player process
