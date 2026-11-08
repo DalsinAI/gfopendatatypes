@@ -124,7 +124,6 @@ static vpx_codec_ctx_t codec;
 static int codecReady;
 static long lastDecoded = -1;
 static unsigned char *chunky;
-static WebMDitherTables tables;
 
 static int openDecoder(void)
 {
@@ -151,7 +150,7 @@ static int decodeOne(unsigned long index)
     while ((img = vpx_codec_get_frame(&codec, &iter)))
         last = img;
     if (last)
-        webm_dither(&tables, last, chunky, info.width * info.height, info.width, info.height, info.width);
+        webm_dither(last, chunky, info.width * info.height, info.width, info.height, info.width);
     lastDecoded = (long)index;
     return 1;
 }
@@ -186,7 +185,6 @@ static int webm(const char *path, const char *how)
         printf("not read\n");
         return 1;
     }
-    webm_dither_init(&tables);
     chunky = calloc(1, (size_t)info.width * info.height);
     list = malloc((info.frameCount + 64) * sizeof *list);
     printf("%s: %lu frames, %lux%lu\n", path, (unsigned long)info.frameCount, (unsigned long)info.width,
