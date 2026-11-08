@@ -57,6 +57,7 @@ struct br_state {
 
     /* input */
     ULONG ilen, bpos, mark;
+    ULONG cacc, chave, cpos;           /* next bits, valid while bpos == cpos */
     UBYTE shortf, state, islast, cm_target;
 
     /* output of this run */
@@ -201,18 +202,38 @@ static const UBYTE lut2[256] = {
 
 /* ---- bits ------------------------------------------------------------------ */
 
-/* The next 25 bits or more, the first in the lowest; zeros past the input. */
-static ULONG peek(const struct br_state *s)
+/* The next 25 bits or more, the first in the lowest; zeros past the input.
+ * The accumulator is filled from the byte at bpos and shifted as bits are
+ * taken, so a code does not re-read the buffer. A step that runs out of
+ * input puts bpos back, and the next peek fills again. */
+static void fillbits(struct br_state *s)
 {
-    ULONG b = s->bpos >> 3, v = 0, i;
-    for (i = 0; i < 4 && b + i < s->ilen; i++)
+    ULONG b = s->bpos >> 3, sh = s->bpos & 7, v = 0, i, n = 0;
+    for (i = 0; i < 4 && b + i < s->ilen; i++) {
         v |= (ULONG)s->ib[b + i] << (8 * i);
-    return v >> (s->bpos & 7);
+        n = (i + 1) * 8 - sh;
+    }
+    s->cacc = n ? v >> sh : 0;
+    s->chave = n;
+    s->cpos = s->bpos;
+}
+
+static ULONG peek(struct br_state *s)
+{
+    if (s->bpos != s->cpos || s->chave < 25)
+        fillbits(s);
+    return s->cacc;
 }
 
 static void drop(struct br_state *s, ULONG n)
 {
     s->bpos += n;
+    if (s->chave >= n && s->cpos + n == s->bpos) {
+        s->cacc >>= n;
+        s->chave -= n;
+        s->cpos = s->bpos;
+    } else
+        s->chave = 0;
     if (s->bpos > s->ilen * 8)
         s->shortf = 1;
 }
@@ -1057,6 +1078,7 @@ static ULONG refill(struct br_state *s, struct sdt_call *c)
         s->ib[s->ilen + i] = c->in[c->in_used + i];
     s->ilen += n;
     c->in_used += n;
+    s->chave = 0;                      /* the bytes moved, or more arrived */
     return n;
 }
 

@@ -81,6 +81,9 @@ u32 mode_of(const u8 *camg, s32 camg_len, u32 w, u32 h, u32 depth, u32 ncmap)
     return m;
 }
 
+/* ByteRun1 across rows (ilbm_byterun.inc): a run may cross a row. */
+#include "ilbm_byterun.inc"
+
 u32 load(env_t *env, odt_IClass *cl, void *obj)
 {
     u32 st = 0, handle = 0;
@@ -194,45 +197,55 @@ u32 load(env_t *env, odt_IClass *cl, void *obj)
     set_text(env, cl, obj, iff, type, ILBM_ID_ANNO, ODT_DTA_ObjAnnotation);
     set_text(env, cl, obj, iff, type, ILBM_ID_COPY, ODT_DTA_ObjCopyright);
 
-    /* the BODY, unpacked whole */
+    /* the BODY, unpacked a row at a time: a run may cross the row, so the
+     * unpacker keeps its place. The whole unpacked picture is not held. */
     u32 rb = pic_rowbytes(w);
     bool hasmask = !pbm && masking == PIC_mskHasMask;
     u32 rowsize = pbm ? w + (w & 1) : rb * (depth + (hasmask ? 1 : 0));
     /* 16-bit sizes and up to 32 planes can overflow 32 bits: no such picture */
     if (h && rowsize > 0xffffffffUL / h)
         return DTC_ERROR_NO_FREE_STORE;
-    u32 rawlen = rowsize * h;
     u32 blen = bodylen > 0 ? static_cast<u32>(bodylen) : 0;
     u8 *body = static_cast<u8 *>(env->alloc(env, blen + 1));
-    u8 *raw = static_cast<u8 *>(env->alloc(env, rawlen));
+    u8 *prow = static_cast<u8 *>(env->alloc(env, rowsize ? rowsize : 1));
     u8 *row = static_cast<u8 *>(env->alloc(env, w * 5)); /* a row of ARGB, then HAM's pixels */
     u8 *mask = hasmask ? static_cast<u8 *>(env->alloc(env, rb * h)) : nullptr;
     u32 err = 0;
-    if (!body || !raw || !row || (hasmask && !mask)) {
+    br1 ust;
+    br1_init(&ust);
+    if (!body || !prow || !row || (hasmask && !mask)) {
         err = DTC_ERROR_NO_FREE_STORE;
         goto out;
     }
     {
         s32 got = env->iff_read_chunk(env, iff, body, static_cast<s32>(blen));
+        u32 ip = 0;
         if (got < 0) {
             err = ODT_DTERROR_NOT_ENOUGH_DATA;
             goto out;
         }
-        /* ABI test: a BODY shorter than the picture: ours leaves the rest 0 */
-        if (cmp == PIC_cmpByteRun1)
-            ilbm_byterun1_unpack(body, static_cast<u32>(got), raw, rawlen);
-        else
-            for (u32 i = 0; i < rawlen && i < static_cast<u32>(got); i++)
-                raw[i] = body[i];
-    }
-    for (u32 y = 0; y < h; y++) {
-        const u8 *src = raw + y * rowsize;
-        u8 hr = 0, hg = 0, hb = 0;      /* HAM: each row starts from colour 0 */
-        if (ham) {
-            hr = pal[0];
-            hg = pal[1];
-            hb = pal[2];
-        }
+        for (u32 y = 0; y < h; y++) {
+            const u8 *src;
+            u8 hr = 0, hg = 0, hb = 0;      /* HAM: each row starts from colour 0 */
+            u32 filled = 0;
+            if (cmp == PIC_cmpByteRun1)
+                filled = br1_take(&ust, body, static_cast<u32>(got), prow, rowsize);
+            else if (ip < static_cast<u32>(got)) {
+                filled = rowsize;
+                if (filled > static_cast<u32>(got) - ip)
+                    filled = static_cast<u32>(got) - ip;
+                for (u32 i = 0; i < filled; i++)
+                    prow[i] = body[ip + i];
+                ip += filled;
+            }
+            for (u32 i = filled; i < rowsize; i++)
+                prow[i] = 0;             /* a short BODY: the rest of the row is 0 */
+            src = prow;
+            if (ham) {
+                hr = pal[0];
+                hg = pal[1];
+                hb = pal[2];
+            }
         /* the planes' bits as one byte a pixel, eight pixels at a time: a
          * deep ILBM's planes 0-7 are red, 8-15 green, 16-23 blue and 24-31
          * alpha; HAM's pixels go after the ARGB row, the others straight in */
@@ -295,9 +308,10 @@ u32 load(env_t *env, odt_IClass *cl, void *obj)
         odt_TagItem t[] = { { PIC_PDTA_MaskPlane, reinterpret_cast<u32>(mask) }, { ODT_TAG_DONE, 0 } };
         dtc_set_super(env, cl, obj, t);
     }
+}
 out:
     env->free(env, body);
-    env->free(env, raw);
+    env->free(env, prow);
     env->free(env, row);
     env->free(env, mask);
     return err;
@@ -307,21 +321,10 @@ out:
 
 extern "C" odt_u32 ilbm_byterun1_unpack(const odt_u8 *in, odt_u32 len, odt_u8 *out, odt_u32 n)
 {
-    u32 i = 0, o = 0;
-    while (o < n && i < len) {
-        odt_s8 c = static_cast<odt_s8>(in[i++]);
-        if (c >= 0) {
-            for (s32 k = 0; k <= c && o < n && i < len; k++)
-                out[o++] = in[i++];
-        } else if (c != -128) {
-            if (i >= len)
-                break;
-            u8 v = in[i++];
-            for (s32 k = 0; k <= -c && o < n; k++)
-                out[o++] = v;
-        }
-    }
-    return i;
+    br1 s;
+    br1_init(&s);
+    br1_take(&s, in, len, out, n);
+    return s.i;
 }
 
 extern "C" odt_u32 ilbm_inst_size(void) { return 0; }

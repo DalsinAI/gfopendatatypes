@@ -70,6 +70,8 @@ jobs:
         run: python3 Datatypes/tests/test-romtag.py
       - name: bitplanes to pixels (common/include/odt_planar.h)
         run: sh Datatypes/tests/test-planar.sh
+      - name: ILBM ByteRun1 across rows
+        run: sh Datatypes/tests/test-ilbmbr1.sh
   m68k:
     runs-on: ubuntu-latest
     steps:
