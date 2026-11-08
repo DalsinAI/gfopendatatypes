@@ -3,6 +3,9 @@
 # UBSan: gfopentga.datatype's (Datatypes/tests/test-tga.sh), gfopengif.datatype's
 # (Datatypes/tests/test-gif.sh) and cdxl.datatype's
 # (Datatypes/tests/test-cdxl.sh, with ffmpeg's own CDXL decoder as a check),
+# gfopenpng.datatype's (Datatypes/tests/test-pngdec.sh: every colour type,
+# depth, Adam7, tRNS and 1,222 damaged streams, against tests/make-png.py and
+# Pillow; on the 68040 under qemu-m68k too, in the m68k job),
 # webm.datatype's picture sizes against crafted headers
 # (Datatypes/tests/test-webm.sh),
 # and stream.datatype's with gzip.datatype's and brotli.datatype's
@@ -43,6 +46,8 @@ jobs:
         run: sh Datatypes/tests/test-tga.sh
       - name: gfopengif.datatype decoder
         run: sh Datatypes/tests/test-gif.sh
+      - name: gfopenpng.datatype decoder
+        run: sh Datatypes/tests/test-pngdec.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
       - name: webm.datatype picture sizes
@@ -70,7 +75,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: m68k cross GCC, G++ and qemu-m68k
-        run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user
+        run: sudo apt-get update && sudo apt-get install -y gcc-m68k-linux-gnu g++-m68k-linux-gnu qemu-user python3-pil
+      - name: gfopenpng.datatype decoder, also as 68040 code (big-endian)
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-pngdec.sh
       - name: GFOpenDatatypes (datatypes.library) core
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes.sh
       - name: GFOpenDatatypes picture, ilbm, sound and 8svx datatype cores

@@ -4,7 +4,9 @@
  * inflate; no zlib or libpng). Every PNG colour type, bit depth,
  * transparency and Adam7 interlacing. The pixels go to picture.datatype as
  * 32-bit ARGB (bmh_Depth 32), so a program reading them back as ARGB gets
- * them as they were decoded, alpha included.
+ * them as they were decoded, alpha included. They go in strips of about 32
+ * rows (47.7), converted from the inflated rows as they go, so the picture
+ * is not held whole a second time.
  *
  * A read or write of the pixels with no pixel array (pbpa_PixelData NULL)
  * is refused here rather than passed on. That is what a program gets when it
@@ -50,10 +52,10 @@
 #include "zlibrary.h"
 
 const char LibName[] = "gfopenpng.datatype";
-const char LibIdString[] = "gfopenpng.datatype 47.6 (6.11.2026) AmiCradle Team";
+const char LibIdString[] = "gfopenpng.datatype 47.7 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 6;
-static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.6 (6.11.2026)";
+const UWORD LibRevision = 7;
+static const char version[] __attribute__((used)) = "$VER: gfopenpng.datatype 47.7 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -76,10 +78,19 @@ static APTR big_alloc(ULONG n)
     return p ? p : AllocVec(n, MEMF_ANY);
 }
 
+/* Rows in a strip handed to picture.datatype: about 32, so the picture is
+ * never held whole twice, in at most 256 KB. */
+static ULONG strip_rows(ULONG width)
+{
+    ULONG rows = (256UL * 1024) / (width * 4);
+    return rows > 32 ? 32 : rows ? rows : 1;
+}
+
 static BOOL loadPNG(Class *cl, Object *o)
 {
     struct BitMapHeader *bmh = NULL;
     struct png_head *h;
+    struct png_rows rows;
     STRPTR name = NULL;
     UBYTE *file, *idat = NULL, *raw = NULL;
     ULONG *argb = NULL, size = 0;
@@ -91,8 +102,10 @@ static BOOL loadPNG(Class *cl, Object *o)
         SetIoErr(ERROR_OBJECT_WRONG_TYPE);
         return FALSE;
     }
-    if (!(h = AllocVec(sizeof(*h), MEMF_ANY)))
+    if (!(h = AllocVec(sizeof(*h), MEMF_ANY))) {
+        SetIoErr(ERROR_NO_FREE_STORE);
         return FALSE;
+    }
     if (!(file = dt_read_source(o, &size))) {
         err = IoErr();
         FreeVec(h);
@@ -108,18 +121,21 @@ static BOOL loadPNG(Class *cl, Object *o)
     if ((idat = big_alloc(h->idat_len)))
         png_gather(file, size, idat);
     FreeVec(file);
-    if (idat && (raw = big_alloc(h->raw_len)) && (argb = big_alloc(h->width * h->height * 4))
-        && (work = AllocVec(PNG_WORKSIZE, MEMF_ANY))) {
-        if (png_decode(h, idat, raw, argb, work) == 0)
+    if (idat && (raw = big_alloc(h->raw_len)) && (work = AllocVec(PNG_WORKSIZE, MEMF_ANY))) {
+        if (png_unpack(h, idat, raw, work, &rows) == 0)
             ok = TRUE;
         else
             err = DTERROR_INVALID_DATA;
     }
     if (work) FreeVec(work);
-    if (raw) FreeVec(raw);
     if (idat) FreeVec(idat);
 
+    /* The rows go to picture.datatype a strip at a time as they are
+     * converted: the picture is held once, in picture.datatype. */
+    if (ok && !(argb = big_alloc(h->width * 4 * strip_rows(h->width))))
+        ok = FALSE;
     if (ok) {
+        ULONG y, n, most = strip_rows(h->width);
         bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)h->width;
         bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h->height;
         bmh->bmh_Depth = 32;           /* ARGB, alpha or not */
@@ -131,12 +147,17 @@ static BOOL loadPNG(Class *cl, Object *o)
             PDTA_SourceMode, PMODE_V43,
             PDTA_AlphaChannel, h->alpha ? TRUE : FALSE,
             TAG_DONE);
-        ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h->width * 4,
-            0, 0, h->width, h->height) ? TRUE : FALSE;
+        for (y = 0; y < h->height && ok; y += n) {
+            n = h->height - y < most ? h->height - y : most;
+            png_strip(h, raw, &rows, argb, n);
+            ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h->width * 4,
+                0, y, h->width, n) ? TRUE : FALSE;
+        }
         if (!ok)
             err = ERROR_NO_FREE_STORE;
     }
     if (argb) FreeVec(argb);
+    if (raw) FreeVec(raw);
     FreeVec(h);
     if (!ok)
         SetIoErr(err);

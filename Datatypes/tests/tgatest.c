@@ -11,6 +11,11 @@
  * under AddressSanitizer, a read or write outside the file or the picture
  * stops it.
  *
+ * Every picture (the cut ones too) is also decoded as gfopentga.datatype
+ * hands it on, in strips of 3 and of 32 rows with tga_start() and
+ * tga_strip() (again, opaque, when the alpha comes out empty), which must
+ * give the same picture.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <stdio.h>
@@ -36,8 +41,64 @@ static UBYTE *slurp(const char *path, ULONG *len)
     return buf;
 }
 
+/* As tga/tgaclass.c does it: strips of rows rows, each put where it goes,
+ * and all again, opaque, when the alpha comes out empty. 0, or -1. */
+static int strips(const UBYTE *file, ULONG len, const struct tga_head *h, ULONG rows, ULONG *argb, UBYTE *alpha)
+{
+    struct tga_rows r;
+    ULONG *pal = NULL, *strip = malloc((size_t)h->width * rows * 4), y, n, pass;
+    int rc = -1;
+    if (h->type == 1)
+        pal = malloc((size_t)h->map_len * 4);
+    *alpha = h->alpha;
+    for (pass = 0; pass < 2 && strip && (h->type != 1 || pal); pass++) {
+        if (tga_start(h, file, len, pal, &r, (UBYTE)pass))
+            break;
+        for (y = 0; y < h->height; y += n) {
+            ULONG top;
+            n = h->height - y < rows ? h->height - y : rows;
+            top = h->top_down ? y : h->height - y - n;
+            memset(strip, 0xA5, (size_t)h->width * n * 4);
+            tga_strip(h, file, len, pal, &r, strip, n);
+            memcpy(argb + (size_t)top * h->width, strip, (size_t)h->width * n * 4);
+        }
+        rc = 0;
+        if (pass || !h->alpha || (r.seen & 0xFF000000UL))
+            break;
+        *alpha = 0;                      /* an empty alpha channel: again, opaque */
+    }
+    free(pal);
+    free(strip);
+    return rc;
+}
+
+/* The whole picture, then in strips (which must agree). */
+static int decode_whole(const UBYTE *file, ULONG len, struct tga_head *h, ULONG **argb, UBYTE *alpha);
+
 /* 0 and the picture, or -1 when the decoder refuses the file. */
 static int decode(const UBYTE *file, ULONG len, struct tga_head *h, ULONG **argb, UBYTE *alpha)
+{
+    static const ULONG sizes[2] = { 3, 32 };
+    size_t size;
+    ULONG *again, k;
+    UBYTE a2;
+    if (decode_whole(file, len, h, argb, alpha))
+        return -1;
+    size = (size_t)h->width * h->height * 4;
+    if (!(again = malloc(size)))
+        exit(20);
+    for (k = 0; k < 2; k++) {
+        memset(again, 0x5A, size);
+        if (strips(file, len, h, sizes[k], again, &a2) || a2 != *alpha || memcmp(again, *argb, size)) {
+            printf("strips of %lu rows differ from the whole picture\n", (unsigned long)sizes[k]);
+            exit(1);
+        }
+    }
+    free(again);
+    return 0;
+}
+
+static int decode_whole(const UBYTE *file, ULONG len, struct tga_head *h, ULONG **argb, UBYTE *alpha)
 {
     ULONG *pal = NULL;
     int rc = -1;

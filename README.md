@@ -75,6 +75,10 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
 
 - `sh Datatypes/tests/test-tga.sh` and `sh Datatypes/tests/test-cdxl.sh`:
   the decoders on the host under AddressSanitizer and UBSan (CI runs both).
+- `sh Datatypes/tests/test-pngdec.sh`: gfopenpng's decoder against
+  `tests/make-png.py`'s pictures (every colour type and depth, Adam7, tRNS)
+  and Pillow, and 1,222 damaged streams, under the same sanitizers; with
+  `QEMU_M68K=qemu-m68k` as 68040 code too (`BIG=1`: the 1024x768 pictures).
 - `sh Datatypes/tests/test-webm.sh`: webm.datatype's reader and dither
   against crafted picture sizes, under the same sanitizers.
 - `sh Datatypes/tests/test-webm-read.sh`: webm.datatype's reader through its
