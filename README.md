@@ -11,7 +11,9 @@ GFOpenBrowser) opens the formats they read.
 | `gfopentga.datatype` | `Datatypes/tga` | TGA (our own decoder) |
 | `webp.datatype` | `Datatypes/webp` (libwebp 1.6.0) | WebP pictures |
 | `webm.datatype` | `Datatypes/webm` (libvpx 1.17.0) | WebM films |
-| `gfopensound.datatype` | `Datatypes/opensound` | sound class (our own) |
+| `gfopensound.datatype` | `Datatypes/opensound` (stb_vorbis, dr_mp3, dr_flac) | sound class (our own); FLAC, Ogg Vorbis and MP3 on this CPU from 47.2 |
+| `gfopenaiff.datatype` | `Datatypes/pcm` | AIFF and AIFC, read and written (our own) |
+| `gfopenwave.datatype` | `Datatypes/pcm` | WAV, read and written (our own) |
 | `gfopenmodule.datatype` | `Datatypes/openmodule` (libxmp 4.7.3) | music modules: MOD, MED, Oktalyzer, DigiBooster, XM, S3M, IT |
 | `gfopendoc.datatype` | `Datatypes/opendoc` | documents |
 | `cdxl.datatype` | `Datatypes/cdxl` | CDXL films |
