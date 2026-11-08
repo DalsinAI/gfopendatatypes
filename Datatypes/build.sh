@@ -170,10 +170,11 @@ desc_webm "$OUT"
 # decoded by the media.decode/1 service (gfopenservice) on the services
 # card or a paired Cradle; no codec on the 68k.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-openpicture" \
-    common/dtstart.c common/dtlib.c common/dtservice.c openpicture/pictureclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtencode.c common/encodemsg.c openpicture/pictureclass.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpicture.datatype" \
     "$WORK"/obj-openpicture/common_dtstart.o "$WORK"/obj-openpicture/common_dtlib.o \
-    "$WORK"/obj-openpicture/common_dtservice.o "$WORK"/obj-openpicture/openpicture_pictureclass.o $ACLIB -lamiga \
+    "$WORK"/obj-openpicture/common_dtservice.o "$WORK"/obj-openpicture/common_dtencode.o \
+    "$WORK"/obj-openpicture/common_encodemsg.o "$WORK"/obj-openpicture/openpicture_pictureclass.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/gfopenpicture.datatype.map"
 echo "gfopenpicture.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpicture.datatype") bytes"
 desc_gfopenpicture "$OUT"
@@ -216,14 +217,17 @@ single dr_mp3.h f5c8020eeebb79877184432efdd2651f24869f5bb8f379d45450fd0aed1ee915
 single dr_flac.h b8078eeb5d523502eb7964508cd7ec8450bc79d383bec90aa17fd9e2fefd9c24
 (cd "$WORK/single" && patch -p1 -s < "$HERE/patches/stb_vorbis-1.22-comment-list-null.patch")
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opensound" \
-    common/dtstart.c common/dtlib.c common/dtservice.c common/dtstack.c opensound/soundclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtstack.c \
+    common/dtencode.c common/encodemsg.c opensound/soundclass.c
 # -fwrapv: dr_flac's prediction overflows a signed int on a damaged file;
 # wrapping is what the 68k does anyway, and now the compiler knows it.
 XFLAGS="-I$WORK/single -w -fwrapv" compile "$HERE" "$WORK/obj-snddec" opensound/snddec.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopensound.datatype" \
     "$WORK"/obj-opensound/common_dtstart.o "$WORK"/obj-opensound/common_dtlib.o \
     "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/common_dtstack.o \
-    "$WORK"/obj-opensound/opensound_soundclass.o "$WORK"/obj-snddec/opensound_snddec.o $ACLIB -lamiga -lm \
+    "$WORK"/obj-opensound/common_dtencode.o \
+    "$WORK"/obj-opensound/common_encodemsg.o "$WORK"/obj-opensound/opensound_soundclass.o \
+    "$WORK"/obj-snddec/opensound_snddec.o $ACLIB -lamiga -lm \
     -Wl,-Map="$WORK/gfopensound.datatype.map"
 echo "gfopensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
 desc_gfopensound "$OUT"
@@ -320,10 +324,11 @@ desc_cdxl "$OUT"
 # MP4, MOV, MKV, AVI, WMV, MPEG and FLV, decoded frame by frame by the
 # media.decode/1 service on the services card or a paired Cradle.
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-openvideo" \
-    common/dtstart.c common/dtlib.c common/dtservice.c openvideo/videoclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtencode.c common/encodemsg.c openvideo/videoclass.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenvideo.datatype" \
     "$WORK"/obj-openvideo/common_dtstart.o "$WORK"/obj-openvideo/common_dtlib.o \
-    "$WORK"/obj-openvideo/common_dtservice.o "$WORK"/obj-openvideo/openvideo_videoclass.o $ACLIB -lamiga \
+    "$WORK"/obj-openvideo/common_dtservice.o "$WORK"/obj-openvideo/common_dtencode.o \
+    "$WORK"/obj-openvideo/common_encodemsg.o "$WORK"/obj-openvideo/openvideo_videoclass.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/gfopenvideo.datatype.map"
 echo "gfopenvideo.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenvideo.datatype") bytes"
 desc_gfopenvideo "$OUT"

@@ -30,7 +30,9 @@
 # (tests/recognition/test_recognition.py).
 # The bitplanes-to-pixels helper ilbm, picture and cdxl share
 # (common/include/odt_planar.h) against the loop it replaced, on the host
-# (Datatypes/tests/test-planar.sh).
+# (Datatypes/tests/test-planar.sh). The requests gfopenpicture, gfopensound
+# and gfopenvideo send media.encode/1 for HEIC, M4A, WMA, HEVC and WMV
+# (Datatypes/tests/test-encodemsg.sh), on the host and as 68040 code.
 # The Amiga builds need the os32-gcc16 stove and are made on the build PC.
 name: Datatypes
 on:
@@ -83,6 +85,8 @@ jobs:
         run: python3 Datatypes/tests/test-romtag.py
       - name: bitplanes to pixels (common/include/odt_planar.h)
         run: sh Datatypes/tests/test-planar.sh
+      - name: media.encode/1's requests from gfopenpicture, gfopensound and gfopenvideo (common/encodemsg.c)
+        run: sh Datatypes/tests/test-encodemsg.sh
       - name: ILBM ByteRun1 across rows
         run: sh Datatypes/tests/test-ilbmbr1.sh
   m68k:
@@ -101,6 +105,8 @@ jobs:
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_textanim.sh
       - name: animation.datatype's IFF ANIM writer, read back by anim.datatype's reader
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_animwrite.sh
+      - name: media.encode/1's requests as 68040 code, byte for byte the host's
+        run: QEMU_M68K=qemu-m68k sh Datatypes/tests/test-encodemsg.sh
       - name: animation.datatype's MP4 writer (H.264), read back by FFmpeg and the host encoder
         run: QEMU_M68K=qemu-m68k sh tests/m68k/test_opendatatypes_mp4write.sh
       - name: the descriptors, which datatype each kind of file goes to (datatypes.library's recognition)

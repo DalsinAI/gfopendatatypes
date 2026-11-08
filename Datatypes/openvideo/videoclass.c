@@ -17,6 +17,18 @@
  * Without a card or a Cradle the video does not open: these codecs are far
  * too slow for a 68k.
  *
+ * DTM_WRITE in raw mode (47.3) writes the film as HEVC (in MP4) or WMV
+ * through media.encode/1 (common/dtencode.c): each frame comes from the
+ * host in 24-bit colour at the object's size, with its share of the sound
+ * as the object plays it (8-bit mono, 22050 Hz), and goes to the encoder;
+ * the service's FFmpeg makes the file and it comes back. The Team's ruling
+ * (6 November 2026): HEVC and WMV are written by the service's FFmpeg,
+ * never by code in the pack. OIA_WriteFormat ('HEVC', 'WMV '), OIA_Quality
+ * and OIA_WriteSound in dtw_AttrList choose (include/datatypes/gfopenimage.h);
+ * any other format asked for ('MP4 ', which animation.datatype writes on
+ * the 68k) goes up to the superclass. A stream from a URL can't be written
+ * here. IFF mode is animation.datatype's ANIM.
+ *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include <string.h>
@@ -43,11 +55,15 @@
 #include <stdarg.h>
 #include <stdio.h>                 /* vsnprintf: dtlib.c's own */
 
+#include <proto/utility.h>
+
 #include "dtlib.h"
 #include "dtservice.h"
+#include "dtencode.h"
+#include "datatypes/gfopenimage.h"
 
 const char LibName[] = "gfopenvideo.datatype";
-const char LibIdString[] = "gfopenvideo.datatype 47.3 (7.11.2026) AmiCradle Team, decoded by media.decode/1";
+const char LibIdString[] = "gfopenvideo.datatype 47.3 (7.11.2026) AmiCradle Team, decoded by media.decode/1, HEVC and WMV written by media.encode/1";
 const UWORD LibVersion = 47;
 const UWORD LibRevision = 3;
 static const char version[] __attribute__((used)) = "$VER: gfopenvideo.datatype 47.3 (7.11.2026)";
@@ -69,6 +85,7 @@ const UWORD dt_superversion = 40;
 #define MD_FLAG_LOOP 4
 #define MD_FLAG_LIVE 8
 #define MD_PIX_CUBE 0
+#define MD_PIX_RGB 1
 #define MD_PIX_HAM8 2
 #define MD_HAM8_FIXED 1
 #define HAM8_PALETTE 192           /* 64 base colours, R, G, B */
@@ -104,6 +121,8 @@ typedef struct {
     ULONG soundSlot;
     struct ColorMap *cmaps[RING];  /* HAM8 with own colours: by frame */
     ULONG period;                  /* Paula period for the sound, handed out with every frame */
+    ULONG format;                  /* as VOPEN named it ('HEVC', 'WMV '...), for DTM_WRITE */
+    ULONG flags;                   /* VOPEN's MD_FLAG_* */
 } VideoData;
 
 ULONG dt_instsize = sizeof(VideoData);
@@ -499,7 +518,8 @@ static BOOL loadVideo(Class *cl, Object *o)
         goto out;
     }
     d->handle = handle;
-    flags = get32(info + 8);
+    d->format = get32(info + 4);
+    d->flags = flags = get32(info + 8);
     d->frames = get32(info + 12);
     d->width = get32(info + 16);
     d->height = get32(info + 20);
@@ -559,6 +579,97 @@ out:
     return ok;
 }
 
+/* DTM_WRITE, DTWM_RAW: the film as HEVC or WMV, through media.encode/1:
+ * each frame in 24-bit colour from media.decode/1, and its sound. 0, or an
+ * IoErr() code. */
+static LONG writeFilm(Class *cl, Object *o, struct dtWrite *w)
+{
+    VideoData *d = INST_DATA(cl, o);
+    struct me_settings s;
+    struct dt_encoder enc;
+    struct dt_service svc;
+    struct OSBuffer buf[4];
+    ULONG extra[4], i, got, frameBytes, soundBytes = 0;
+    STRPTR name = NULL;
+    UBYTE *frame = NULL, *sound = NULL;
+    LONG err, st;
+
+    if (!w->dtw_FileHandle)
+        return ERROR_REQUIRED_ARG_MISSING;
+    if (!d->handle || !d->frames)
+        return ERROR_OBJECT_WRONG_TYPE;
+    if (d->flags & MD_FLAG_LIVE)
+        return ERROR_NOT_IMPLEMENTED;          /* a stream is read forward only, and may never end */
+    GetDTAttrs(o, DTA_Name, (ULONG)&name, TAG_DONE);
+    memset(&s, 0, sizeof s);
+    s.format = me_pick_format(ME_KIND_FILM, GetTagData(OIA_WriteFormat, 0, w->dtw_AttrList), d->format,
+                              dt_name_hint(name), TRUE);
+    if (!s.format)
+        return ERROR_NOT_IMPLEMENTED;          /* AV1, VP9...: not written by the service (yet) */
+    s.width = d->width;
+    s.height = d->height;
+    s.pixels = ME_PIX_RGB;
+    s.fps1000 = d->fps1000;
+    s.quality = me_quality((LONG)GetTagData(OIA_Quality, (ULONG)-1, w->dtw_AttrList));
+    if ((d->flags & MD_FLAG_SOUND) && GetTagData(OIA_WriteSound, TRUE, w->dtw_AttrList)) {
+        s.rate = SOUND_RATE;
+        s.channels = 1;
+        s.samples = ME_SAMPLE_S8;
+        soundBytes = SOUND_RATE * 1000UL / d->fps1000 + 16;   /* a frame's share, and room */
+    }
+    frameBytes = d->width * d->height * 3;
+    if (!(frame = AllocVec(frameBytes, MEMF_ANY)))
+        return ERROR_NO_FREE_STORE;
+    if (soundBytes && !(sound = AllocVec(soundBytes, MEMF_ANY))) {
+        FreeVec(frame);
+        return ERROR_NO_FREE_STORE;
+    }
+    if (!dt_service_open(&svc, "media.decode/1")) {
+        FreeVec(frame);
+        if (sound)
+            FreeVec(sound);
+        return ERROR_NOT_IMPLEMENTED;
+    }
+    if (!(err = dt_encode_begin(&enc, &s))) {
+        memset(buf, 0, sizeof buf);
+        for (i = 0; !err && i < d->frames; i++) {
+            if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
+                SetSignal(0, SIGBREAKF_CTRL_C);
+                err = ERROR_BREAK;
+                break;
+            }
+            buf[1].ob_Data = frame;
+            buf[1].ob_Length = frameBytes;
+            extra[0] = i;
+            extra[1] = MD_PIX_RGB;
+            extra[2] = extra[3] = 0;
+            if ((st = dt_service_call(&svc, MD_VFRAME, d->handle, 2, buf, extra, NULL, NULL)) != OSERR_OK) {
+                err = st == OSERR_LOST || st == OSERR_NOSERVICE ? ERROR_NOT_IMPLEMENTED : DTERROR_COULDNT_SAVE;
+                break;
+            }
+            if ((err = dt_encode_put(&enc, ME_STREAM_PICTURE, frame, frameBytes)))
+                break;
+            if (sound) {
+                buf[1].ob_Data = sound;
+                buf[1].ob_Length = soundBytes;
+                extra[1] = SOUND_RATE;
+                got = 0;
+                if (dt_service_call(&svc, MD_VSOUND, d->handle, 2, buf, extra, &got, NULL) == OSERR_OK
+                    && got && got <= soundBytes)
+                    err = dt_encode_put(&enc, ME_STREAM_SOUND, sound, got);
+            }
+        }
+        if (!err)
+            err = dt_encode_finish(&enc, w->dtw_FileHandle);
+    }
+    dt_encode_end(&enc);
+    dt_service_close(&svc);
+    FreeVec(frame);
+    if (sound)
+        FreeVec(sound);
+    return err;
+}
+
 ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
 {
     if (msg->MethodID != ADTM_LOADFRAME && msg->MethodID != ADTM_UNLOADFRAME && msg->MethodID >= ADTM_Dummy)
@@ -566,6 +677,19 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
     else if (msg->MethodID == DTM_TRIGGER)
         vlog("trigger %lu", (unsigned long)((struct dtTrigger *)msg)->dtt_Function);
     switch (msg->MethodID) {
+    case DTM_WRITE: {
+        struct dtWrite *w = (struct dtWrite *)msg;
+        LONG err;
+        if (w->dtw_Mode != DTWM_RAW)
+            return DoSuperMethodA(cl, o, msg);   /* IFF: animation.datatype's ANIM */
+        if (me_hand_up(ME_KIND_FILM, GetTagData(OIA_WriteFormat, 0, w->dtw_AttrList)))
+            return DoSuperMethodA(cl, o, msg);   /* 'MP4 ' and others: animation.datatype's own writers */
+        if ((err = writeFilm(cl, o, w))) {
+            SetIoErr(err);
+            return FALSE;
+        }
+        return TRUE;
+    }
     case OM_NEW: {
         Object *obj = (Object *)DoSuperMethodA(cl, o, msg);
         if (obj && !loadVideo(cl, obj)) {

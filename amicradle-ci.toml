@@ -39,6 +39,9 @@ host = [
   "sh Datatypes/tests/test-gzenc.sh",
   "python3 Datatypes/tests/test-romtag.py",
   "sh Datatypes/tests/test-planar.sh",
+  # media.encode/1's requests (HEIC, M4A, WMA... by the service's FFmpeg),
+  # host and 68040 byte for byte; the round trip when gfopenservice is beside
+  "QEMU_M68K=qemu-m68k sh Datatypes/tests/test-encodemsg.sh",
   "sh Datatypes/tests/test-ilbmbr1.sh",
   # The m68k job (Debian's m68k-linux GCC under qemu-m68k): here until
   # ac090-run exists, then it moves to the nightly cross-check.
