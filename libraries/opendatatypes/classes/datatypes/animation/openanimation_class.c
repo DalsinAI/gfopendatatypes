@@ -71,6 +71,10 @@ static int anim_ext_init(struct DTCBase *base)
     a->x.player_start = ax_player_start;
     a->x.player_stop = ax_player_stop;
     a->x.wait_blit = ax_wait_blit;
+    a->x.in_chip = ax_in_chip;
+    a->x.alloc_any = ax_alloc_any;
+    a->x.cmap_colors = ax_cmap_colors;
+    a->x.load_colors = ax_load_colors;
     base->ext = a;
     base->env.class_ext = a;
     return 1;

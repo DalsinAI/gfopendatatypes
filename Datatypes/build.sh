@@ -11,8 +11,9 @@
 #   TARBALLS     folder holding the upstream tarballs listed in ../SOURCES
 #                (default ./tarballs, else ../tarballs); the script checks
 #                their SHA-256
-#   AC_HELPERS   1: big copies and fills in common/dtlib.c go through
-#                AC090's native helpers (../achelpers/, see ../README.md);
+#   AC_HELPERS   1: big copies and fills in common/dtlib.c, libwebp and
+#                libvpx go through AC090's native helpers (../achelpers/,
+#                see ../README.md; libwebp and libvpx get ac_string.h);
 #                0: as before; auto (default): 1 when the pinned
 #                amicradle-guest commit is to hand, else 0, saying so
 #   AMIGACHROME_GUEST  checkout of amicradle-guest holding the commit in
@@ -55,12 +56,17 @@ if [ "$AC_HELPERS" = auto ]; then          # on when the pinned amicradle-guest 
     if sh "$HERE/../achelpers/achelpers.sh" --have; then AC_HELPERS=1
     else AC_HELPERS=0; echo "AC090 native helpers: off (no amicradle-guest checkout with $(cat "$HERE/../AMIGACHROME_GUEST_PINNED_COMMIT" | cut -c1-12); set AMIGACHROME_GUEST)"; fi
 fi
-ACFLAGS= ACLIB=
+# ACSTRING goes on libwebp's and libvpx's compiles: ac_string.h, forced in,
+# sends their memcpy, memmove and memset calls of 64 bytes and more to the
+# helpers (on a 68k without AC090 the helpers' own 68k code runs).
+ACFLAGS= ACLIB= ACSTRING=
 if [ "$AC_HELPERS" = 1 ]; then
     CC="$CC" AR="$AR" CFLAGS="$CFLAGS" sh "$HERE/../achelpers/achelpers.sh" "$WORK/achelpers"
     ACFLAGS="-DOAI_AC_HELPERS -I$WORK/achelpers/src"
     ACLIB="$WORK/achelpers/libachelpers.a"
+    ACSTRING="-include $HERE/../achelpers/ac_string.h -I$WORK/achelpers/src"
 fi
+echo "AC090 native helpers: AC_HELPERS=$AC_HELPERS"
 
 # The descriptors (descriptors.sh, one desc_<datatype> for each) and the
 # recognition code some of them carry (hooks/, DTCD chunks).
@@ -90,13 +96,16 @@ compile() {
 unpack libwebp libwebp-1.6.0.tar.gz e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 W="$WORK/libwebp/libwebp-1.6.0"
 # No floating point in the decoder or the lossless encoder (see the
-# patches), and no null read in the demuxer's chunk iterator (see the patch).
+# patches), no null read in the demuxer's chunk iterator (see the patch), and
+# no 64-bit multiplies or divides in the lossless encoder's busiest sums,
+# which a 68060 traps (libwebp-1.6.0-m68060.patch, tests/test-webp060.sh).
 (cd "$W" && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-no-float.patch" \
     && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-demux-null-chunk.patch" \
-    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch")
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-encoder-no-float.patch" \
+    && patch -p1 -s < "$HERE/patches/libwebp-1.6.0-m68060.patch")
 # The decoder, the demuxer (animated and extended files) and the shared code.
 # The SSE, NEON and MIPS files compile to nothing on 68k and are left out.
-XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \
+XFLAGS="-I$W -I$W/src $ACSTRING" compile "$W" "$WORK/obj-libwebp" \
     src/dec/alpha_dec.c src/dec/buffer_dec.c src/dec/frame_dec.c src/dec/idec_dec.c src/dec/io_dec.c \
     src/dec/quant_dec.c src/dec/tree_dec.c src/dec/vp8_dec.c src/dec/vp8l_dec.c src/dec/webp_dec.c \
     src/demux/demux.c \
@@ -112,10 +121,13 @@ XFLAGS="-I$W -I$W/src" compile "$W" "$WORK/obj-libwebp" \
 # three picture calls it needs: libwebp's picture files would bring the lossy
 # encoder). No floating point in any of it: the link map is checked below.
 # dtstart.c is linked first, so the library's first code is a safe return.
-XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c
+# webpcore.c: libwebp's tables set up in dt_init(), and an animation's first
+# frame on its background colour (tests/test-webpcore.sh).
+XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/webp -I$W -I$W/src $ACFLAGS" compile "$HERE" "$WORK/obj-webp" \
+    common/dtstart.c common/dtlib.c webp/webpclass.c webp/webpencode.c webp/webpcore.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/webp.datatype" \
     "$WORK"/obj-webp/common_dtstart.o "$WORK"/obj-webp/common_dtlib.o "$WORK"/obj-webp/webp_webpclass.o \
-    "$WORK"/obj-webp/webp_webpencode.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
+    "$WORK"/obj-webp/webp_webpencode.o "$WORK"/obj-webp/webp_webpcore.o "$WORK"/obj-libwebp/*.o $ACLIB -lamiga \
     -Wl,-Map="$WORK/webp.datatype.map"
 echo "webp.datatype: $(wc -c < "$OUT/Classes/DataTypes/webp.datatype") bytes"
 # No soft-float helpers and no maths library linked in: they would open the ROM
@@ -133,8 +145,10 @@ V="$WORK/libvpx/libvpx-1.17.0"
 (cd "$V" && patch -p1 -s < "$HERE/patches/libvpx-1.17.0-amiga-align.patch" \
     && patch -p1 -s < "$HERE/patches/libvpx-1.17.0-tx-size-null.patch")
 # The VP8 and VP9 decoders in plain C: no encoders, threads or tools.
+# A fresh build folder: libvpx's make doesn't notice CFLAGS changing (AC_HELPERS).
+rm -rf "$WORK/libvpx-build"
 mkdir -p "$WORK/libvpx-build"
-(cd "$WORK/libvpx-build" && CROSS="$P/bin/m68k-amigaos-" CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer $NONULL" \
+(cd "$WORK/libvpx-build" && CROSS="$P/bin/m68k-amigaos-" CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer $NONULL $ACSTRING" \
     "$V/configure" --target=generic-gnu --disable-vp8-encoder --disable-vp9-encoder --enable-vp8-decoder \
     --enable-vp9-decoder --disable-examples --disable-tools --disable-docs --disable-unit-tests \
     --disable-multithread --disable-runtime-cpu-detect --disable-install-docs --disable-install-bins \
@@ -166,17 +180,17 @@ desc_gfopenpicture "$OUT"
 
 # --- gfopenpng.datatype ---------------------------------------------------------
 # PNG on the Amiga itself, our own decoder (png/pngclass.c, png/build.sh).
-OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/png/build.sh"
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/png/build.sh"
 
 # --- gfopentga.datatype ---------------------------------------------------------
 # Targa (TGA) on the Amiga itself, our own decoder (tga/tgaclass.c,
 # tga/build.sh); tests/test-tga.sh checks the decoder on x86 or ARM64 cores.
-OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/tga/build.sh"
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/tga/build.sh"
 
 # --- gfopengif.datatype ---------------------------------------------------------
 # GIF on the Amiga itself, every frame of an animation (gif/gifclass.c,
 # gif/build.sh); tests/test-gif.sh checks the decoder on x86 or ARM64 cores.
-OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/gif/build.sh"
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/gif/build.sh"
 
 # --- stream.datatype, gzip.datatype, brotli.datatype --------------------------
 # The "data" class and its first two decoders (stream/build.sh); gzip
@@ -187,14 +201,59 @@ OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/stream/build.sh"
 # --- gfopensound.datatype -------------------------------------------------------
 # FLAC, Ogg (Vorbis, Opus), AAC/M4A, ALAC, WMA and MP3, decoded by the
 # media.decode/1 service on the services card or a paired Cradle.
+# With neither, FLAC, Ogg Vorbis and MP3 are decoded on this CPU
+# (opensound/snddec.c: dr_flac, stb_vorbis and dr_mp3, single files SOURCES
+# pins, fetched and checked here), which is also how OIA_Reader reads them.
+# libm: libnix's soft floating point, calling the ROM math libraries.
+single() {       # FILE SHA256: a single upstream file into $WORK/single
+    t="$TARBALLS/$1"
+    [ -f "$t" ] || sh "$HERE/../tools/fetch-tarball.sh" "$1" "$TARBALLS" || exit 2
+    echo "$2  $t" | sha256sum -c - >/dev/null || { echo "SHA-256 mismatch: $t"; exit 2; }
+    mkdir -p "$WORK/single" && cp "$t" "$WORK/single/$1"
+}
+single stb_vorbis.c 4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636
+single dr_mp3.h f5c8020eeebb79877184432efdd2651f24869f5bb8f379d45450fd0aed1ee915
+single dr_flac.h b8078eeb5d523502eb7964508cd7ec8450bc79d383bec90aa17fd9e2fefd9c24
+(cd "$WORK/single" && patch -p1 -s < "$HERE/patches/stb_vorbis-1.22-comment-list-null.patch")
 XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opensound" \
-    common/dtstart.c common/dtlib.c common/dtservice.c opensound/soundclass.c
+    common/dtstart.c common/dtlib.c common/dtservice.c common/dtstack.c opensound/soundclass.c
+# -fwrapv: dr_flac's prediction overflows a signed int on a damaged file;
+# wrapping is what the 68k does anyway, and now the compiler knows it.
+XFLAGS="-I$WORK/single -w -fwrapv" compile "$HERE" "$WORK/obj-snddec" opensound/snddec.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopensound.datatype" \
     "$WORK"/obj-opensound/common_dtstart.o "$WORK"/obj-opensound/common_dtlib.o \
-    "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/opensound_soundclass.o $ACLIB -lamiga \
+    "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/common_dtstack.o \
+    "$WORK"/obj-opensound/opensound_soundclass.o "$WORK"/obj-snddec/opensound_snddec.o $ACLIB -lamiga -lm \
     -Wl,-Map="$WORK/gfopensound.datatype.map"
 echo "gfopensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
 desc_gfopensound "$OUT"
+
+# --- gfopenaiff.datatype and gfopenwave.datatype --------------------------------
+# AIFF/AIFC and WAV, read (8 to 32 bits, float too) and written (DTM_WRITE,
+# DTWM_RAW: AIFF or WAV, 16 or 8 bits, or headerless PCM): pcm/pcmclass.c,
+# built twice over pcm/pcmcore.c, which tests/test-pcm.sh checks on x86 or
+# ARM64 cores. Their descriptors' masks are longer than the system's AIFF
+# and WAVE ones (the first chunk too), so they are tried first.
+for k in aiff wave; do
+    def=; [ $k = wave ] && def=-DPCM_CLASS_WAVE
+    XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/pcm $def $ACFLAGS" compile "$HERE" "$WORK/obj-$k" \
+        common/dtstart.c common/dtlib.c pcm/pcmcore.c pcm/pcmclass.c
+    $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopen$k.datatype" \
+        "$WORK"/obj-$k/common_dtstart.o "$WORK"/obj-$k/common_dtlib.o \
+        "$WORK"/obj-$k/pcm_pcmcore.o "$WORK"/obj-$k/pcm_pcmclass.o $ACLIB -lamiga \
+        -Wl,-Map="$WORK/gfopen$k.datatype.map"
+    echo "gfopen$k.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopen$k.datatype") bytes"
+done
+# shellcheck disable=SC2046
+DT_IFF=1 python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenAIFF" "AIFF sound" gfopenaiff soun aiff "#?" \
+    '$VER: GFOpenAIFF 47.1 (8.11.2026)' $(chars "FORM") ANY ANY ANY ANY $(chars "AIFFCOMM")
+# shellcheck disable=SC2046
+DT_IFF=1 python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenAIFC" "AIFF-C sound" gfopenaiff soun aifc "#?" \
+    '$VER: GFOpenAIFC 47.1 (8.11.2026)' $(chars "FORM") ANY ANY ANY ANY $(chars "AIFC")
+# shellcheck disable=SC2046
+python3 "$HERE/common/mkdtdesc.py" "$OUT/Devs/DataTypes/GFOpenWAVE" "WAV sound" gfopenwave soun wave "#?" \
+    '$VER: GFOpenWAVE 47.1 (8.11.2026)' $(chars "RIFF") ANY ANY ANY ANY $(chars "WAVEfmt ")
+for f in GFOpenAIFF GFOpenAIFC GFOpenWAVE; do echo "Devs/DataTypes/$f: $(wc -c < "$OUT/Devs/DataTypes/$f") bytes"; done
 
 # --- gfopenmodule.datatype -----------------------------------------------------
 # Music modules: libxmp mixes them a chunk at a time for a player process

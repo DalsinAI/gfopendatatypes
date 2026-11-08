@@ -6,6 +6,8 @@
 # MIT, Copyright (c) 2026 AmiCradle Team.
 #
 #   OS32_GCC16   compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
+#   ACFLAGS, ACLIB  AC090's native helpers for common/dtlib.c, as ../build.sh
+#                passes them (AC_HELPERS=1 there); empty: none
 #   PREFIX       where Classes/ and Devs/ go (default ../out)
 #
 # usage: sh png/build.sh
@@ -23,12 +25,12 @@ CFLAGS="-O2 -m68040 $SOFT -fomit-frame-pointer -fno-delete-null-pointer-checks -
 rm -rf "$WORK"
 mkdir -p "$WORK" "$OUT/Classes/DataTypes" "$OUT/Devs/DataTypes"
 for f in common/dtstart.c common/dtlib.c common/zlibrary.c png/pngdecode.c png/pngencode.c png/pngclass.c; do
-    (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/include" -I"$HERE/png" -c "$f" -o "$WORK/$(basename "$f" .c).o")
+    (cd "$HERE" && $CC $CFLAGS -I"$HERE/common" -I"$HERE/include" -I"$HERE/png" ${ACFLAGS:-} -c "$f" -o "$WORK/$(basename "$f" .c).o")
 done
 # dtstart.o first, so the library's first code is a safe return.
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopenpng.datatype" \
     "$WORK/dtstart.o" "$WORK/dtlib.o" "$WORK/zlibrary.o" "$WORK/pngdecode.o" "$WORK/pngencode.o" \
-    "$WORK/pngclass.o" -lamiga \
+    "$WORK/pngclass.o" ${ACLIB:-} -lamiga \
     -Wl,-Map="$WORK/gfopenpng.datatype.map"
 echo "gfopenpng.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopenpng.datatype") bytes"
 # Its descriptor: descriptors.sh.

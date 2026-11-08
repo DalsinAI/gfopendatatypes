@@ -27,8 +27,40 @@ cd "$OUT"
 args=
 while read -r name rest; do args="$args $name.cdxl $name"; done < films.txt
 # shellcheck disable=SC2086
-./cdxltest $args > got.txt
+CDXL_IOLOG=io.txt ./cdxltest $args > got.txt
 diff -u films.txt got.txt
+# How the frames are found and read (the datatype's DOS packets): a film of
+# one frame size opens in constant time (frame 0's header, the last's and
+# the length), a frame a read in order (a seek back to the first only);
+# one whose sizes vary frame by frame; and backwards a seek and a read a
+# frame.
+cat io.txt
+python3 - io.txt <<'PY'
+import re, sys
+bad = []
+for line in open(sys.argv[1]):
+    m = re.match(r"(\S+): (constant time|frame by frame), (\d+) reads and (\d+) length to open, (\d+) reads and (\d+) seeks for (\d+) frames", line)
+    if m:
+        name, how, opens, lens, reads, seeks, frames = m.groups()
+        opens, lens, reads, seeks, frames = int(opens), int(lens), int(reads), int(seeks), int(frames)
+        if name == "vary" and how != "frame by frame":
+            bad.append(line)
+        if name not in ("vary",) and how != "constant time":
+            bad.append(line)
+        if how == "constant time" and (opens > 2 or lens != 1):
+            bad.append(line)
+        # in order: a read a frame, a seek only to the first (trap: indexed
+        # frame by frame on the way)
+        if name != "trap" and (reads != frames or seeks > 1):
+            bad.append(line)
+        continue
+    m = re.match(r"(\S+): backwards (\d+) reads, (\d+) seeks", line)
+    if m and int(m.group(2)) != int(m.group(3)):
+        bad.append(line)
+if bad:
+    sys.exit("reads and seeks not as they should be:\n" + "".join(bad))
+print("frames found and read in as few reads as they can be")
+PY
 while read -r name w h frames fps rate; do
     cmp "$name.rgb" "$name.got.rgb"
     cmp "$name.pcm" "$name.got.pcm"
@@ -65,6 +97,7 @@ if [ -n "${QEMU_M68K:-}" ]; then
     (cd m68k && args=; while read -r name rest; do args="$args ../$name.cdxl $name"; done < ../films.txt
      # shellcheck disable=SC2086
      "$QEMU_M68K" ../cdxltest-m68k $args > got.txt)
+    # (io.txt as on the host: CDXL_IOLOG unset here)
     diff -u films.txt m68k/got.txt
     while read -r name rest; do cmp "$name.rgb" "m68k/$name.got.rgb"; cmp "$name.pcm" "m68k/$name.got.pcm"; done < films.txt
     echo "68040 under qemu-m68k: the same pictures and sound"

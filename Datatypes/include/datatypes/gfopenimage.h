@@ -112,4 +112,68 @@ struct oiEncodePNG {
 #define OIEF_PREMULTIPLIED 1UL         /* colour premultiplied by alpha: undone first */
 #define OIEF_OPAQUE        2UL         /* leave alpha out: an RGB file */
 
+/* ---- Sounds read and written by programs (gfopensound, gfopenmodule,
+ * gfopenaiff and gfopenwave.datatype) --------------------------------------- */
+
+/* A converter's way in and out. Opened with OIA_Reader, a sound sets up
+ * no playing: its PCM comes, a piece at a time, from OIM_READSOUND,
+ * streamed from the file at the sound's own rate (a module: mixed at
+ * OIA_MixRate), so nothing is decoded whole. A program asks OIA_Channels
+ * first: a datatype that answers it answers OIM_READSOUND; one that
+ * doesn't has the sound in SDTA_Sample as sound.datatype has always kept
+ * it. Saving goes the other way: a DTST_RAM object of gfopenaiff or
+ * gfopenwave.datatype made with OIA_PCM, written with DTM_WRITE (DTWM_RAW). */
+
+/* (BOOL, I) Open for reading: OIM_READSOUND, no playing. */
+#define OIA_Reader     (OIA_Dummy + 7)
+
+/* (ULONG, I) gfopenmodule.datatype read with OIA_Reader: the rate it
+ * mixes at, 4000 to 96000 (default 44100). */
+#define OIA_MixRate    (OIA_Dummy + 8)
+
+/* (ULONG, I) gfopenmodule.datatype read with OIA_Reader: 0 nearest,
+ * 1 linear, 2 spline (default 2). */
+#define OIA_MixInterp  (OIA_Dummy + 9)
+
+/* (ULONG, IG) Channels in OIM_READSOUND's frames and in OIA_PCM: 1 or 2. */
+#define OIA_Channels   (OIA_Dummy + 10)
+
+/* (WORD *, I) gfopenaiff and gfopenwave.datatype with DTA_SourceType
+ * DTST_RAM: the sound, 16-bit, interleaved when stereo, SDTA_SampleLength
+ * frames at SDTA_SamplesPerSec; the datatype copies it. */
+#define OIA_PCM        (OIA_Dummy + 11)
+
+/* (ULONG, in DTM_WRITE's dtw_AttrList) Bits a sample in the file written,
+ * 8 or 16 (default 16). The program dithers; the datatype takes the high
+ * byte. */
+#define OIA_SampleBits (OIA_Dummy + 12)
+
+/* (BOOL, in DTM_WRITE's dtw_AttrList) Only the samples, no header: raw
+ * PCM, big-endian from gfopenaiff.datatype, little-endian from gfopenwave
+ * (8-bit: signed from gfopenaiff, unsigned from gfopenwave, as each format
+ * keeps them). */
+#define OIA_Headerless (OIA_Dummy + 13)
+
+/* Writes up to oirs_Frames frames of the sound, 16-bit signed big-endian,
+ * interleaved when OIA_Channels is 2, at oirs_Buffer, from where the last
+ * call stopped. Answers how many it wrote: 0 at the end, and 0 with
+ * IoErr() set when it can't. */
+#define OIM_READSOUND  (TAG_USER + 0x0DA15903)
+struct oiReadSound {
+    ULONG MethodID;
+    struct GadgetInfo *oirs_GInfo;     /* NULL */
+    WORD *oirs_Buffer;
+    ULONG oirs_Frames;
+};
+
+/* sound.datatype V44's own (NDK 3.5 and later), for headers that lack them */
+#ifndef SDTA_SampleType
+#define SDTA_SampleType (DTA_Dummy + 500 + 30)
+#define SDTA_Frequency  (DTA_Dummy + 500 + 32)
+#define SDTST_M8S  0
+#define SDTST_S8S  1
+#define SDTST_M16S 2
+#define SDTST_S16S 3
+#endif
+
 #endif

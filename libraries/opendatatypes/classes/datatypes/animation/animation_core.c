@@ -78,6 +78,58 @@ int adt_play_tick(struct adt_play *p)
 
 void adt_play_shown(struct adt_play *p, odt_u32 duration) { p->left = duration ? duration : 1; }
 
+void adt_deadline(odt_u32 n, odt_u32 fps, odt_u32 *secs, odt_u32 *micro)
+{
+    if (!fps) fps = 1;
+    if (fps > 4294) fps = 4294;         /* (fps - 1) * 1000000 in 32 bits */
+    *secs = n / fps;
+    /* rounded up: the tick never comes before its time */
+    *micro = ((n % fps) * 1000000UL + fps - 1) / fps;
+}
+
+/* A divisor GCC can't see is constant: a division by a constant would be
+ * a 64-bit MULU.L, which the 68060 traps (a 32-bit DIVU.L it doesn't) */
+static inline odt_u32 adt_opaque(odt_u32 v)
+{
+    __asm__("" : "+d"(v));
+    return v;
+}
+
+odt_u32 adt_due(odt_u32 secs, odt_u32 micro, odt_u32 fps)
+{
+    if (!fps) fps = 1;
+    if (fps > 4294) fps = 4294;
+    if (micro > 999999) micro = 999999;
+    return secs * fps + (micro * fps) / adt_opaque(1000000UL);
+}
+
+odt_u32 adt_sound_split(odt_u32 len, odt_u32 cycles, odt_u32 *start, odt_u32 *part, odt_u32 max)
+{
+    odt_u32 per, n = 0, c, at;
+    len &= ~1UL;
+    if (!len || !max) return 0;
+    per = (len + ADT_AUDIO_MAX - 1) / adt_opaque(ADT_AUDIO_MAX);
+    if (per == 1 || !cycles) cycles = 1;
+    for (c = 0; c < cycles; c++)
+        for (at = 0; at < len && n < max; at += ADT_AUDIO_MAX) {
+            start[n] = at;
+            part[n++] = len - at > ADT_AUDIO_MAX ? ADT_AUDIO_MAX : len - at;
+        }
+    return n;
+}
+
+int adt_elapsed(odt_u32 s0, odt_u32 m0, odt_u32 s1, odt_u32 m1, odt_u32 *secs, odt_u32 *micro)
+{
+    if (s1 < s0 || (s1 == s0 && m1 < m0)) return 0;
+    if (m1 < m0) {
+        m1 += 1000000UL;
+        s1--;
+    }
+    *secs = s1 - s0;
+    *micro = m1 - m0;
+    return 1;
+}
+
 odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps, odt_u32 clock, odt_u32 len)
 {
     odt_u32 rate = sps ? sps : (period ? clock / period : 0), off;
@@ -88,88 +140,174 @@ odt_u32 adt_sound_offset(odt_u32 ticks, odt_u32 fps, odt_u32 period, odt_u32 sps
 
 /* ---- remapping ----------------------------------------------------------------- */
 
-/* An 8 x 8 matrix of bits turned over. hi holds rows 0 to 3 (row 0 in its
- * top byte), lo rows 4 to 7; a row's top bit is column 0. Afterwards row j
- * holds what column j held, row 0's bit at the top. Eight plane bytes in
- * (plane 7 first) give eight pixels out, and eight pixels give the planes. */
-static inline void adt_turn8(odt_u32 *hi, odt_u32 *lo)
+/* 32 pixels of a row as 8 longwords of planes (plane p: pixel 0 in bit
+ * 31) turned into 8 longwords of pixels and back. Each step swaps one bit
+ * of the word's number with one bit of the position in the word (the bits
+ * above s in A with those below in B; A is the word whose number has that
+ * bit 0), so each is its own inverse. Planes: word p2p1p0, position
+ * ~x4..~x0 (x the pixel). The first step swaps p2 with ~x2: after it the
+ * words 0-3 and 4-7 are two halves that never meet again until the step
+ * is undone, four longwords each (they fit the 68k's data registers).
+ * Then in each half p0 with ~x0, p1 with ~x1, word bit 1 (now ~x1) with
+ * ~x4 and word bit 0 (now ~x0) with ~x3: word ~x2~x4~x3 holds pixels 4k to
+ * 4k+3 (k = x >> 2), a byte each, pixel 4k at the top. */
+#define ADT_SWAP(A, B, s, m)                                                                                           \
+    do {                                                                                                           \
+        odt_u32 t_ = (((A) >> (s)) ^ (B)) & (m);                                                                   \
+        (B) ^= t_;                                                                                                 \
+        (A) ^= t_ << (s);                                                                                          \
+    } while (0)
+
+/* A half's four longwords through the table (none: unchanged), pixels
+ * out of the planes and back in */
+static void adt_half(odt_u32 *h, const odt_u8 *table)
 {
-    odt_u32 x = *hi, y = *lo, t;
-    t = (x ^ (x >> 7)) & 0x00aa00aaUL;
-    x ^= t ^ (t << 7);
-    t = (y ^ (y >> 7)) & 0x00aa00aaUL;
-    y ^= t ^ (t << 7);
-    t = (x ^ (x >> 14)) & 0x0000ccccUL;
-    x ^= t ^ (t << 14);
-    t = (y ^ (y >> 14)) & 0x0000ccccUL;
-    y ^= t ^ (t << 14);
-    t = (x & 0xf0f0f0f0UL) | ((y >> 4) & 0x0f0f0f0fUL);
-    *lo = ((x << 4) & 0xf0f0f0f0UL) | (y & 0x0f0f0f0fUL);
-    *hi = t;
+    odt_u32 a0 = h[0], a1 = h[1], a2 = h[2], a3 = h[3];
+    union { odt_u32 l[4]; odt_u8 b[16]; } u;
+    odt_u32 i;
+    ADT_SWAP(a0, a1, 1, 0x55555555UL);
+    ADT_SWAP(a2, a3, 1, 0x55555555UL);
+    ADT_SWAP(a0, a2, 2, 0x33333333UL);
+    ADT_SWAP(a1, a3, 2, 0x33333333UL);
+    ADT_SWAP(a0, a2, 16, 0x0000ffffUL);
+    ADT_SWAP(a1, a3, 16, 0x0000ffffUL);
+    ADT_SWAP(a0, a1, 8, 0x00ff00ffUL);
+    ADT_SWAP(a2, a3, 8, 0x00ff00ffUL);
+    u.l[0] = a0; u.l[1] = a1; u.l[2] = a2; u.l[3] = a3;
+    for (i = 0; i < 16; i += 4) {
+        u.b[i] = table[u.b[i]];
+        u.b[i + 1] = table[u.b[i + 1]];
+        u.b[i + 2] = table[u.b[i + 2]];
+        u.b[i + 3] = table[u.b[i + 3]];
+    }
+    a0 = u.l[0]; a1 = u.l[1]; a2 = u.l[2]; a3 = u.l[3];
+    ADT_SWAP(a0, a1, 8, 0x00ff00ffUL);
+    ADT_SWAP(a2, a3, 8, 0x00ff00ffUL);
+    ADT_SWAP(a0, a2, 16, 0x0000ffffUL);
+    ADT_SWAP(a1, a3, 16, 0x0000ffffUL);
+    ADT_SWAP(a0, a2, 2, 0x33333333UL);
+    ADT_SWAP(a1, a3, 2, 0x33333333UL);
+    ADT_SWAP(a0, a1, 1, 0x55555555UL);
+    ADT_SWAP(a2, a3, 1, 0x55555555UL);
+    h[0] = a0; h[1] = a1; h[2] = a2; h[3] = a3;
 }
 
-/* Four pixels (a byte each) through the pen table */
-static inline odt_u32 adt_pens4(const odt_u8 *table, odt_u32 v)
+/* 32 pixels: a[p] plane p in and out */
+static inline void adt_remap32(odt_u32 *a, const odt_u8 *table)
 {
-    return (odt_u32)table[v >> 24] << 24 | (odt_u32)table[(v >> 16) & 255] << 16 | (odt_u32)table[(v >> 8) & 255] << 8 |
-           table[v & 255];
+    ADT_SWAP(a[0], a[4], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[1], a[5], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[2], a[6], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[3], a[7], 4, 0x0f0f0f0fUL);
+    adt_half(a, table);
+    adt_half(a + 4, table);
+    ADT_SWAP(a[0], a[4], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[1], a[5], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[2], a[6], 4, 0x0f0f0f0fUL);
+    ADT_SWAP(a[3], a[7], 4, 0x0f0f0f0fUL);
+}
+
+/* BitMap rows are 16-bit aligned: a longword read or written whole (the
+ * 68000 needs only word alignment for one) */
+typedef odt_u32 __attribute__((aligned(2), may_alias)) adt_l2;
+
+/* n bytes (1 to 4) of a plane row as the top of a longword, and back with
+ * the bits keep has set left as they were */
+static inline odt_u32 adt_get_part(const odt_u8 *s, odt_u32 n)
+{
+    odt_u32 v = 0, i;
+    for (i = 0; i < 4; i++) v = v << 8 | (i < n ? s[i] : 0);
+    return v;
+}
+
+static inline void adt_put_part(odt_u8 *d, odt_u32 v, odt_u32 keep, odt_u32 n)
+{
+    odt_u32 i;
+    for (i = 0; i < n; i++) {
+        odt_u8 k = (odt_u8)(keep >> (24 - 8 * i));
+        d[i] = (odt_u8)((d[i] & k) | ((odt_u8)(v >> (24 - 8 * i)) & ~k));
+    }
 }
 
 void adt_remap(const struct adt_BitMap *src, odt_u32 w, odt_u32 h, const odt_u8 *table, struct adt_BitMap *dst)
 {
-    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth, nd = 0;
-    odt_u32 mask[2] = { 0, 0 }, any = 8, at[8];
+    odt_u32 x, y, p, sd = src->Depth > 8 ? 8 : src->Depth, dd = dst->Depth > 8 ? 8 : dst->Depth, wl;
+    int ident, longs = !((odt_u32)src->BytesPerRow & 1) && !((odt_u32)dst->BytesPerRow & 1);
     if (w > (odt_u32)src->BytesPerRow * 8) w = (odt_u32)src->BytesPerRow * 8;
     if (w > (odt_u32)dst->BytesPerRow * 8) w = (odt_u32)dst->BytesPerRow * 8;
     if (h > src->Rows) h = src->Rows;
     if (h > dst->Rows) h = dst->Rows;
-    /* a missing source plane reads another plane's row and is masked off
-     * (none at all reads as 0); missing destination planes are skipped */
+    /* a missing source plane, or one past sd, reads as 0; missing
+     * destination planes are skipped, and those past 8 left alone */
     for (p = 0; p < sd; p++)
-        if (src->Planes[p]) {
-            if (any == 8) any = p;
-            mask[p >> 2] |= 0xffUL << (8 * (p & 3));
-        }
-    if (any == 8) sd = 0;
+        if (src->Planes[p]) longs &= !((odt_u32)src->Planes[p] & 1);
     for (p = 0; p < dd; p++)
-        if (dst->Planes[p]) at[nd++] = p;
+        if (dst->Planes[p]) longs &= !((odt_u32)dst->Planes[p] & 1);
+    /* the identity on every pixel the source can hold: the planes copied */
+    ident = adt_identity(table, sd);
+    wl = longs ? w & ~31UL : 0;
     for (y = 0; y < h; y++) {
         const odt_u8 *s[8];
         odt_u8 *d[8];
-        for (p = 0; p < sd; p++)
-            s[p] = (src->Planes[p] ? src->Planes[p] : src->Planes[any]) + y * src->BytesPerRow;
-        for (p = 0; p < nd; p++)
-            d[p] = dst->Planes[at[p]] + y * dst->BytesPerRow;
-        /* a byte of each plane at a time: its 8 pixels out of the planes,
-         * through the table and back into them */
-        for (x = 0; x < w; x += 8) {
-            odt_u32 byte = x >> 3, v[2] = { 0, 0 };
-            odt_u8 keep = (odt_u8)(w - x >= 8 ? 0 : 0xff >> (w - x)); /* bits past w stay as they are */
-            switch (sd) {
-            case 8: v[1] |= (odt_u32)s[7][byte] << 24; /* fall through */
-            case 7: v[1] |= (odt_u32)s[6][byte] << 16; /* fall through */
-            case 6: v[1] |= (odt_u32)s[5][byte] << 8;  /* fall through */
-            case 5: v[1] |= s[4][byte];                /* fall through */
-            case 4: v[0] |= (odt_u32)s[3][byte] << 24; /* fall through */
-            case 3: v[0] |= (odt_u32)s[2][byte] << 16; /* fall through */
-            case 2: v[0] |= (odt_u32)s[1][byte] << 8;  /* fall through */
-            case 1: v[0] |= s[0][byte];                /* fall through */
-            default: break;
+        for (p = 0; p < 8; p++) {
+            s[p] = p < sd && src->Planes[p] ? src->Planes[p] + y * src->BytesPerRow : 0;
+            d[p] = p < dd && dst->Planes[p] ? dst->Planes[p] + y * dst->BytesPerRow : 0;
+        }
+        if (ident) {
+            /* plane p of the source to plane p of the destination; 0 to
+             * those the source hasn't */
+            for (p = 0; p < 8; p++) {
+                const odt_u8 *q = s[p];
+                if (!d[p]) continue;
+                for (x = 0; x < wl; x += 32) *(adt_l2 *)(d[p] + (x >> 3)) = q ? *(const adt_l2 *)(q + (x >> 3)) : 0;
+                for (; x < w; x += 32) {
+                    odt_u32 n = (w - x + 7) >> 3, left = w - x;
+                    odt_u32 keep = left >= 32 ? 0 : 0xffffffffUL >> left;
+                    if (n > 4) n = 4;
+                    adt_put_part(d[p] + (x >> 3), q ? adt_get_part(q + (x >> 3), n) : 0, keep, n);
+                }
             }
-            v[0] &= mask[0];
-            v[1] &= mask[1];
-            adt_turn8(&v[1], &v[0]);    /* v[1]: pixels 0-3, v[0]: pixels 4-7 */
-            if (table) {
-                v[0] = adt_pens4(table, v[0]);
-                v[1] = adt_pens4(table, v[1]);
+            continue;
+        }
+        /* 32 pixels a turn: a longword of each plane out, through the
+         * table, back in; the row's end a byte at a time, with the bits
+         * past w left as they are */
+        for (x = 0; x < wl; x += 32) {
+            odt_u32 a[8], byte = x >> 3;
+            for (p = 0; p < 4; p++) {
+                odt_u32 lo = s[p] ? *(const adt_l2 *)(s[p] + byte) : 0;
+                odt_u32 hi = s[p + 4] ? *(const adt_l2 *)(s[p + 4] + byte) : 0;
+                ADT_SWAP(lo, hi, 4, 0x0f0f0f0fUL);
+                a[p] = lo;
+                a[p + 4] = hi;
             }
-            adt_turn8(&v[1], &v[0]);    /* v[0]: planes 3-0, v[1]: planes 7-4 */
-            for (p = 0; p < nd; p++) {
-                odt_u8 b = (odt_u8)(v[at[p] >> 2] >> (8 * (at[p] & 3)));
-                d[p][byte] = (odt_u8)((d[p][byte] & keep) | (b & ~keep));
+            adt_half(a, table);
+            adt_half(a + 4, table);
+            for (p = 0; p < 4; p++) {
+                odt_u32 lo = a[p], hi = a[p + 4];
+                ADT_SWAP(lo, hi, 4, 0x0f0f0f0fUL);
+                if (d[p]) *(adt_l2 *)(d[p] + byte) = lo;
+                if (d[p + 4]) *(adt_l2 *)(d[p + 4] + byte) = hi;
             }
         }
+        for (; x < w; x += 32) {
+            odt_u32 a[8], byte = x >> 3, left = w - x, n = left >= 32 ? 4 : (left + 7) >> 3;
+            odt_u32 keep = left >= 32 ? 0 : 0xffffffffUL >> left;
+            for (p = 0; p < 8; p++) a[p] = s[p] ? adt_get_part(s[p] + byte, n) : 0;
+            adt_remap32(a, table);
+            for (p = 0; p < 8; p++)
+                if (d[p]) adt_put_part(d[p] + byte, a[p], keep, n);
+        }
     }
+}
+
+int adt_identity(const odt_u8 *table, odt_u32 depth)
+{
+    odt_u32 i;
+    if (!table || depth > 8) return !table;
+    for (i = 0; i < (1UL << depth); i++)
+        if (table[i] != i) return 0;
+    return 1;
 }
 
 /* ---- the control panel ------------------------------------------------------------- */
@@ -247,6 +385,7 @@ static void unload(const struct odt_cenv *env, struct adt_inst *in, void *obj, s
     s->msg.MethodID = in->newformat == NF_NEW ? ADT_ADTM_UNLOADNEWFORMATFRAME : ADT_ADTM_UNLOADFRAME;
     env->do_method(env, obj, &s->msg);
     s->used = 0;
+    s->spare = 0;
 }
 
 static void drop_remapped(const struct odt_cenv *env, struct adt_slot *s)
@@ -278,8 +417,93 @@ static void release_pens(const struct odt_cenv *env, struct adt_inst *in)
     if (!in->pens_got) return;
     for (i = 0; i < in->num_alloc; i++)
         if (EXT(env)->release_pen) EXT(env)->release_pen(env, in->pens_screen, in->allocated[i]);
+    for (i = 0; i < in->nxpens; i++)
+        if (EXT(env)->release_pen) EXT(env)->release_pen(env, in->pens_screen, in->xpens[i].pen);
     in->num_alloc = 0;
+    in->nxpens = 0;
     in->pens_got = 0;
+}
+
+/* The frame's own colours (alf_CMap), into in->cm_rgb: how many, 0 when
+ * it has none */
+static odt_u32 frame_colors(const struct odt_cenv *env, struct adt_inst *in, const struct adt_slot *s)
+{
+    const struct adt_ext *x = EXT(env);
+    if (!s->msg.alf_CMap || !x->cmap_colors) return 0;
+    if (!in->cm_rgb && !(in->cm_rgb = env->alloc(env, 2 * 768))) return 0;
+    return x->cmap_colors(env, s->msg.alf_CMap, 256, in->cm_rgb);
+}
+
+static int same_color(const struct adt_inst *in, odt_u32 i, const odt_u8 *rgb)
+{
+    return i < in->num_colors && in->colregs[i].red == rgb[0] && in->colregs[i].green == rgb[1] &&
+           in->colregs[i].blue == rgb[2];
+}
+
+/* A pen for a colour of a frame's own: one obtained for it before, else
+ * obtained now (given back with the object's), else the nearest of the
+ * object's colours when ADT_MAXXPENS are out */
+static odt_u8 frame_pen(const struct odt_cenv *env, struct adt_inst *in, const odt_u8 *rgb)
+{
+    const struct adt_ext *x = EXT(env);
+    odt_u32 key = (odt_u32)rgb[0] << 16 | (odt_u32)rgb[1] << 8 | rgb[2], i, best = 0, bd = ~0UL;
+    odt_s32 pen;
+    for (i = 0; i < in->nxpens; i++)
+        if (in->xpens[i].rgb == key) return in->xpens[i].pen;
+    if (in->nxpens < ADT_MAXXPENS && x->obtain_pen &&
+        (in->xpens || (in->xpens = env->alloc(env, ADT_MAXXPENS * sizeof *in->xpens))) &&
+        (pen = x->obtain_pen(env, in->screen, rgb[0] * 0x01010101UL, rgb[1] * 0x01010101UL, rgb[2] * 0x01010101UL)) >= 0) {
+        in->xpens[in->nxpens].rgb = key;
+        in->xpens[in->nxpens++].pen = (odt_u8)pen;
+        return (odt_u8)pen;
+    }
+    for (i = 0; i < in->num_colors && i < 256; i++) {
+        odt_s32 dr = (odt_s32)in->colregs[i].red - rgb[0], dg = (odt_s32)in->colregs[i].green - rgb[1];
+        odt_s32 db = (odt_s32)in->colregs[i].blue - rgb[2];
+        odt_u32 dd = (odt_u32)(dr * dr + dg * dg + db * db);
+        if (dd < bd) { bd = dd; best = i; }
+    }
+    return in->color_table[best];
+}
+
+/* The pen table for the slot's frame: the object's, or, when the frame has
+ * colours of its own that differ from the object's, one of the slot's
+ * with pens for them (the object's pens for the colours that are the same) */
+static const odt_u8 *frame_table(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
+{
+    odt_u32 n = frame_colors(env, in, s), i;
+    const odt_u8 *rgb = in->cm_rgb;
+    for (i = 0; i < n && same_color(in, i, rgb + 3 * i); i++)
+        ;
+    if (i == n) return in->color_table;
+    if (!s->table && !(s->table = env->alloc(env, 256))) return in->color_table;
+    for (i = 0; i < 256; i++)
+        s->table[i] = i >= n || same_color(in, i, rgb + 3 * i) ? in->color_table[i] : frame_pen(env, in, rgb + 3 * i);
+    return s->table;
+}
+
+/* Not remapped (HAM, the film's own screen): the shown frame's own colours
+ * into the screen's palette when they are not there already, and the
+ * object's back when a frame without them follows one with them */
+static void show_colors(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
+{
+    const struct adt_ext *x = EXT(env);
+    odt_u32 n;
+    if (!x->load_colors || !in->screen) return;
+    if ((n = s ? frame_colors(env, in, s) : 0) != 0) {
+        odt_u8 *last = in->cm_rgb + 768;
+        odt_u32 i;
+        for (i = 0; in->cm_loaded && n == in->cm_last_n && i < 3 * n && last[i] == in->cm_rgb[i]; i++)
+            ;
+        if (in->cm_loaded && n == in->cm_last_n && i == 3 * n) return;
+        x->load_colors(env, in->screen, 0, n, in->cm_rgb);
+        for (i = 0; i < 3 * n; i++) last[i] = in->cm_rgb[i];
+        in->cm_last_n = n;
+        in->cm_loaded = 1;
+    } else if (in->cm_loaded) {
+        x->load_colors(env, in->screen, 0, in->num_colors, (const odt_u8 *)in->colregs);
+        in->cm_loaded = 0;
+    }
 }
 
 static int can_remap(const struct adt_inst *in)
@@ -289,57 +513,117 @@ static int can_remap(const struct adt_inst *in)
            in->depth <= 8;
 }
 
-static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
+/* A bitmap of the slot's own for the frame (the size, the depth d): the
+ * one from an earlier frame when it would be the same, after a WaitBlit
+ * (a blit of the earlier frame may still read it) */
+static struct adt_BitMap *slot_bitmap(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s,
+                                      const struct adt_BitMap *f, odt_u32 d)
 {
     const struct adt_ext *x = EXT(env);
-    const struct adt_BitMap *f = s->msg.alf_BitMap;
     struct adt_BitMap *bm = s->remapped;
-    odt_u32 d;
-    if (!can_remap(in) || !f || !x->alloc_bitmap) {
-        drop_remapped(env, s);
-        return;
-    }
-    obtain_pens(env, in);
-    d = x->screen_depth ? x->screen_depth(env, in->screen) : 8;
-    if (d > 8) d = 8;                   /* deeper screens: pens up to 255 */
-    /* the slot's bitmap from an earlier frame is written over when a new
-     * one would be the same (the size, the depth, every pixel remapped) */
     if (bm && (s->remapped_w != in->width || bm->Rows != in->height || bm->Depth != d || f->Rows < in->height ||
                (odt_u32)f->BytesPerRow * 8 < in->width)) {
         drop_remapped(env, s);
         bm = 0;
     }
     if (bm) {
-        if (x->wait_blit) x->wait_blit(env); /* a blit of the earlier frame may still read it */
+        if (x->wait_blit) x->wait_blit(env);
     } else if (!(bm = x->alloc_bitmap(env, in->width, in->height, d, 0)))
-        return;
+        return 0;
     s->remapped = bm;
     s->remapped_w = (odt_u16)in->width;
-    adt_remap(f, in->width, in->height, in->color_table, bm);
+    return bm;
 }
 
+/* The slot's frame as it is to be shown: remapped to the screen's pens into
+ * a bitmap of the slot's own; or the frame itself (none of our own) when it
+ * needs no remap and is where the display can read it; else copied into
+ * Chip RAM (a frame a subclass made in Fast RAM). Done when the frame is
+ * loaded, and again when it is drawn and has none (a screen known since). */
+static void remap_slot(const struct odt_cenv *env, struct adt_inst *in, struct adt_slot *s)
+{
+    const struct adt_ext *x = EXT(env);
+    const struct adt_BitMap *f = s->msg.alf_BitMap;
+    struct adt_BitMap *bm;
+    const odt_u8 *table;
+    odt_u32 d;
+    if (!f || !x->alloc_bitmap) {
+        drop_remapped(env, s);
+        return;
+    }
+    s->copied = 0;
+    if (!can_remap(in)) {
+        d = f->Depth > 8 ? 8 : f->Depth;
+        if (!x->in_chip || x->in_chip(env, f) || !d) drop_remapped(env, s);
+        else if ((bm = slot_bitmap(env, in, s, f, d)) != 0) {
+            adt_remap(f, in->width, in->height, 0, bm);
+            s->copied = 1;
+        }
+        return;
+    }
+    obtain_pens(env, in);
+    d = x->screen_depth ? x->screen_depth(env, in->screen) : 8;
+    if (d > 8) d = 8;                   /* deeper screens: pens up to 255 */
+    table = frame_table(env, in, s);
+    /* every pen the colour it is in the frame (the film's own screen, or
+     * one with its colours), as deep as the screen: shown as it is */
+    if (f->Depth == d && adt_identity(table, d) && (!x->in_chip || x->in_chip(env, f))) {
+        drop_remapped(env, s);
+        return;
+    }
+    if ((bm = slot_bitmap(env, in, s, f, d)) != 0)
+        adt_remap(f, in->width, in->height, table, bm);
+}
+
+/* Frame f into slot s. A spare slot hands its bitmap back to the subclass
+ * in alf_BitMap (alf_UserData with it), as OS 3.2's animation.datatype
+ * does, to draw the frame into: no bitmap made and cleared a frame. A
+ * subclass that makes a new one anyway gets the old one back with an
+ * unload. 1 when the frame is loaded; else the slot is empty, or spare
+ * when it still holds a bitmap. */
 static int load(const struct odt_cenv *env, struct adt_inst *in, void *obj, struct adt_slot *s, odt_u32 f)
 {
     odt_u8 *z = (odt_u8 *)&s->msg;
-    odt_u32 i, r = 0;
+    void *given = s->spare ? s->msg.alf_BitMap : 0, *data = s->spare ? s->msg.alf_UserData : 0;
+    odt_u32 i, r = 0, was = s->msg.alf_Frame;
+    int ok;
+    if (given && EXT(env)->wait_blit) EXT(env)->wait_blit(env);   /* a blit of the old frame may still read it */
     for (i = 0; i < sizeof s->msg; i++) z[i] = 0;
     s->msg.alf_TimeStamp = f;           /* timestamps count frames (ABI test) */
     s->msg.alf_Frame = f;
     s->msg.alf_Size = sizeof s->msg;
+    s->msg.alf_BitMap = given;
+    s->msg.alf_UserData = data;
     if (in->newformat != NF_OLD) {
         s->msg.MethodID = ADT_ADTM_LOADNEWFORMATFRAME;
         r = env->do_method(env, obj, &s->msg);
-        if (r || s->msg.alf_BitMap) in->newformat = NF_NEW;
+        if (r || s->msg.alf_BitMap != given) in->newformat = NF_NEW;
         else if (in->newformat == NF_UNKNOWN) in->newformat = NF_OLD;
     }
     if (in->newformat == NF_OLD) {
         for (i = 0; i < sizeof s->msg; i++) z[i] = 0;
         s->msg.alf_TimeStamp = f;
         s->msg.alf_Frame = f;
+        s->msg.alf_BitMap = given;
+        s->msg.alf_UserData = data;
         s->msg.MethodID = ADT_ADTM_LOADFRAME;
         r = env->do_method(env, obj, &s->msg);
     }
-    if (!r && !s->msg.alf_BitMap) return 0;
+    if (given && s->msg.alf_BitMap != given) {
+        struct adt_Frame old = s->msg;
+        old.alf_Frame = old.alf_TimeStamp = was;
+        old.alf_BitMap = given;
+        old.alf_UserData = data;
+        old.MethodID = in->newformat == NF_NEW ? ADT_ADTM_UNLOADNEWFORMATFRAME : ADT_ADTM_UNLOADFRAME;
+        env->do_method(env, obj, &old);
+        given = 0;
+    }
+    ok = r || (s->msg.alf_BitMap && s->msg.alf_BitMap != given);
+    s->spare = 0;
+    if (!ok) {
+        s->spare = s->msg.alf_BitMap != 0;
+        return 0;
+    }
     s->used = 1;
     remap_slot(env, in, s);
     return 1;
@@ -368,22 +652,32 @@ struct adt_slot *adt_cache(const struct odt_cenv *env, struct adt_inst *in, void
     odt_u32 n = window(in), i, k;
     struct adt_slot *shown = 0;
     if (!in->frames || frame >= in->frames) return 0;
+    /* frames no longer wanted keep their bitmaps, for the frames to come */
     for (k = 0; k < ADT_MAXPRELOAD; k++)
-        if (in->slots[k].used && !wanted(in, frame, n, in->slots[k].msg.alf_Frame)) unload(env, in, obj, &in->slots[k]);
+        if (in->slots[k].used && !wanted(in, frame, n, in->slots[k].msg.alf_Frame)) {
+            in->slots[k].used = 0;
+            in->slots[k].spare = 1;
+        }
     for (i = 0; i < n; i++) {
         odt_u32 f = frame + i;
-        struct adt_slot *s = 0, *fr = 0;
+        struct adt_slot *s = 0, *fr = 0, *sp = 0;
         if (f >= in->frames) {
             if (!in->play.repeat) break;
             f -= in->frames;
         }
         for (k = 0; k < ADT_MAXPRELOAD; k++) {
-            if (in->slots[k].used && in->slots[k].msg.alf_Frame == f) { s = &in->slots[k]; break; }
-            if (!in->slots[k].used && !fr) fr = &in->slots[k];
+            struct adt_slot *t = &in->slots[k];
+            if (t->used && t->msg.alf_Frame == f) { s = t; break; }
+            if (t->spare && !sp) sp = t;
+            else if (!t->used && !t->spare && !fr) fr = t;
         }
-        if (!s && fr && load(env, in, obj, fr, f)) s = fr;
+        if (!s && sp && load(env, in, obj, sp, f)) s = sp;
+        else if (!s && !sp && fr && load(env, in, obj, fr, f)) s = fr;
         if (i == 0) shown = s;
     }
+    /* what no frame took goes back to the subclass */
+    for (k = 0; k < ADT_MAXPRELOAD; k++)
+        if (in->slots[k].spare) unload(env, in, obj, &in->slots[k]);
     return shown;
 }
 
@@ -391,8 +685,10 @@ void adt_cache_flush(const struct odt_cenv *env, struct adt_inst *in, void *obj)
 {
     odt_u32 k;
     for (k = 0; k < ADT_MAXPRELOAD; k++) {
-        if (in->slots[k].used) unload(env, in, obj, &in->slots[k]);
+        if (in->slots[k].used || in->slots[k].spare) unload(env, in, obj, &in->slots[k]);
         drop_remapped(env, &in->slots[k]);
+        env->free(env, in->slots[k].table);
+        in->slots[k].table = 0;
     }
 }
 
@@ -562,6 +858,7 @@ static int get_attr(struct adt_inst *in, odt_u32 tag, odt_u32 *v)
     case ADT_ADTA_LeftSample: *v = (odt_u32)in->left; return 1;
     case ADT_ADTA_RightSample: *v = (odt_u32)in->right; return 1;
     case ADT_ADTA_SamplesPerSec: *v = in->sps; return 1;
+    case ADT_GFA_FramesAnyMem: *v = 1; return 1;
     case ODT_DTA_Methods: *v = (odt_u32)adt_methods; return 1;
     case ODT_DTA_TriggerMethods: *v = (odt_u32)adt_triggers; return 1;
     default: return 0;
@@ -597,7 +894,11 @@ static void draw_frame(const struct odt_cenv *env, struct adt_inst *in, void *ob
 {
     const struct adt_ext *x = EXT(env);
     struct adt_slot *s = adt_cache(env, in, obj, in->play.frame);
-    struct adt_BitMap *bm = s ? (s->remapped ? s->remapped : s->msg.alf_BitMap) : in->key_frame;
+    struct adt_BitMap *bm;
+    if (s && (!s->remapped || (s->copied && can_remap(in))))
+        remap_slot(env, in, s);         /* a screen known since it was loaded */
+    if (!can_remap(in)) show_colors(env, in, s);
+    bm = s ? (s->remapped ? s->remapped : s->msg.alf_BitMap) : in->key_frame;
     odt_s32 back = x->pen ? x->pen(env, gi, 7) : 0, w, h;
     struct odt_IBox pic = panel ? picture_box(env, in, gi, box) : box;
     if (top_vert < 0) top_vert = 0;
@@ -713,18 +1014,34 @@ static odt_u32 controlled(const struct odt_cenv *env, struct adt_inst *in, void 
     return r;
 }
 
-void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj)
+/* A frame's duration as the cache has it (1 when it isn't loaded) */
+static odt_u32 cached_duration(const struct adt_inst *in, odt_u32 f)
+{
+    odt_u32 k;
+    for (k = 0; k < ADT_MAXPRELOAD; k++)
+        if (in->slots[k].used && in->slots[k].msg.alf_Frame == f)
+            return in->slots[k].msg.alf_Duration ? in->slots[k].msg.alf_Duration : 1;
+    return 1;
+}
+
+void adt_tick_n(const struct odt_cenv *env, struct odt_IClass *cl, void *obj, odt_u32 n)
 {
     struct adt_inst *in = ODT_INST_DATA(cl, obj);
-    int changed;
+    int changed = 0, round = 0;
     lock(env, obj);
-    changed = adt_play_tick(&in->play);
+    while (n--) {
+        if (!adt_play_tick(&in->play)) continue;
+        changed = 1;
+        /* back to the first frame: time starts again */
+        if (in->play.frame == 0 && in->play.ticks == 0) round = 1;
+        if (n) adt_play_shown(&in->play, cached_duration(in, in->play.frame));
+    }
     if (changed) {
         struct adt_slot *s = adt_cache(env, in, obj, in->play.frame);
         adt_play_shown(&in->play, s ? s->msg.alf_Duration : 1);
         if (s && s->msg.alf_Sample) frame_sound(env, in, s);
-        else if (in->play.frame == 0 && in->play.ticks == 0) {
-            sound_off(env, in);       /* round again: the sound from its start */
+        else if (round) {
+            sound_off(env, in);       /* round again: the sound from where the frame is */
             sound_from(env, in);
         }
     } else if (in->play.state != ADT_PLAYING)
@@ -735,6 +1052,8 @@ void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj)
         redraw(env, in, obj);
     }
 }
+
+void adt_tick(const struct odt_cenv *env, struct odt_IClass *cl, void *obj) { adt_tick_n(env, cl, obj, 1); }
 
 static odt_u32 layout(const struct odt_cenv *env, struct adt_inst *in, void *obj, struct odt_GadgetInfo *gi)
 {
@@ -1227,6 +1546,10 @@ odt_u32 adt_dispatch(const struct odt_cenv *env, struct odt_IClass *cl, void *ob
         sound_off(env, in);
         adt_cache_flush(env, in, obj);
         free_colors(env, in);
+        env->free(env, in->cm_rgb);
+        env->free(env, in->xpens);
+        in->cm_rgb = 0;
+        in->xpens = 0;
         /* ADTA_KeyFrame stays the subclass's to free (ABI test) */
         return env->do_super(env, cl, obj, msg);
     case ODT_OM_SET:

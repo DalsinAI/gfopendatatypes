@@ -49,9 +49,31 @@ LONG png_read_head(const UBYTE *file, ULONG len, struct png_head *h);
 /* Copies the IDAT chunks' data together into idat (h->idat_len bytes). */
 void png_gather(const UBYTE *file, ULONG len, UBYTE *idat);
 
-/* Inflates idat into raw (h->raw_len bytes), undoes the filters and writes
- * the picture to argb (width * height words). work is PNG_WORKSIZE bytes,
- * longword aligned. 0, or -1 on a damaged stream. No OS calls. */
+/* Where png_strip() has got to (the caller keeps it; no OS calls, no
+ * static data). */
+struct png_rows {
+    ULONG got;                           /* bytes inflated */
+    ULONG at;                            /* plain: where the next row starts in raw */
+    ULONG y;                             /* the next row png_strip() gives */
+    const UBYTE *prev;                   /* plain: the row above, its filter undone */
+    ULONG pass_at[7];                    /* Adam7: where each pass starts in raw */
+    ULONG pass_rows[7];                  /* Adam7: how many of its rows came */
+};
+
+/* Inflates idat into raw (h->raw_len bytes); with Adam7 it also undoes
+ * every pass's filters. work is PNG_WORKSIZE bytes, longword aligned, and
+ * idat and work are not needed after it. 0, or -1 when nothing came out of
+ * the stream. A stream that ends early or goes wrong keeps what it gave. */
+LONG png_unpack(const struct png_head *h, const UBYTE *idat, UBYTE *raw, APTR work, struct png_rows *r);
+
+/* The next n rows of the picture into argb (n * width words, ARGB): a strip
+ * to hand on while the rest waits in raw. Rows (and with Adam7, pixels)
+ * that never came are cleared; nothing else is written twice. Strips are
+ * taken top to bottom, up to the picture's height. */
+void png_strip(const struct png_head *h, UBYTE *raw, struct png_rows *r, ULONG *argb, ULONG n);
+
+/* png_unpack(), then the whole picture as one strip into argb (width *
+ * height words). 0, or -1 on a damaged stream. */
 LONG png_decode(const struct png_head *h, const UBYTE *idat, UBYTE *raw, ULONG *argb, APTR work);
 
 #endif

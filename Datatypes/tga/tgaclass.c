@@ -5,7 +5,9 @@
  * 15/16, 24 and 32-bit true-colour with alpha, and greyscale; rows from the
  * bottom or the top. The pixels go to picture.datatype as 32-bit ARGB
  * (bmh_Depth 32), as gfopenpng.datatype's do, so a program reading them back
- * as ARGB gets them as they were decoded, alpha included.
+ * as ARGB gets them as they were decoded, alpha included. They go in strips
+ * of about 32 rows as they are decoded (47.3), so the picture is not held
+ * whole a second time.
  *
  * DTM_WRITE in raw mode writes the picture as a TGA (tgaencode.c): 32 bits
  * with alpha when it has any, else 24, run-length encoded unless
@@ -46,10 +48,10 @@
 #include <proto/utility.h>
 
 const char LibName[] = "gfopentga.datatype";
-const char LibIdString[] = "gfopentga.datatype 47.2 (23.10.2026) AmiCradle Team";
+const char LibIdString[] = "gfopentga.datatype 47.3 (7.11.2026) AmiCradle Team";
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 2;
-static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.2 (23.10.2026)";
+const UWORD LibRevision = 3;
+static const char version[] __attribute__((used)) = "$VER: gfopentga.datatype 47.3 (7.11.2026)";
 
 const char dt_superclass[] = "picture.datatype";
 const UWORD dt_superversion = 43;
@@ -71,14 +73,40 @@ static APTR big_alloc(ULONG n)
     return p ? p : AllocVec(n, MEMF_ANY);
 }
 
+/* Rows in a strip handed to picture.datatype: about 32, so the picture is
+ * never held whole twice, in at most 256 KB. */
+static ULONG strip_rows(ULONG width)
+{
+    ULONG rows = (256UL * 1024) / (width * 4);
+    return rows > 32 ? 32 : rows ? rows : 1;
+}
+
+/* Every row through tga_strip() to picture.datatype, a strip at a time
+ * (opaque: the second time, the alpha having come out empty). */
+static BOOL hand_over(Class *cl, Object *o, const struct tga_head *h, const UBYTE *file, ULONG size, ULONG *pal,
+                      ULONG *argb, struct tga_rows *r, UBYTE opaque)
+{
+    ULONG y, n, most = strip_rows(h->width);
+    if (tga_start(h, file, size, pal, r, opaque))
+        return FALSE;
+    for (y = 0; y < h->height; y += n) {
+        n = h->height - y < most ? h->height - y : most;
+        tga_strip(h, file, size, pal, r, argb, n);
+        if (!DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h->width * 4,
+                0, h->top_down ? y : h->height - y - n, h->width, n))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static BOOL loadTGA(Class *cl, Object *o)
 {
     struct BitMapHeader *bmh = NULL;
     struct tga_head h;
+    struct tga_rows rows;
     STRPTR name = NULL;
     UBYTE *file;
     ULONG *argb = NULL, *pal = NULL, size = 0;
-    UBYTE alpha = 0;
     LONG err = ERROR_NO_FREE_STORE;
     BOOL ok = FALSE;
 
@@ -93,33 +121,41 @@ static BOOL loadTGA(Class *cl, Object *o)
         SetIoErr(DTERROR_INVALID_DATA);
         return FALSE;
     }
-    if ((argb = big_alloc(h.width * h.height * 4)) && (h.type != 1 || (pal = AllocVec((ULONG)h.map_len * 4, MEMF_ANY)))) {
-        if (tga_decode(&h, file, size, argb, pal, &alpha) == 0)
+    /* The rows go to picture.datatype a strip at a time as they are
+     * decoded: the picture is held once, in picture.datatype. */
+    if ((argb = big_alloc(h.width * 4 * strip_rows(h.width)))
+        && (h.type != 1 || (pal = AllocVec((ULONG)h.map_len * 4, MEMF_ANY)))) {
+        if (tga_start(&h, file, size, pal, &rows, 0) == 0)
             ok = TRUE;
         else
             err = DTERROR_INVALID_DATA;
     }
-    if (pal) FreeVec(pal);
-    FreeVec(file);
-
     if (ok) {
         bmh->bmh_Width = bmh->bmh_PageWidth = (UWORD)h.width;
         bmh->bmh_Height = bmh->bmh_PageHeight = (UWORD)h.height;
         bmh->bmh_Depth = 32;             /* ARGB, alpha or not */
-        bmh->bmh_Masking = alpha ? mskHasAlpha : mskNone;
+        bmh->bmh_Masking = h.alpha ? mskHasAlpha : mskNone;
         SetDTAttrs(o, NULL, NULL,
             DTA_ObjName, (ULONG)(name ? FilePart(name) : (STRPTR)"TGA"),
             DTA_NominalHoriz, h.width,
             DTA_NominalVert, h.height,
             PDTA_SourceMode, PMODE_V43,
-            PDTA_AlphaChannel, alpha ? TRUE : FALSE,
+            PDTA_AlphaChannel, h.alpha ? TRUE : FALSE,
             TAG_DONE);
-        ok = DoSuperMethod(cl, o, PDTM_WRITEPIXELARRAY, (ULONG)argb, PBPAFMT_ARGB, h.width * 4,
-            0, 0, h.width, h.height) ? TRUE : FALSE;
+        ok = hand_over(cl, o, &h, file, size, pal, argb, &rows, 0);
+        if (ok && h.alpha && !(rows.seen & 0xFF000000UL)) {
+            /* alpha 0 everywhere: an empty channel, not a clear picture.
+             * Rare (some writers' 32-bit pictures): the rows again, opaque. */
+            bmh->bmh_Masking = mskNone;
+            SetDTAttrs(o, NULL, NULL, PDTA_AlphaChannel, FALSE, TAG_DONE);
+            ok = hand_over(cl, o, &h, file, size, pal, argb, &rows, 1);
+        }
         if (!ok)
             err = ERROR_NO_FREE_STORE;
     }
+    if (pal) FreeVec(pal);
     if (argb) FreeVec(argb);
+    FreeVec(file);
     if (!ok)
         SetIoErr(err);
     return ok;

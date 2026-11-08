@@ -1,6 +1,6 @@
 # GFOpenILBM: an open ilbm.datatype
 
-ilbm.datatype 47.100 for AmigaOS 3.2, a picture.datatype subclass, API and
+ilbm.datatype 47.101 for AmigaOS 3.2, a picture.datatype subclass, API and
 ABI compatible, clean-room (from the public IFF ILBM specification and its
 updates, the picture_dtc and datatypes autodocs and NDK 3.2's layouts;
 never from Kickstart, Hyperion or AROS code, nor any third-party
@@ -23,8 +23,8 @@ picture's BitMapHeader and colours, sets `PDTA_ModeID`, `PDTA_NumColors`,
 `PDTA_SourceMode` (V43), `DTA_NominalHoriz/Vert`, `PDTA_Grab` and the
 `DTA_Obj` strings, and hands the pixels over a row at a time with
 `PDTM_WRITEPIXELARRAY`: LUT8 for index pictures, ARGB for HAM6, HAM8 and
-deep (24 and 32 plane) ILBMs. The BODY is unpacked whole (ByteRun1 runs may
-cross rows and planes; -128 is skipped). A mask plane (mskHasMask) goes to
+deep (24 and 32 plane) ILBMs. The BODY is unpacked a row at a time
+(ByteRun1 runs may cross rows and planes; -128 is skipped). A mask plane (mskHasMask) goes to
 the picture as `PDTA_MaskPlane`. DTM_WRITE, DTWM_IFF or DTWM_RAW, is
 picture.datatype's ILBM writer.
 

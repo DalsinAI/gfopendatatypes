@@ -37,13 +37,21 @@ The qemu test is `tests/m68k/test_opendatatypes_textanim.sh`.
 | ADTM_STOP | Rewinds to frame 0 | measured |
 | Control panel | On unless OM_NEW's tags give DTA_ControlPanel (datatypesclass always answers it, FALSE) | ABI test |
 | Remap | ObtainBestPen per colour, planar to planar | measured |
-| Remapping a frame | A byte of each plane at a time (8 pixels); each cache slot keeps its remapped bitmap for the next frame loaded there, after a WaitBlit | ours |
+| Remapping a frame | 32 pixels a turn: a longword of each plane read, turned into pixels, through the pen table, turned back and written whole (a byte at a time only at a row's end, keeping the bits past the width); each cache slot keeps its remapped bitmap for the next frame loaded there, after a WaitBlit | ours |
+| Pens that are the frame's own colour numbers, frame as deep as the screen | Not remapped: the frame is shown as it is | ours |
+| A frame leaves the preload window | Its bitmap is kept and handed to the next frame loaded, in alf_BitMap (alf_UserData with it), to draw into after a WaitBlit, as OS 3.2's class does: no bitmap made and cleared a frame. A subclass that makes a new one anyway gets the old one back with ADTM_UNLOADFRAME; one no frame takes is unloaded | ours (OS 3.2's way: gfopenvideo's notes) |
+| Frames in Fast RAM | OM_GET of `ADT_GFA_FramesAnyMem` (TAG_USER + 0x47460001) answers TRUE (OS 3.2's class: FALSE): a frame not in Chip RAM is remapped, or copied to Chip RAM when it can't be, before it is shown. anim.datatype puts its frames there when they are remapped anyway (no HAM, ADTA_Remap on); the key frame stays in Chip RAM | ours |
+| A frame loaded before the screen is known | Remapped when it is first drawn | ours |
+| Bitmaps | Not cleared: every frame and every remap is drawn whole | ours |
+| A frame's own colours (alf_CMap) | Remapped: through pens obtained for the colours that differ from the object's (each colour once, given back with the object's pens; past 256 of them, the nearest of the object's). Not remapped (HAM, the film's own screen): loaded into the screen's palette when the frame is shown, and the object's colours back for a frame with none; never into the Workbench's | ours |
 | A colour no pen could take | Shown as pen 0, not in ADTA_Allocated, never released | ours |
 | ADTA_Remap, ADTA_Screen or ADTA_NumColors changed | The pens released and the frame cache loaded again (remapped afresh) | ours |
 | DTA_TriggerMethods | Play, Pause, Stop, Rewind, Fast Forward (labels ours) | ABI test |
 | ADTM_START/PAUSE/STOP, STM_PLAY/PAUSE/STOP from a program | As the panel's buttons: the frame told when it moved, the gadget redrawn | ours |
 | Stopping the player | Waits until the process is gone (its start message comes back under Forbid), so the library can be expunged after | ours |
 | Sound | Started at ticks/fps x clock/period into the sample | measured |
+| A sample longer than 131070 bytes | Several audio.device writes queued on the channel at once (up to 64, 8 MB), played one after the other | ours |
+| The player's clock | Absolute deadlines: tick n at n / fps seconds from the start (timer.device UNIT_WAITUNTIL), so a frame's work never slows the film or puts the sound out of step; ticks missed (a slow frame) are done at once, the frames between passed over and only the last loaded and shown. 16 KB of stack (frames are decoded and remapped on it) | ours |
 
 ## Saving (DTM_WRITE)
 
@@ -78,7 +86,7 @@ planes, and writing to a stream that can't Seek.
 - ANIM sound chunks; ANIMs from the clipboard.
 - More than 8 planes, HAM remap.
 - Dragging the panel's knob (a click jumps), ScrollRaster, DTM_PRINT.
-- A shared audio channel; samples over 131070 bytes are cut.
+- A shared audio channel; a sample is copied whole to Chip RAM (over 8 MB: cut).
 - An ANIM is read whole on OM_NEW, not streamed.
 - The shells and ABI test are not yet built or run on the stove; the cores
   are tested under qemu (m68k-linux-gnu-gcc 13, -O0/-O2 for 68000/68020/68040).
