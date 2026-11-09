@@ -13,6 +13,68 @@
 #include "dtlib.h"
 #include "dtservice.h"
 
+#ifdef DT_MITCHY
+/* mitchy.library (gfopenservice's include/libraries/mitchy.h): its base is
+ * the connection's own, so each call names it. */
+#include <libraries/mitchy.h>
+#include <inline/mitchy.h>
+#undef MITCHY_BASE_NAME
+#define MITCHY_BASE_NAME (s->mitchy)
+
+/* The Mitchy way in: TRUE when mitchy.library is installed (then *opened says
+ * whether the service opened); FALSE when it is not, for the device. */
+static BOOL mitchyOpen(struct dt_service *s, const char *name, BOOL *opened)
+{
+    LONG err = 0;
+
+    *opened = FALSE;
+    if (!(s->mitchy = OpenLibrary((CONST_STRPTR)MITCHYNAME, MITCHYVERSION)))
+        return FALSE;
+    if ((s->ms = MitchyOpen((CONST_STRPTR)name, 0, &err))) {
+        s->open = TRUE;
+        *opened = TRUE;
+    }
+    return TRUE;
+}
+
+static LONG mitchyCall(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
+                       const struct OSBuffer buf[4], const ULONG extra[4], ULONG *result, ULONG *aux)
+{
+    struct MitchyBuffer mb[4];
+    ULONG ex[4], ra[2] = { 0, 0 };
+    LONG st;
+    int i;
+
+    for (i = 0; i < 4; i++) {
+        mb[i].mb_Data = buf[i].ob_Data;
+        mb[i].mb_Length = buf[i].ob_Length;
+        ex[i] = extra[i];
+    }
+    st = MitchyCall((struct MitchyService *)s->ms, op, flags, arg, mb, ex, ra);
+    if (result)
+        *result = ra[0];
+    if (aux)
+        *aux = ra[1];
+    return st;
+}
+
+static ULONG mitchyWhere(struct dt_service *s)
+{
+    switch (MitchyWhere((struct MitchyService *)s->ms)) {
+    case MITCHY_WHERE_BOARD: return OSWHERE_CARD;
+    case MITCHY_WHERE_LAN: return OSWHERE_LAN;
+    }
+    return 0;
+}
+
+static void mitchyClose(struct dt_service *s)
+{
+    if (s->ms)
+        MitchyClose((struct MitchyService *)s->ms);
+    CloseLibrary(s->mitchy);
+}
+#endif
+
 /* A port that belongs to no task: PA_IGNORE until a call sets the caller's
  * task and signal on it for as long as it waits. */
 static struct MsgPort *newPort(void)
@@ -67,6 +129,16 @@ BOOL dt_service_open(struct dt_service *s, const char *name)
 {
     memset(s, 0, sizeof *s);
     s->aheadSig = -1;
+#ifdef DT_MITCHY
+    {
+        BOOL opened;
+        if (mitchyOpen(s, name, &opened)) {
+            if (!opened)
+                dt_service_close(s);
+            return opened;
+        }
+    }
+#endif
     if (!(s->port = newPort()))
         return FALSE;
     if (!(s->io = (struct OSRequest *)CreateIORequest(s->port, sizeof *s->io))) {
@@ -109,6 +181,10 @@ LONG dt_service_call(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
 
     if (!s->open)
         return OSERR_LOST;
+#ifdef DT_MITCHY
+    if (s->ms)
+        return mitchyCall(s, op, arg, flags, buf, extra, result, aux);
+#endif
     fill(s, s->io, op, arg, flags, buf, extra);
     st = run(s, OSCMD_CALL);
     if (result)
@@ -123,7 +199,7 @@ BOOL dt_service_send(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
 {
     BYTE sig;
 
-    if (!s->open || s->sent)
+    if (!s->open || s->sent || s->ms)  /* through Mitchy: no read-ahead */
         return FALSE;
     if (!s->ahead) {
         /* A copy of the opened request, on a port of its own. */
@@ -193,6 +269,10 @@ LONG dt_service_wait(struct dt_service *s, ULONG *result, ULONG *aux)
 
 ULONG dt_service_where(struct dt_service *s)
 {
+#ifdef DT_MITCHY
+    if (s->ms)
+        return mitchyWhere(s);
+#endif
     if (s->open && !s->where) {
         s->io->os_Service = s->handle;
         if (run(s, OSCMD_WHERE) == OSERR_OK)
@@ -203,6 +283,10 @@ ULONG dt_service_where(struct dt_service *s)
 
 void dt_service_close(struct dt_service *s)
 {
+#ifdef DT_MITCHY
+    if (s->mitchy)
+        mitchyClose(s);
+#endif
     if (s->sent) {
         AbortIO((struct IORequest *)s->ahead);
         dt_service_wait(s, NULL, NULL);

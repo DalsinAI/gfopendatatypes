@@ -16,6 +16,12 @@
  *     every time; a host that let it go (GONE) gets it again; and
  *     dt_file_release lets it go;
  *   - without the device or the service nothing opens and nothing leaks.
+ * Built a second time with DT_MITCHY (gfopensound.datatype's build): all the
+ * above again with mitchy.library not installed (the device, as before),
+ * then with it: the service opened by MitchyOpen on the connection's own
+ * library base, every call through MitchyCall (files sent once too), no
+ * read-ahead, MitchyWhere as the card or the LAN, and the library closed;
+ * mitchy.library there but no service: FALSE, the device never tried.
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "dtservice.c"
@@ -311,6 +317,85 @@ LONG GetVar(CONST_STRPTR name, STRPTR buffer, LONG size, ULONG flags)
     return -1;
 }
 
+#ifdef DT_MITCHY
+/* ---- mitchy.library (tests/test-dtservice.sh points inline/mitchy.h here) -- */
+
+static int mitchyInstalled, libOpens, libCloses, mOpens, mCloses, mCalls;
+static struct Library mitchyLib;
+static struct MitchyService mService;
+
+struct Library *OpenLibrary(CONST_STRPTR name, ULONG version)
+{
+    if (!mitchyInstalled || strcmp(name, MITCHYNAME) || version > 1)
+        return NULL;
+    libOpens++;
+    return &mitchyLib;
+}
+
+void CloseLibrary(struct Library *lib)
+{
+    check(lib == &mitchyLib, "CloseLibrary of the library opened");
+    libCloses++;
+}
+
+struct MitchyService *fakeMitchyOpen(struct Library *base, CONST_STRPTR name, ULONG flags, LONG *err)
+{
+    check(base == &mitchyLib, "MitchyOpen on the connection's base");
+    check(flags == 0, "MitchyOpen: a board or a Cradle");
+    if (cfg.noService) {
+        if (err) *err = MERR_NOTFITTED;
+        return NULL;
+    }
+    mOpens++;
+    mService.ms_Handle = 7;
+    mService.ms_Where = cfg.where == OSWHERE_LAN ? MITCHY_WHERE_LAN : MITCHY_WHERE_BOARD;
+    strcpy((char *)mService.ms_Name, name);
+    if (err) *err = 0;
+    return &mService;
+}
+
+void fakeMitchyClose(struct Library *base, struct MitchyService *ms)
+{
+    check(base == &mitchyLib && ms == &mService, "MitchyClose of the service opened");
+    mCloses++;
+}
+
+LONG fakeMitchyWhere(struct Library *base, struct MitchyService *ms)
+{
+    check(base == &mitchyLib && ms == &mService, "MitchyWhere of the service opened");
+    return ms->ms_Where;
+}
+
+/* The same fake service as the device's: a request made of MitchyCall's arguments. */
+LONG fakeMitchyCall(struct Library *base, struct MitchyService *ms, ULONG op, ULONG flags, ULONG arg,
+                    struct MitchyBuffer *b, ULONG *extra, ULONG *ra)
+{
+    struct OSRequest io;
+    int i;
+    check(base == &mitchyLib && ms == &mService, "MitchyCall on the service opened");
+    memset(&io, 0, sizeof io);
+    io.os_Service = ms->ms_Handle;
+    io.os_Op = (UWORD)op;
+    io.os_Flags = flags;
+    io.os_Arg = arg;
+    for (i = 0; i < 4; i++) {
+        io.os_Buf[i].ob_Data = b[i].mb_Data;
+        io.os_Buf[i].ob_Length = b[i].mb_Length;
+        io.os_Extra[i] = extra[i];
+    }
+    mCalls++;
+    serve(&io);
+    if (ra) {
+        ra[0] = io.os_Result;
+        ra[1] = io.os_Aux;
+    }
+    return io.os_Status;
+}
+#else
+struct Library *OpenLibrary(CONST_STRPTR name, ULONG version) { (void)name; (void)version; return NULL; }
+void CloseLibrary(struct Library *lib) { (void)lib; }
+#endif
+
 /* ---- the cases ------------------------------------------------------------- */
 
 static void reset(void)
@@ -472,6 +557,40 @@ int main(void)
     cfg.noService = 1;
     check(!dt_service_open(&s, "media.decode/1"), "no card or Cradle: no service");
     balanced("no service");
+
+#ifdef DT_MITCHY
+    /* mitchy.library installed: the service through it, the device never opened. */
+    mitchyInstalled = 1;
+    reset();
+    check(dt_service_open(&s, "media.decode/1"), "Mitchy: the service opens");
+    check(libOpens == 1 && mOpens == 1 && !s.io && host.opens == 0, "Mitchy: MitchyOpen, not the device");
+    check(dt_service_where(&s) == OSWHERE_CARD, "Mitchy: MitchyWhere, the board, is the card");
+    check(!dt_service_send(&s, 2, 5, 2, buf, extra), "Mitchy: no read-ahead");
+    f.kept = 0;
+    fileCalls(&s, &f, 4, &st);
+    check(st == 0 && mCalls == 5, "Mitchy: PROBE and four DECODEs through MitchyCall");
+    check(host.sentWhole == 1 && host.sentEmpty == 4 && !host.kept, "Mitchy: the file sent once, named, let go");
+    memset(buf, 0, sizeof buf);
+    st = dt_service_call(&s, 9, 0, 0, buf, extra, &result, NULL);
+    check(st == OSERR_BADREQUEST, "Mitchy: the service's status comes back");
+    dt_service_close(&s);
+    check(mCloses == 1 && libCloses == 1, "Mitchy: the service closed, then the library");
+    balanced("Mitchy");
+
+    reset();
+    cfg.where = OSWHERE_LAN;
+    dt_service_open(&s, "media.decode/1");
+    check(dt_service_where(&s) == OSWHERE_LAN, "Mitchy: a paired Cradle is the LAN");
+    dt_service_close(&s);
+    balanced("Mitchy on the LAN");
+
+    reset();
+    cfg.noService = 1;
+    libOpens = libCloses = 0;
+    check(!dt_service_open(&s, "media.decode/1"), "Mitchy without the service (card pulled): no service");
+    check(libOpens == 1 && libCloses == 1 && host.opens == 0, "Mitchy without the service: library closed, device not tried");
+    balanced("Mitchy without the service");
+#endif
 
     printf("dtservicetest: %d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

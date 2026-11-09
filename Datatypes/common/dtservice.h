@@ -35,10 +35,18 @@ struct dt_service {
     UWORD handle;
     BOOL open;
     ULONG where;               /* OSWHERE_*, from OSCMD_WHERE; 0 not asked yet or unknown */
+    struct Library *mitchy;    /* DT_MITCHY: mitchy.library, when the service came through it */
+    APTR ms;                   /* DT_MITCHY: its struct MitchyService */
 };
 
 /* Opens the device and the service; FALSE when neither a card nor a paired
- * Cradle offers it (or the device is not installed). */
+ * Cradle offers it (or the device is not installed).
+ *
+ * Built with DT_MITCHY (gfopensound.datatype), the service is opened through
+ * mitchy.library (gfopenservice's include/libraries/mitchy.h, MitchyOpen)
+ * when that library is installed, and its calls go through MitchyCall; the
+ * device is opened as before only when mitchy.library is not there. Then
+ * dt_service_send is not offered (FALSE: the caller waits for each call). */
 BOOL dt_service_open(struct dt_service *s, const char *name);
 /* One request; buffer i is written by the service when flags bit i is set.
  * Returns the service's status (0 is OK, OSERR_* otherwise). */

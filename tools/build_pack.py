@@ -22,6 +22,8 @@ what the builds made, so a new datatype needs no change to this file.
     Library/Libs/datatypes.library    the library, and its system classes in
     Library/Classes/DataTypes/        Library/Classes/DataTypes
     Libs/z.library                    GFOpenZlib, for gzip and gfopenpng's PNG writing
+    Libs/gfopensound-decoders.library gfopensound's Ogg Vorbis, MP3 and FLAC decoders
+                                      on this CPU, with its choice (CLASS_LIBS)
   build/pack/GFOpenDatatypes.info       the drawer's icon
   build/pack/GFOpenDatatypes.json       what is in it, for GFOpenUp's GFOpenImage part
   build/pack/GFOpenDatatypes-<version>.lha   with --lha (jlha or lha on PATH); its
@@ -102,6 +104,11 @@ PAGE = 9            # the 3.2 Installer shows nine choices a page (GFOpenUp, 8 O
 # The datatypes that open z.library (Datatypes/README.md): the pack brings the Team's own, GFOpenZlib, and
 # installs it with them (the user, 23 October 2026: GFOpenZlib is the z.library).
 ZLIB_USERS = ("gzip.datatype", "gfopenpng.datatype")
+
+# Libraries a class opens from LIBS:, made by Datatypes/build.sh in its Libs/, installed with the class's
+# choice: gfopensound.datatype 47.3 (built slim, as the ROM's is) decodes Ogg Vorbis, MP3 and FLAC on this
+# CPU only through gfopensound-decoders.library, when there is no services card (Dale, 9 November 2026).
+CLASS_LIBS = {"gfopensound.datatype": ["gfopensound-decoders.library"]}
 
 STORE = "SYS:Storage/GFOpenDatatypes"
 DEST = {"Classes": "SYS:Classes/DataTypes", "Devs": "DEVS:DataTypes", "Libs": "LIBS:"}
@@ -194,6 +201,10 @@ def collect(dt_out: Path, lib_out: Path, zlib_out: Path) -> tuple[list[dict], li
         files = [{"pack": f"Classes/DataTypes/{name}", "tag": "Classes", "name": name, "src": classes[name]}]
         files += [{"pack": f"Devs/DataTypes/{d.name}", "tag": "Devs", "name": d.name, "src": d}
                   for d in by_class.get(name, [])]
+        for lib_name in CLASS_LIBS.get(name, []):
+            p = dt_out / "Libs" / lib_name
+            if p.is_file():         # a build from before the class needed it has none
+                files.append({"pack": f"Libs/{lib_name}", "tag": "Libs", "name": lib_name, "src": p})
         entry = {"class": name, "label": LABELS.get(name[:-9], name), "files": files}
         (choices if name in by_class else always).append(entry)
     library = None

@@ -62,7 +62,10 @@ DATATYPES = {
     "cdxl": [("CDXL", "CDXL", "anim", "cdxl")],
     "opendoc": [("DOCX", "Word document", "pict", "docx")],
     "gzip": [("gzip", "gzip", "data", "gzip")],
+    "gfopensound": [("Ogg", "Ogg", "soun", "ogg")],
 }
+# libraries a class opens from LIBS:, made in Datatypes/out/Libs (build_pack.py's CLASS_LIBS)
+CLASS_LIBS = {"gfopensound": "gfopensound-decoders.library"}
 SUPERCLASSES = ["stream"]
 SYSTEM = ["picture", "ilbm", "sound", "8svx", "text", "ascii", "animation", "anim"]
 
@@ -82,6 +85,9 @@ def stand_ins(base: Path) -> tuple[Path, Path, Path]:
         for f, name, group, ident in descs:
             subprocess.run([sys.executable, "-I", ROOT / "Datatypes/common/mkdtdesc.py", dt / "Devs/DataTypes" / f,
                             name, cls, group, ident, "#?", f"$VER: {f} 47.1", "'X'"], check=True)
+    (dt / "Libs").mkdir()
+    for lib_name in CLASS_LIBS.values():
+        (dt / "Libs" / lib_name).write_bytes(f"\0$VER: {lib_name} 47.1\0".encode())
     for cls in SUPERCLASSES:
         (dt / f"Classes/DataTypes/{cls}.datatype").write_bytes(f"\0$VER: {cls}.datatype 47.1\0".encode())
     (lib / "libs").mkdir(parents=True)
@@ -136,12 +142,14 @@ def main() -> int:
         names = [c["class"] for c in man["choices"]]
         check(names[:10] == [f"{c}.datatype" for c in ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound",
                                                        "openmodule", "webm", "openvideo", "cdxl", "opendoc"]]
-              and names[10:] == ["gzip.datatype"], "a choice a datatype, in the Installer's order")
+              and names[10:] == ["gfopensound.datatype", "gzip.datatype"], "a choice a datatype, in the Installer's order")
         check([c["class"] for c in man["always"]] == ["stream.datatype"], "the superclass goes in with every install")
         for cls, descs in DATATYPES.items():
             c = next(c for c in man["choices"] if c["class"] == f"{cls}.datatype")
             want = {f"Classes/DataTypes/{cls}.datatype"} | {f"Devs/DataTypes/{d[0]}" for d in descs}
-            check({f["pack"] for f in c["files"]} == want, f"{cls}: the class and its {len(descs)} descriptor(s)")
+            want |= {f"Libs/{CLASS_LIBS[cls]}"} if cls in CLASS_LIBS else set()
+            check({f["pack"] for f in c["files"]} == want, f"{cls}: the class and its {len(descs)} descriptor(s)"
+                  + (f", with {CLASS_LIBS[cls]}" if cls in CLASS_LIBS else ""))
         lfiles = {f["pack"] for f in man["library"]["files"]}
         check(lfiles == {"Library/Libs/datatypes.library"} | {f"Library/Classes/DataTypes/{c}.datatype" for c in SYSTEM},
               "the library and its eight system classes, not the ABI twins")
@@ -188,6 +196,8 @@ def main() -> int:
         every = man["choices"] + man["always"] + [man["library"], man["zlib"]]
         put_ok = all(disk.files.get(mi.norm(f["dest"])) == (top / f["pack"]).read_bytes() for c in every for f in c["files"])
         check(put_ok, "a Novice install puts every file where it goes")
+        check(disk.files.get(mi.norm("LIBS:gfopensound-decoders.library")) == (top / "Libs/gfopensound-decoders.library").read_bytes(),
+              "gfopensound's decoder library goes in LIBS: with its datatype")
         check(disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Libs/datatypes.library")]
               == b"OS 3.2 datatypes.library 47.4"
               and disk.files[mi.norm("SYS:Storage/GFOpenDatatypes/Superseded/Devs/CDXL")] == b"OS 3.2 CDXL descriptor"
@@ -251,7 +261,7 @@ def main() -> int:
         run(disk, top, "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "the uninstall puts the Aminet z.library back")
         for answers, what, want in ((({"(1 of 2)": 0b111111110, "(2 of 2)": 0b01}), "neither gzip nor gfopenpng", False),
-                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b11}), "gzip without gfopenpng", True),
+                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b101}), "gzip without gfopenpng", True),
                                     (({"(1 of 2)": 0b000000001, "(2 of 2)": 0b00}), "gfopenpng without gzip", True)):
             disk = os32_disk()
             run(disk, top, "Install-GFOpenDatatypes", answers=answers)

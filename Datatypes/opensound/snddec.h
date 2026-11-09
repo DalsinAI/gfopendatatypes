@@ -12,6 +12,18 @@
 
 typedef struct snddec snddec;
 
+/* Which decoder takes these bytes, by their first bytes only: 1 Ogg (Vorbis),
+ * 2 MP3, 3 FLAC, 0 none. In the header so a datatype built without the
+ * decoders (SNDDEC=library) can tell these formats apart too. */
+static inline int snddec_magic(const unsigned char *m, unsigned long n)
+{
+    if (n >= 4 && m[0] == 'O' && m[1] == 'g' && m[2] == 'g' && m[3] == 'S') return 1;
+    if (n >= 4 && m[0] == 'f' && m[1] == 'L' && m[2] == 'a' && m[3] == 'C') return 3;
+    if (n >= 3 && m[0] == 'I' && m[1] == 'D' && m[2] == '3') return 2;
+    if (n >= 2 && m[0] == 0xff && (m[1] & 0xe0) == 0xe0 && (m[1] & 0x06)) return 2;
+    return 0;
+}
+
 /* Which decoder takes these bytes: "Ogg Vorbis", "MP3", "FLAC", or NULL */
 const char *snddec_kind(const unsigned char *data, unsigned long size);
 
