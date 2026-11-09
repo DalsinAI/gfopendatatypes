@@ -102,7 +102,7 @@ the order they are tried in):
 | --- | --- | --- | --- |
 | **A cores board core**: AmiCradle's cores board ($DA15 product 7, up to eight translated 68040 cores) | 2 | `gfopenmulticore.library` jobs (`OMC_Submit`, `OMC_Wait`), DalsinAI/gfopenmulticore | 68k compute: decoding and encoding (libwebp, libvpx, our PNG and TGA code), mixing, and pixel work too. A job calls no OS, touches no Chip RAM and writes only its granted buffers |
 | **The GPU** | 4 (new) | `gfopengpu.library` (the one library: GFOpenGPU, GFOpenGfx and SDL 2) | Pixel work: scaling, colour conversion, dithering to 256 colours or HAM8, presenting video frames. Video decode where a driver offers it, through `gfopenmedia.library` once it exists |
-| **A services card or a paired Cradle** | 3 | `gfopenservice.device`: `media.decode/1`, `doc.render/1`, and `media.encode/1` for writing (section 3), DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
+| **Mitchy, or a paired Cradle** | 3 | `gfopenservice.device`, a shim onto `mitchy.device` when Mitchy is ready: `media.decode/1`, `doc.render/1`, and `media.encode/1` for writing (section 3), DalsinAI/gfopenservice | Formats with no 68k code (AVIF, HEIC, office documents, most video), and heavy work a core can't take |
 | **This CPU**, a single 68k | 1 | plain calls | Everything that has 68k code, when nothing above is there |
 
 The order, per kind of work:
@@ -167,9 +167,9 @@ host's FFmpeg writes, sends the object's pixels, samples or frames in
 pieces, and the file comes back into `DTM_WRITE`'s file handle
 (`Datatypes/common/dtencode.c`; the requests themselves, `common/encodemsg.c`,
 are tested on the host and as 68040 code by `tests/test-encodemsg.sh`). FFmpeg
-runs as its own program on the host (the services card's host or a paired
+runs as its own program on the host (Mitchy, or a paired
 Cradle), so its encoders (x265, AAC, WMA, WMV) and their licences and patents
-stay there; the HEIC container is the service's own MIT code. With no card or
+stay there; the HEIC container is the service's own MIT code. With no Mitchy or
 Cradle, or one whose FFmpeg lacks the encoder, the write fails with
 `ERROR_NOT_IMPLEMENTED`. `OIA_WriteFormat` and `OIA_Quality` in `DTM_WRITE`'s
 attributes choose the file and its quality (`include/datatypes/gfopenimage.h`).
@@ -230,8 +230,8 @@ says what it writes and how fast.
    gfopenpicture, gfopensound and gfopenvideo write them. Still to come: its
    royalty-free formats (AVIF, JPEG XL..., FLAC, Opus..., WebM) as more
    FORMATS answers, `doc.convert/1`, and raw write for gfopendoc and webm.
-   The emulator's services card needs `media.encode/1` in its table of host
-   libraries (amicradle `services.c`) before its machines have it; the LAN
+   The emulator's Mitchy needs `media.encode/1` in its table of host
+   libraries (gfosmotherboards `a1200-x86/native/services.c`, MAGIC `ACSV`) before its machines have it; the LAN
    Cradle offers it already.
 
 Each step: a lab copy of an OS 3.2 instance, the same answer on every rung
