@@ -41,6 +41,8 @@ host = [
   "sh Datatypes/tests/test-planar.sh",
   "sh Datatypes/tests/test-dtservice.sh",
   "sh Datatypes/tests/test-service-rung.sh",
+  # gfopensound's requests to media.decode/1 (skips without gfopenservice beside)
+  "sh Datatypes/tests/test-sound-service.sh",
   # media.encode/1's requests (HEIC, M4A, WMA... by the service's FFmpeg),
   # host and 68040 byte for byte; the round trip when gfopenservice is beside
   "QEMU_M68K=qemu-m68k sh Datatypes/tests/test-encodemsg.sh",

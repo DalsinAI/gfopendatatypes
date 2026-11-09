@@ -35,11 +35,7 @@ struct snddec {
 
 static int kind_of(const unsigned char *m, unsigned long n)
 {
-    if (n >= 4 && !memcmp(m, "OggS", 4)) return K_OGG;
-    if (n >= 4 && !memcmp(m, "fLaC", 4)) return K_FLAC;
-    if (n >= 3 && !memcmp(m, "ID3", 3)) return K_MP3;
-    if (n >= 2 && m[0] == 0xff && (m[1] & 0xe0) == 0xe0 && (m[1] & 0x06)) return K_MP3;
-    return 0;
+    return snddec_magic(m, n);
 }
 
 const char *snddec_kind(const unsigned char *data, unsigned long size)

@@ -12,7 +12,8 @@ GFOpenBrowser) opens the formats they read.
 | `gfopengif.datatype` | `Datatypes/gif` | GIF, read and written on this CPU |
 | `webp.datatype` | `Datatypes/webp` (libwebp 1.6.0) | WebP pictures |
 | `webm.datatype` | `Datatypes/webm` (libvpx 1.17.0) | WebM films |
-| `gfopensound.datatype` | `Datatypes/opensound` (stb_vorbis, dr_mp3, dr_flac) | sound class (our own); FLAC, Ogg Vorbis and MP3 on this CPU from 47.2 |
+| `gfopensound.datatype` | `Datatypes/opensound` | sound class (our own); decoded by `media.decode/1` through `mitchy.library` (47.3) |
+| `gfopensound-decoders.library` | `Datatypes/opensound` (stb_vorbis, dr_mp3, dr_flac) | gfopensound's FLAC, Ogg Vorbis and MP3 decoders on this CPU, in `LIBS:`, for an Amiga without the services card (47.3; `SNDDEC=builtin` puts them back in the datatype) |
 | `gfopenaiff.datatype` | `Datatypes/pcm` | AIFF and AIFC, read and written (our own) |
 | `gfopenwave.datatype` | `Datatypes/pcm` | WAV, read and written (our own) |
 | `gfopenaiff.datatype` | `Datatypes/pcm` | AIFF and AIFC, read and written (our own) |
@@ -142,7 +143,8 @@ native helpers for `Datatypes/common/dtlib.c` (`AC_HELPERS`, see
 
 The ROM's datatypes (gfopenpicture, gfopenpng, gfopentga, gfopensound, gfopendoc in
 ROM:Classes/DataTypes) and datatypes.library are built from a checkout of this repository by
-amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`).
+amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`). Its gfopensound is built with
+`SNDDEC=library`: no decoder in the ROM (dt group 87,603 to 33,715 packed bytes, 9 November 2026).
 
 ## Tests
 

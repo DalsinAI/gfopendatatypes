@@ -202,36 +202,71 @@ OS32_GCC16="$S" PREFIX="$OUT" sh "$HERE/stream/build.sh"
 
 # --- gfopensound.datatype -------------------------------------------------------
 # FLAC, Ogg (Vorbis, Opus), AAC/M4A, ALAC, WMA and MP3, decoded by the
-# media.decode/1 service on the services card or a paired Cradle.
+# media.decode/1 service on the services card (through mitchy.library:
+# common/dtservice.c with DT_MITCHY) or a paired Cradle.
 # With neither, FLAC, Ogg Vorbis and MP3 are decoded on this CPU
 # (opensound/snddec.c: dr_flac, stb_vorbis and dr_mp3, single files SOURCES
-# pins, fetched and checked here), which is also how OIA_Reader reads them.
-# libm: libnix's soft floating point, calling the ROM math libraries.
+# pins, fetched and checked here), which is also how OIA_Reader reads them
+# without the service. Where those decoders go is SNDDEC's choice:
+#   library (default; the ROM's, amicradle-guest's dtclasses.sh): not in the
+#     datatype; in Libs/gfopensound-decoders.library (its own section below),
+#     opened from LIBS: when needed
+#   builtin: linked into the datatype (-DSND_BUILTIN, with libm: libnix's
+#     soft floating point, calling the ROM math libraries), as 47.2 was
+SNDDEC=${SNDDEC:-library}
+case "$SNDDEC" in library|builtin) ;; *) echo "SNDDEC must be library or builtin, not $SNDDEC"; exit 2 ;; esac
 single() {       # FILE SHA256: a single upstream file into $WORK/single
     t="$TARBALLS/$1"
     [ -f "$t" ] || sh "$HERE/../tools/fetch-tarball.sh" "$1" "$TARBALLS" || exit 2
     echo "$2  $t" | sha256sum -c - >/dev/null || { echo "SHA-256 mismatch: $t"; exit 2; }
     mkdir -p "$WORK/single" && cp "$t" "$WORK/single/$1"
 }
-single stb_vorbis.c 4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636
-single dr_mp3.h f5c8020eeebb79877184432efdd2651f24869f5bb8f379d45450fd0aed1ee915
-single dr_flac.h b8078eeb5d523502eb7964508cd7ec8450bc79d383bec90aa17fd9e2fefd9c24
-(cd "$WORK/single" && patch -p1 -s < "$HERE/patches/stb_vorbis-1.22-comment-list-null.patch")
-XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-opensound" \
+snddec_obj() {   # the decoders, compiled into $WORK/obj-snddec
+    single stb_vorbis.c 4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636
+    single dr_mp3.h f5c8020eeebb79877184432efdd2651f24869f5bb8f379d45450fd0aed1ee915
+    single dr_flac.h b8078eeb5d523502eb7964508cd7ec8450bc79d383bec90aa17fd9e2fefd9c24
+    (cd "$WORK/single" && patch -p1 -s < "$HERE/patches/stb_vorbis-1.22-comment-list-null.patch")
+    # -fwrapv: dr_flac's prediction overflows a signed int on a damaged file;
+    # wrapping is what the 68k does anyway, and now the compiler knows it.
+    XFLAGS="-I$WORK/single -w -fwrapv" compile "$HERE" "$WORK/obj-snddec" opensound/snddec.c
+}
+SNDFLAGS="-DDT_MITCHY" SNDOBJ= SNDLIBS=
+if [ "$SNDDEC" = builtin ]; then
+    snddec_obj
+    SNDFLAGS="$SNDFLAGS -DSND_BUILTIN" SNDOBJ="$WORK/obj-snddec/opensound_snddec.o" SNDLIBS=-lm
+fi
+XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS $SNDFLAGS" compile "$HERE" "$WORK/obj-opensound" \
     common/dtstart.c common/dtlib.c common/dtservice.c common/dtstack.c \
     common/dtencode.c common/encodemsg.c opensound/soundclass.c
-# -fwrapv: dr_flac's prediction overflows a signed int on a damaged file;
-# wrapping is what the 68k does anyway, and now the compiler knows it.
-XFLAGS="-I$WORK/single -w -fwrapv" compile "$HERE" "$WORK/obj-snddec" opensound/snddec.c
 $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/gfopensound.datatype" \
     "$WORK"/obj-opensound/common_dtstart.o "$WORK"/obj-opensound/common_dtlib.o \
     "$WORK"/obj-opensound/common_dtservice.o "$WORK"/obj-opensound/common_dtstack.o \
     "$WORK"/obj-opensound/common_dtencode.o \
     "$WORK"/obj-opensound/common_encodemsg.o "$WORK"/obj-opensound/opensound_soundclass.o \
-    "$WORK"/obj-snddec/opensound_snddec.o $ACLIB -lamiga -lm \
+    $SNDOBJ $ACLIB -lamiga $SNDLIBS \
     -Wl,-Map="$WORK/gfopensound.datatype.map"
-echo "gfopensound.datatype: $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
+echo "gfopensound.datatype ($SNDDEC): $(wc -c < "$OUT/Classes/DataTypes/gfopensound.datatype") bytes"
+if [ "$SNDDEC" = library ]; then  # no decoder and no floating point in it
+    fp=$(grep -oE '\b(_stb_vorbis_[a-z_]+|_drmp3_[a-z_]+|_drflac_[a-z_]+|___?(add|mul|div)[sd]f3)\b' \
+        "$WORK/gfopensound.datatype.map" | sort -u | head -5 | tr '\n' ' ')
+    [ -z "$fp" ] || { echo "gfopensound.datatype (library): decoder or floating point linked in: $fp" >&2; exit 1; }
+fi
 desc_gfopensound "$OUT"
+
+# --- gfopensound-decoders.library -------------------------------------------------
+# gfopensound.datatype's decoders on this CPU as a library of their own, for
+# the datatype built with SNDDEC=library (opensound/snddeclib.c, the calls in
+# include/libraries/gfopensounddecoders.h): Libs/, for LIBS:. stb_vorbis is
+# public domain or MIT, dr_mp3 and dr_flac public domain or MIT-0.
+[ -f "$WORK/obj-snddec/opensound_snddec.o" ] || snddec_obj
+mkdir -p "$OUT/Libs"
+XFLAGS="-I$HERE/common -I$HERE/include $ACFLAGS" compile "$HERE" "$WORK/obj-snddeclib" \
+    common/dtstart.c opensound/snddeclib.c
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Libs/gfopensound-decoders.library" \
+    "$WORK"/obj-snddeclib/common_dtstart.o "$WORK"/obj-snddeclib/opensound_snddeclib.o \
+    "$WORK/obj-snddec/opensound_snddec.o" $ACLIB -lamiga -lm \
+    -Wl,-Map="$WORK/gfopensound-decoders.library.map"
+echo "gfopensound-decoders.library: $(wc -c < "$OUT/Libs/gfopensound-decoders.library") bytes"
 
 # --- gfopenaiff.datatype and gfopenwave.datatype --------------------------------
 # AIFF/AIFC and WAV, read (8 to 32 bits, float too) and written (DTM_WRITE,

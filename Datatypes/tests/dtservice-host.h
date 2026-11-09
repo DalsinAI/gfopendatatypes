@@ -73,6 +73,10 @@ LONG AbortIO(struct IORequest *io);
 void Disable(void);
 void Enable(void);
 LONG GetVar(CONST_STRPTR name, STRPTR buffer, LONG size, ULONG flags);
+/* for DT_MITCHY (mitchy.library) */
+struct Library { struct Node lib_Node; UWORD lib_Version; };
+struct Library *OpenLibrary(CONST_STRPTR name, ULONG version);
+void CloseLibrary(struct Library *lib);
 
 /* dtlib.h's needs */
 typedef ULONG Object;
