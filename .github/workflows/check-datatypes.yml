@@ -74,6 +74,8 @@ jobs:
         run: sh Datatypes/tests/test-webm-dither.sh
       - name: stream.datatype with gzip and Brotli
         run: sh Datatypes/tests/test-stream.sh
+      - name: acmedia.datatype route-opaque bounded feed
+        run: sh Datatypes/tests/test-acmedia.sh
       - name: webm.datatype's reader through its read cache
         run: sh Datatypes/tests/test-webm-read.sh
       - name: gfopenpng.datatype's PNG writer
