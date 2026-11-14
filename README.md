@@ -25,6 +25,7 @@ GFOpenBrowser) opens the formats they read.
 | `stream.datatype` | `Datatypes/stream` | the data class (GID_DATA): byte streams, read as a whole or a piece at a time |
 | `gzip.datatype` | `Datatypes/gzip` | gzip and zlib data, inflated by z.library (GFOpenZlib) |
 | `brotli.datatype` | `Datatypes/brotli` | Brotli data (our own decoder, RFC 7932) |
+| `acmedia.datatype` (interface/core first slice) | `Datatypes/acmedia` | route-opaque, bounded chunk feed to AkikoPlus/ACMedia; the Amiga class wrapper is the next stack |
 
 ## How they work
 
