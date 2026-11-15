@@ -16,6 +16,8 @@ typedef uint8_t UBYTE;
 typedef int8_t BYTE;
 typedef int16_t BOOL;
 typedef void *APTR;
+typedef const void *CONST_APTR;
+typedef const char *CONST_STRPTR;
 
 #ifndef TRUE
 #define TRUE 1

@@ -18,7 +18,16 @@ wrapper must also send REMOVE for bytes the device already accepted. Run
 `sh Datatypes/tests/test-acmedia-amiga.sh` also fixes every public message size
 at `-O0` and `-O2` and links the core into AmigaOS loadseg binaries.
 
-This slice does **not** build or install `acmedia.datatype`. The next stack adds
+`amruntime.c` is the next portable class-runtime slice. It owns copied track
+MIME strings and the object/device lifetime, accepts the public ADDTRACK, FEED,
+REMOVE, SEEK and END messages, and maps core notifications to public events.
+Its device callback table contains no route or rung selector. SEEK invalidates
+old input immediately but deliberately does not claim `AMDTE_SEEKED`: that
+event needs a later decodable-item acknowledgement. Run
+`sh Datatypes/tests/test-acmedia-runtime.sh` for deterministic host ownership,
+backpressure, short-write, range removal, generation, END and lifetime checks.
+
+These slices do **not** build or install `acmedia.datatype`. A later stack adds
 the Amiga BOOPSI wrapper after the public message layout is reviewed. Its
 minimum device dependency is gfosautoconfigboards #10: that draft adds raw
 `CMD_WRITE`, short-write and EOF handling, but presently has no wire fields for
