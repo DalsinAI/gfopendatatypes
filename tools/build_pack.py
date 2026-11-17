@@ -90,6 +90,7 @@ LABELS = {
     "gfopenaiff": "AIFF sounds, read and saved (gfopenaiff)",
     "gfopenwave": "WAV sounds, read and saved (gfopenwave)",
     "openmodule": "Music modules: MOD, MED, XM, S3M, IT (openmodule)",
+    "gfopenmidi": "MIDI music, played by GFOpenSynth (gfopenmidi)",
     "webm": "WebM films (webm)",
     "openvideo": "MP4, MKV, AVI... by a Cradle (openvideo)",
     "cdxl": "CDXL films (cdxl)",

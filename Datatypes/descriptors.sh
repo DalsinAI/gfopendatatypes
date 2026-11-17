@@ -189,9 +189,8 @@ desc_gfopensound() {
         '$VER: AAC-MPEG2-CRC 47.2 (7.11.2026)' 0xff 0xf8
     # shellcheck disable=SC2046
     DT_CASE=1 desc ADIF "AAC (ADIF)" gfopensound soun aac "#?" '$VER: ADIF 47.2 (7.11.2026)' $(chars "ADIF")
-    # Tunes the host plays: MIDI through FluidSynth, SID through sidplayfp.
-    # shellcheck disable=SC2046
-    sounddesc MIDI MIDI midi $(chars "MThd") 0 0 0 6
+    # Tunes the host plays: SID through sidplayfp. (MIDI is gfopenmidi.datatype's
+    # from 17 November 2026: our own synth, GFOpenSynth, not the host's FluidSynth.)
     # shellcheck disable=SC2046
     sounddesc PSID "C64 SID tune" psid $(chars "PSID")
     # shellcheck disable=SC2046
@@ -208,6 +207,20 @@ desc_gfopensound() {
 sounddesc() {    # FILE NAME ID MASK...
     _s=$1; _n=$2; _id=$3; shift 3
     desc "$_s" "$_n" gfopensound soun "$_id" "#?" "\$VER: $_s 47.1 (5.10.2026)" "$@"
+}
+
+# --- gfopenmidi.datatype -------------------------------------------------------
+desc_gfopenmidi() {
+    DESC_OUT=$1
+    # A Standard MIDI File: MThd and its length, 6. The file keeps the name
+    # MIDI that gfopensound.datatype's descriptor had, so an install puts this
+    # one in its place.
+    # shellcheck disable=SC2046
+    desc MIDI MIDI gfopenmidi soun midi "#?" '$VER: MIDI 47.2 (17.11.2026)' $(chars "MThd") 0 0 0 6
+    # .rmi: a MIDI file in a RIFF wrapper (RIFF, any length, RMID).
+    # shellcheck disable=SC2046
+    desc RMID "MIDI (RIFF)" gfopenmidi soun rmid "#?" '$VER: RMID 47.1 (17.11.2026)' \
+        $(chars "RIFF") $(anys 4) $(chars "RMID")
 }
 
 # --- gfopenmodule.datatype -----------------------------------------------------
@@ -363,7 +376,7 @@ videodesc() {    # FILE NAME ID PATTERN MASK...
 
 # Every one of them, as the pack has them (the recognition test).
 desc_all() {
-    for _c in webp webm gfopenpicture gfopenpng gfopentga gfopengif stream gfopensound gfopenmodule \
+    for _c in webp webm gfopenpicture gfopenpng gfopentga gfopengif stream gfopensound gfopenmidi gfopenmodule \
         gfopendoc cdxl gfopenvideo; do
         "desc_$_c" "$1"
     done
