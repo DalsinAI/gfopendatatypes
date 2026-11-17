@@ -189,6 +189,12 @@ OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/png/bu
 # tga/build.sh); tests/test-tga.sh checks the decoder on x86 or ARM64 cores.
 OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/tga/build.sh"
 
+# --- gfopenmidi.datatype --------------------------------------------------------
+# MIDI files, played by GFOpenSynth (gfopensynth.library), our own synth: on
+# AkikoPlus's MIDI port, else on this CPU to AHI (openmidi/midiclass.c,
+# openmidi/build.sh); tests/test-midi.sh checks its portable part.
+OS32_GCC16="$S" PREFIX="$OUT" ACFLAGS="$ACFLAGS" ACLIB="$ACLIB" sh "$HERE/openmidi/build.sh"
+
 # --- gfopengif.datatype ---------------------------------------------------------
 # GIF on the Amiga itself, every frame of an animation (gif/gifclass.c,
 # gif/build.sh); tests/test-gif.sh checks the decoder on x86 or ARM64 cores.

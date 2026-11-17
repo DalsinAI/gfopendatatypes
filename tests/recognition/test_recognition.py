@@ -304,6 +304,7 @@ CASES: list[tuple[str, bytes, str, int]] = [
     ("a.gif", b"GIF89a\x10\0\x10\0\x80\0\0" + b"\0" * 16, "GFOpenGIF", 0),
     ("a.flac", b"fLaC\0\0\0\x22" + b"\0" * 34, "FLAC", 0),
     ("a.mid", b"MThd\0\0\0\x06\0\x01\0\x02\x01\xe0MTrk", "MIDI", 0),
+    ("a.rmi", b"RIFF\x40\0\0\0RMIDdata\x20\0\0\0MThd\0\0\0\x06\0\x01\0\x02\x01\xe0MTrk" + b"\0" * 16, "MIDI (RIFF)", 0),
     ("song.mod", mod(b"M.K."), "ProTracker module", 0),
     ("mod.song", pad(b"song", 600), "SoundTracker module", 0),
     ("a.xm", b"Extended Module: tune" + b"\0" * 60, "FastTracker 2 module", 0),

@@ -62,6 +62,8 @@ jobs:
           sudo apt-get install -y -q ffmpeg python3-pil
       - name: gfopentga.datatype decoder
         run: sh Datatypes/tests/test-tga.sh
+      - name: gfopenmidi.datatype's MIDI file check
+        run: sh Datatypes/tests/test-midi.sh
       - name: gfopengif.datatype decoder
         run: sh Datatypes/tests/test-gif.sh
       - name: gfopenpng.datatype decoder

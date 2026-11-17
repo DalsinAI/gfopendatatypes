@@ -63,6 +63,7 @@ DATATYPES = {
     "opendoc": [("DOCX", "Word document", "pict", "docx")],
     "gzip": [("gzip", "gzip", "data", "gzip")],
     "gfopensound": [("Ogg", "Ogg", "soun", "ogg")],
+    "gfopenmidi": [("MIDI", "MIDI", "soun", "midi"), ("RMID", "MIDI (RIFF)", "soun", "rmid")],
 }
 # libraries a class opens from LIBS:, made in Datatypes/out/Libs (build_pack.py's CLASS_LIBS)
 CLASS_LIBS = {"gfopensound": "gfopensound-decoders.library"}
@@ -142,7 +143,7 @@ def main() -> int:
         names = [c["class"] for c in man["choices"]]
         check(names[:10] == [f"{c}.datatype" for c in ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound",
                                                        "openmodule", "webm", "openvideo", "cdxl", "opendoc"]]
-              and names[10:] == ["gfopensound.datatype", "gzip.datatype"], "a choice a datatype, in the Installer's order")
+              and names[10:] == ["gfopenmidi.datatype", "gfopensound.datatype", "gzip.datatype"], "a choice a datatype, in the Installer's order")
         check([c["class"] for c in man["always"]] == ["stream.datatype"], "the superclass goes in with every install")
         for cls, descs in DATATYPES.items():
             c = next(c for c in man["choices"] if c["class"] == f"{cls}.datatype")
@@ -261,7 +262,7 @@ def main() -> int:
         run(disk, top, "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "the uninstall puts the Aminet z.library back")
         for answers, what, want in ((({"(1 of 2)": 0b111111110, "(2 of 2)": 0b01}), "neither gzip nor gfopenpng", False),
-                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b101}), "gzip without gfopenpng", True),
+                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b1001}), "gzip without gfopenpng", True),
                                     (({"(1 of 2)": 0b000000001, "(2 of 2)": 0b00}), "gfopenpng without gzip", True)):
             disk = os32_disk()
             run(disk, top, "Install-GFOpenDatatypes", answers=answers)
