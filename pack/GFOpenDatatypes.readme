@@ -18,6 +18,7 @@ On the Amiga itself:
   WebP pictures      webp.datatype (libwebp)
   WebM films         webm.datatype (libvpx)
   CDXL films         cdxl.datatype
+  Smacker films      smacker.datatype, SMK2 and SMK4, with their sound
   Music modules      openmodule.datatype (libxmp): MOD, MED and OctaMED,
                      Oktalyzer, DigiBooster, XM, S3M, IT and more, through
                      AHI, else Paula
@@ -31,7 +32,7 @@ Through a services card or a paired Cradle (they ask gfopenservice.device's
 media.decode/1 and doc.render/1; without one they say so and don't open):
   openpicture.datatype   AVIF, HEIC, JPEG XL, camera RAW, PSD, XCF, SVG...
   opensound.datatype     FLAC, Ogg Vorbis, Opus, AAC, ALAC, MP3, MIDI, SID
-  openvideo.datatype     MP4, MKV, AVI, WMV, MPEG
+  openvideo.datatype     MP4, MKV, AVI, WMV, MPEG, Bink
   opendoc.datatype       DOCX, XLSX, PPTX, ODF, RTF, PostScript, EPUB...
 
 And, ticked by default, the Team's datatypes.library 47.100 with the system
