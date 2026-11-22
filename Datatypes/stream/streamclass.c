@@ -2,8 +2,10 @@
  * stream.datatype: the "data" class (datatypes/streamclass.h), a subclass of
  * datatypesclass. It holds the source (a file, memory, a hook, or what the
  * program feeds it), the queue of coded bytes and the whole-buffer result,
- * and answers SDTM_FEED, SDTM_TAKE, SDTM_END, OM_GET and DTM_WRITE. The
- * decoding itself is the subclass's SDTM_CODEC (gzip.datatype,
+ * and answers SDTM_FEED, SDTM_TAKE, SDTM_END, OM_GET and DTM_WRITE.
+ * SDTM_CODE (plain bytes in, coded bytes out) is the subclass's, and this
+ * class refuses it: only a subclass that can code (gzip.datatype) answers.
+ * The decoding itself is the subclass's SDTM_CODEC (gzip.datatype,
  * brotli.datatype), sent to the object so that it reaches the subclass.
  * The queue and the loops are sdtcore.c, which the host tests run.
  *
@@ -342,6 +344,10 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
     case SDTM_END:
         sdt_end(&((struct sdata *)INST_DATA(cl, o))->core);
         return TRUE;
+    case SDTM_CODE:
+        /* coding is the subclass's (gzip.datatype); arriving here, there is no encoder */
+        SetIoErr(ERROR_NOT_IMPLEMENTED);
+        return FALSE;
     case DTM_WRITE: {
         struct dtWrite *w = (struct dtWrite *)msg;
         /* coded output is the subclass's (gzip.datatype); arriving here, there is no encoder */
