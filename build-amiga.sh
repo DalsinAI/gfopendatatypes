@@ -10,7 +10,7 @@
 #
 #   STOVE     compiler root holding prefix/ (default ~/AmiCradle/stoves/os32-gcc16)
 #   OUT       where it goes (default ./build-amiga)
-#   VERSION   the pack's version (default 0.1)
+#   VERSION   the pack's version (default 0.2-rc1)
 #
 # usage: sh build-amiga.sh
 #   OUT/pack/GFOpenDatatypes/          the drawer: run Install-GFOpenDatatypes
@@ -22,7 +22,7 @@ set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 STOVE=${STOVE:-"$HOME/AmiCradle/stoves/os32-gcc16"}
 OUT=${OUT:-"$HERE/build-amiga"}
-VERSION=${VERSION:-0.1}
+VERSION=${VERSION:-0.2-rc1}
 mkdir -p "$OUT"
 export STOVE OS32_GCC16="$STOVE"
 LHA=
