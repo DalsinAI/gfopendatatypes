@@ -149,22 +149,25 @@ static ULONG code_plain(struct sdtCode *m)
     struct Library *zbase;
     LONG kind, err;
 
-    if (!m->sdtk_Plain' && m->sdtk_PlainLen) {
+    if (m->sdtk_Plain == 0 && m->sdtk_PlainLen != 0) {
         SetIoErr(ERROR_REQUIRED_ARG_MISSING);
         return FALSE;
     }
     kind = m->sdtk_Wrapper;
     if (kind != SDTW_GZIP && kind != SDTW_ZLIB && kind != SDTW_RAW)
         kind = SDTW_GZIP;
-    g.p = NULL;
-    g.n = g.cap = 0;
+    g.p = 0;
+    g.n = 0;
+    g.cap = 0;
     g.fixed = m->sdtk_Out;
     g.fixedlen = m->sdtk_OutLen;
-    if (!(work = AllocVec(16384, MEMF_ANY)) {
+    work = AllocVec(16384, MEMF_ANY);
+    if (work == 0) {
         SetIoErr(ERROR_NO_FREE_STORE);
         return FALSE;
     }
-    if (!(zbase = zl_Open())) {
+    zbase = zl_Open();
+    if (zbase == 0) {
         FreeVec(work);
         SetIoErr(SDT_ERR_NOLIB);
         return FALSE;
@@ -175,12 +178,12 @@ static ULONG code_plain(struct sdtCode *m)
     CloseLibrary(zbase);
     FreeVec(work);
     if (err) {
-        if (!g.fixed)
+        if (g.fixed == 0)
             FreeVec(g.p);
         SetIoErr(err);
         return FALSE;
     }
-    if (!g.fixed)
+    if (g.fixed == 0)
         m->sdtk_Out = g.p;
     m->sdtk_Actual = g.n;
     return TRUE;
