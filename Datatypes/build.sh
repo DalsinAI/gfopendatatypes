@@ -1,5 +1,5 @@
 #!/bin/sh
-# gfopenimage datatypes: gfopengif, webp, webm, gfopenpicture, gfopensound, gfopenmodule, gfopendoc, cdxl and gfopenvideo.datatype,
+# gfopenimage datatypes: gfopengif, webp, webm, gfopenpicture, gfopensound, gfopenmodule, gfopendoc, cdxl, smacker and gfopenvideo.datatype,
 # and stream, gzip and brotli.datatype (stream/build.sh)
 # for AmigaOS 3.x, built with the os32-gcc16 compiler (bebbo's amiga-gcc, GCC 16.2,
 # libnix). The datatypes are built for the 68040, soft float (no FPU code).
@@ -361,6 +361,17 @@ $CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/cdxl.datatype" \
     -Wl,-Map="$WORK/cdxl.datatype.map"
 echo "cdxl.datatype: $(wc -c < "$OUT/Classes/DataTypes/cdxl.datatype") bytes"
 desc_cdxl "$OUT"
+
+# --- smacker.datatype ---------------------------------------------------------
+# Smacker films, decoded on the Amiga itself a frame at a time.
+XFLAGS="-I$HERE/common -I$HERE/include -I$HERE/smacker $ACFLAGS" compile "$HERE" "$WORK/obj-smacker" \
+    common/dtstart.c common/dtlib.c smacker/smk_core.c smacker/smackerclass.c
+$CC -nostartfiles -m68040 $SOFT -o "$OUT/Classes/DataTypes/smacker.datatype" \
+    "$WORK"/obj-smacker/common_dtstart.o "$WORK"/obj-smacker/common_dtlib.o \
+    "$WORK"/obj-smacker/smacker_smk_core.o "$WORK"/obj-smacker/smacker_smackerclass.o $ACLIB -lamiga \
+    -Wl,-Map="$WORK/smacker.datatype.map"
+echo "smacker.datatype: $(wc -c < "$OUT/Classes/DataTypes/smacker.datatype") bytes"
+desc_smacker "$OUT"
 
 # --- gfopenvideo.datatype -------------------------------------------------------
 # MP4, MOV, MKV, AVI, WMV, MPEG and FLV, decoded frame by frame by the

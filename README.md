@@ -21,7 +21,8 @@ GFOpenBrowser) opens the formats they read.
 | `gfopenmodule.datatype` | `Datatypes/openmodule` (libxmp 4.7.3) | music modules: MOD, MED, Oktalyzer, DigiBooster, XM, S3M, IT |
 | `gfopendoc.datatype` | `Datatypes/opendoc` | documents |
 | `cdxl.datatype` | `Datatypes/cdxl` | CDXL films |
-| `gfopenvideo.datatype` | `Datatypes/openvideo` | video class |
+| `smacker.datatype` | `Datatypes/smacker` | Smacker films (SMK2 and SMK4, our own decoder) |
+| `gfopenvideo.datatype` | `Datatypes/openvideo` | video class; Bink films too, by the `Bink` descriptor |
 | `stream.datatype` | `Datatypes/stream` | the data class (GID_DATA): byte streams, read as a whole or a piece at a time |
 | `gzip.datatype` | `Datatypes/gzip` | gzip and zlib data, inflated by z.library (GFOpenZlib) |
 | `brotli.datatype` | `Datatypes/brotli` | Brotli data (our own decoder, RFC 7932) |
@@ -47,7 +48,7 @@ descriptors, and what they match, are in
 
 What runs after that depends on the format.
 
-**On this CPU.** PNG, TGA, GIF, AIFF, WAV, gzip, Brotli, CDXL and the
+**On this CPU.** PNG, TGA, GIF, AIFF, WAV, gzip, Brotli, CDXL, Smacker and the
 eight system classes are our own code. WebP (libwebp), WebM (libvpx) and
 music modules (libxmp) are too. FLAC, Ogg Vorbis and MP3 are as well when
 there is no Mitchy and no paired Cradle. A picture is handed to
@@ -150,6 +151,11 @@ amicradle-guest's `tools/openkickrom/trial-1m/build.sh` (`DT=`). Its gfopensound
 
 - `sh Datatypes/tests/test-tga.sh` and `sh Datatypes/tests/test-cdxl.sh`:
   the decoders on the host under AddressSanitizer and UBSan (CI runs both).
+- `sh Datatypes/tests/test-smacker.sh`: smacker.datatype's core against
+  FFmpeg's Smacker decoder on `tests/make-smacker.py`'s films, every pixel
+  and sample, and damaged films under the same sanitizers; with
+  `QEMU_M68K=qemu-m68k` as 68040 code too, and with `SMACKER_FILMS=DIR`
+  a folder of real films as well.
 - `sh Datatypes/tests/test-pngdec.sh`: gfopenpng's decoder against
   `tests/make-png.py`'s pictures (every colour type and depth, Adam7, tRNS)
   and Pillow, and 1,222 damaged streams, under the same sanitizers; with

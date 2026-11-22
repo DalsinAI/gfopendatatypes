@@ -70,6 +70,8 @@ jobs:
         run: sh Datatypes/tests/test-pngdec.sh
       - name: cdxl.datatype core
         run: sh Datatypes/tests/test-cdxl.sh
+      - name: smacker.datatype core, against ffmpeg's Smacker decoder
+        run: sh Datatypes/tests/test-smacker.sh
       - name: webm.datatype picture sizes
         run: sh Datatypes/tests/test-webm.sh
       - name: webm and CDXL dither from const tables, against the formula on every colour

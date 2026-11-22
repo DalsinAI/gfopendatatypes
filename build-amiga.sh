@@ -37,4 +37,5 @@ python3 "$HERE/Datatypes/tests/make-lab-media.py" "$M"
 python3 "$HERE/Datatypes/tests/make-gif.py" "$M/gif" >/dev/null
 python3 "$HERE/Datatypes/tests/make-tga.py" "$M/tga" >/dev/null
 python3 "$HERE/Datatypes/tests/make-cdxl.py" "$M/cdxl" >/dev/null
+python3 "$HERE/Datatypes/tests/make-smacker.py" "$M/smacker" >/dev/null
 cp "$HERE/Datatypes/tests/t.webm" "$M/film.webm"
