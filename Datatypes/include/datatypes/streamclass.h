@@ -42,6 +42,14 @@
  * OIA_Compression's level when given); a subclass that can't refuses
  * (brotli.datatype). DTWM_IFF is refused.
  *
+ * Compress, any program, no file and no zlib of its own: the same gzip
+ * object and SDTM_CODE. Plain bytes in, one coded member out (gzip, zlib
+ * or raw deflate). The subclass that can code answers it. This class, and
+ * a subclass with no encoder, refuses with ERROR_NOT_IMPLEMENTED, so a
+ * later encoder (Brotli) answers this method rather than a new one. Pass
+ * sdtk_Out NULL and FreeVec() what comes back. One member per call: this
+ * is not a running deflate stream.
+ *
  * The group, GID_DATA, is new: our own datatypes library accepts it by
  * design; that AmigaOS 3.2's datatypes.library accepts a group it does not
  * know is still to be checked on the bench.
@@ -49,7 +57,7 @@
  * Writing a decoder: subclass "stream.datatype" (version 47) and answer
  * SDTM_CODEC. The class does the rest: the sources, the input queue, the
  * whole-buffer decode, SDTM_FEED, SDTM_TAKE and SDTM_END, DTM_WRITE and the
- * errors.
+ * errors. Writing an encoder: answer SDTM_CODE. The base class refuses it.
  *
  * MIT, Copyright (c) 2026 AmiCradle Team.
  * SPDX-License-Identifier: MIT
@@ -214,5 +222,29 @@ struct sdtCodec {
 #define SDTC_MORE    0
 #define SDTC_DONE    1
 #define SDTC_ERROR   2
+
+/* Plain bytes in, one coded member out. Any program, on a gzip.datatype
+ * object (DTST_RAM, base name "gzip"). TRUE, and sdtk_Actual bytes at
+ * sdtk_Out. sdtk_Out NULL: the datatype AllocVec()s them and the caller
+ * FreeVec()s. A buffer the caller passed is filled up to sdtk_OutLen, or
+ * the call fails with ERROR_BUFFER_OVERFLOW and sdtk_Out is left alone.
+ * sdtk_Wrapper is SDTW_GZIP, SDTW_ZLIB or SDTW_RAW (anything else is gzip).
+ * sdtk_Level is -1 for the default, or 0 to 9, as OIA_Compression.
+ * sdtk_Plain NULL is allowed only when sdtk_PlainLen is 0 (an empty member).
+ * One member per call (the encoder finishes). Not a running deflate stream.
+ * stream.datatype, and a subclass with no encoder, returns FALSE with
+ * ERROR_NOT_IMPLEMENTED. */
+#define SDTM_CODE    (SDTM_Dummy + 5)
+struct sdtCode {
+    ULONG MethodID;
+    struct GadgetInfo *sdtk_GInfo;  /* NULL */
+    const UBYTE *sdtk_Plain;
+    ULONG sdtk_PlainLen;
+    UBYTE *sdtk_Out;                /* NULL: allocated, caller FreeVec()s */
+    ULONG sdtk_OutLen;              /* room, when sdtk_Out is the caller's */
+    ULONG sdtk_Actual;              /* out */
+    LONG sdtk_Wrapper;              /* SDTW_GZIP, SDTW_ZLIB or SDTW_RAW */
+    LONG sdtk_Level;                /* -1, or 0..9 */
+};
 
 #endif
