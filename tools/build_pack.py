@@ -92,15 +92,16 @@ LABELS = {
     "openmodule": "Music modules: MOD, MED, XM, S3M, IT (openmodule)",
     "gfopenmidi": "MIDI music, played by GFOpenSynth (gfopenmidi)",
     "webm": "WebM films (webm)",
-    "openvideo": "MP4, MKV, AVI... by a Cradle (openvideo)",
+    "openvideo": "MP4, MKV, AVI, Bink... by a Cradle (openvideo)",
     "cdxl": "CDXL films (cdxl)",
+    "smacker": "Smacker films (smacker)",
     "opendoc": "Office documents and e-books by a Cradle (opendoc)",
     "gzip": "gzip files (gzip)",
     "brotli": "Brotli files (brotli)",
 }
 # Shown first, in this order; the rest follow by name.
 ORDER = ["gfopenpng", "gfopentga", "gfopengif", "webp", "openpicture", "opensound", "openmodule",
-         "webm", "openvideo", "cdxl", "opendoc"]
+         "webm", "openvideo", "cdxl", "smacker", "opendoc"]
 PAGE = 9            # the 3.2 Installer shows nine choices a page (GFOpenUp, 8 October 2026)
 # The datatypes that open z.library (Datatypes/README.md): the pack brings the Team's own, GFOpenZlib, and
 # installs it with them (the user, 23 October 2026: GFOpenZlib is the z.library).

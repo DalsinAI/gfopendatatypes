@@ -317,6 +317,9 @@ CASES: list[tuple[str, bytes, str, int]] = [
     ("a.tga", b"\0\0\x02" + b"\0" * 15, "Targa picture", 0),
     ("a.br", b"\x1b\x03\0\xf8" + b"\0" * 8, "Brotli", 0),
     ("a.xl", b"\x01" + b"\0" * 63, "CDXL", 0),
+    ("film", b"SMK2\xcc\x01\0\0" + b"\0" * 96, "Smacker film", 0),
+    ("film4", b"SMK4\x40\x01\0\0" + b"\0" * 96, "Smacker film", 0),
+    ("intro", b"BIKf\x00\x10\0\0" + b"\0" * 40, "Bink film", 0),
     ("a.txt", b"Hello\n", "ascii", 0),
     ("a.bin", b"\0\x01\x02\x03", "binary", 0),
 ]

@@ -328,6 +328,14 @@ desc_cdxl() {
         '$VER: CDXL 47.1 (20.10.2026)' 0x01
 }
 
+# --- smacker.datatype ---------------------------------------------------------
+desc_smacker() {
+    DESC_OUT=$1
+    # "SMK2" or "SMK4"; the class refuses any other fourth byte.
+    desc Smacker "Smacker film" smacker anim smk "#?" \
+        '$VER: Smacker 47.1 (22.11.2026)' "'S'" "'M'" "'K'" ANY
+}
+
 # --- gfopenvideo.datatype -------------------------------------------------------
 desc_gfopenvideo() {
     DESC_OUT=$1
@@ -358,6 +366,9 @@ desc_gfopenvideo() {
     DT_CASE=1 desc M2TS "MPEG transport stream (BDAV)" gfopenvideo anim mts "#?" '$VER: M2TS 47.2 (7.11.2026)' \
         $(anys 4) 0x47 $(anys 191) 0x47 $(anys 191) 0x47
     videodesc FLV "Flash video" flv "#?" "'F'" "'L'" "'V'"
+    # Bink (RAD Game Tools, 1999 on): "BIK" and a version letter. FFmpeg
+    # on the host decodes Bink 1 and its sound; Bink 2 ("KB2") it does not.
+    desc Bink "Bink film" gfopenvideo anim bik "#?" '$VER: Bink 47.1 (22.11.2026)' "'B'" "'I'" "'K'" ANY
     # Ogg Theora: one byte longer than gfopensound's Ogg, so tried first; the
     # hook takes an Ogg one of whose first pages starts a Theora stream
     # (hooks/dthooks.h, dth_oggtheora). gfopensound refuses films.
@@ -377,7 +388,7 @@ videodesc() {    # FILE NAME ID PATTERN MASK...
 # Every one of them, as the pack has them (the recognition test).
 desc_all() {
     for _c in webp webm gfopenpicture gfopenpng gfopentga gfopengif stream gfopensound gfopenmidi gfopenmodule \
-        gfopendoc cdxl gfopenvideo; do
+        gfopendoc cdxl smacker gfopenvideo; do
         "desc_$_c" "$1"
     done
 }

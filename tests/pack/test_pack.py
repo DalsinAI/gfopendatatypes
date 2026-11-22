@@ -60,6 +60,7 @@ DATATYPES = {
     "webm": [("WebM", "WebM", "anim", "webm")],
     "openvideo": [("MP4", "MP4", "anim", "mp4")],
     "cdxl": [("CDXL", "CDXL", "anim", "cdxl")],
+    "smacker": [("Smacker", "Smacker film", "anim", "smk")],
     "opendoc": [("DOCX", "Word document", "pict", "docx")],
     "gzip": [("gzip", "gzip", "data", "gzip")],
     "gfopensound": [("Ogg", "Ogg", "soun", "ogg")],
@@ -141,9 +142,9 @@ def main() -> int:
 
         # the drawer
         names = [c["class"] for c in man["choices"]]
-        check(names[:10] == [f"{c}.datatype" for c in ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound",
-                                                       "openmodule", "webm", "openvideo", "cdxl", "opendoc"]]
-              and names[10:] == ["gfopenmidi.datatype", "gfopensound.datatype", "gzip.datatype"], "a choice a datatype, in the Installer's order")
+        check(names[:11] == [f"{c}.datatype" for c in ["gfopenpng", "gfopentga", "webp", "openpicture", "opensound",
+                                                       "openmodule", "webm", "openvideo", "cdxl", "smacker", "opendoc"]]
+              and names[11:] == ["gfopenmidi.datatype", "gfopensound.datatype", "gzip.datatype"], "a choice a datatype, in the Installer's order")
         check([c["class"] for c in man["always"]] == ["stream.datatype"], "the superclass goes in with every install")
         for cls, descs in DATATYPES.items():
             c = next(c for c in man["choices"] if c["class"] == f"{cls}.datatype")
@@ -261,8 +262,8 @@ def main() -> int:
               "installed again: the Aminet one stays the one kept, and no restart for its own z.library")
         run(disk, top, "Uninstall-GFOpenDatatypes")
         check(disk.snapshot() == before, "the uninstall puts the Aminet z.library back")
-        for answers, what, want in ((({"(1 of 2)": 0b111111110, "(2 of 2)": 0b01}), "neither gzip nor gfopenpng", False),
-                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b1001}), "gzip without gfopenpng", True),
+        for answers, what, want in ((({"(1 of 2)": 0b111111110, "(2 of 2)": 0b010}), "neither gzip nor gfopenpng", False),
+                                    (({"(1 of 2)": 0b111111110, "(2 of 2)": 0b10010}), "gzip without gfopenpng", True),
                                     (({"(1 of 2)": 0b000000001, "(2 of 2)": 0b00}), "gfopenpng without gzip", True)):
             disk = os32_disk()
             run(disk, top, "Install-GFOpenDatatypes", answers=answers)
