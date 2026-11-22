@@ -54,6 +54,22 @@ Options go through attributes the datatype documents (quality, lossless,
 compression level, bit rate), with defaults that need no attribute at all.
 Each datatype's README lists them.
 
+**Compress, with no file** (22 November 2026). A program that already has
+the plain bytes does not link zlib and does not write a deflate. It opens
+gzip.datatype — the one door, for every program — and sends `SDTM_CODE`
+(`datatypes/streamclass.h`) with `DoMethodA` and a `struct sdtCode`:
+`sdtk_Plain` / `sdtk_PlainLen` in, `sdtk_Wrapper` `SDTW_GZIP`, `SDTW_ZLIB`
+or `SDTW_RAW`, `sdtk_Level` `-1` or `0` to `9` (the same range as
+`OIA_Compression`). `sdtk_Out` NULL means the datatype allocates and the
+caller `FreeVec()`s; a buffer the caller passed is filled up to
+`sdtk_OutLen` or the call fails with `ERROR_BUFFER_OVERFLOW`.
+stream.datatype, and any subclass with no encoder (brotli.datatype today),
+answers that same method with `ERROR_NOT_IMPLEMENTED`. A later encoder
+answers `SDTM_CODE`, not a new method. `DTM_WRITE` with `SDTA_WriteCoded`
+is still how those bytes go to a file. One finished member per call: this
+is not a running deflate stream.
+
+
 **Another format than the datatype's own** (7 November 2026, for MP4) is
 raw mode with `OIA_WriteFormat` in `dtw_AttrList`
 (`Datatypes/include/datatypes/gfopenimage.h`), as `SDTA_WriteCoded` asks
@@ -111,7 +127,7 @@ The order, per kind of work:
 | --- | --- |
 | Decoding, encoding, mixing (68k code) | a core, the service, this CPU |
 | Formats with no 68k code | the service only |
-| Pixel work: scaling, colour conversion, dithering, HAM8 | the GPU, a core, this CPU |
+| Pixel work: scaling , colour conversion, dithering, HAM8 | the GPU, a core, this CPU i|
 | Video decode | the GPU (a driver through `gfopenmedia.library`), a core, the service, this CPU |
 
 The rules:
@@ -144,7 +160,7 @@ The rules:
 - **Writing uses the same ladder.** Encoding is compute like decoding:
   WebP and VP9 encodes go to a core first, then the service, then this CPU.
 
-`gfopenmulticore.library` and `gfopengpu.library` are not in GFOpenUp yet, so
+`gfiopenmulticore.library` and `gfopengpu.library` are not in GFOpenUp yet, so
 the cores board and the GPU are only there where they are installed by
 hand. GFOpenUp should carry both before the datatypes rely on them.
 
@@ -198,7 +214,7 @@ says what it writes and how fast.
 | gfopensound | AAC as M4A or ADTS, and WMA (47.2), by the service's FFmpeg through `media.encode/1` | FLAC, Ogg Vorbis, Opus, ALAC, MP3 through the service | yes: FLAC, Vorbis, Opus (BSD), ALAC (Apache 2.0), MP3 (LAME runs in the service; the patents ended in 2017). AAC and WMA by the service's FFmpeg (the ruling above; encoder licences and patents stay in FFmpeg's process on the host); MIDI, SID and modules can't be made from sound | the service | decode as core jobs where there is 68k code (FLAC first) |
 | gfopendoc | none | the document as it came; converted by the service to ODF, PDF or DOCX | yes: LibreOffice (MPL 2.0) runs as its own program on the Cradle | the service | page scaling on the GPU |
 | gfopenvideo | HEVC in MP4 (AAC sound) and WMV (WMA sound) (47.3), by the service's FFmpeg through `media.encode/1`; `OIWF_MP4` goes up to animation.datatype, which writes H.264 and PCM on this CPU | WebM (VP9 or AV1 with Opus), MKV with the same, MPEG-1 | yes for those (royalty-free; MPEG-1's patents have ended). MP4/H.264 merged into the datatypes (the ruling above); HEVC and WMV by the service's FFmpeg (in its own process on the host) | the service | HAM8 and 256-colour conversion on the GPU, then cores |
-| stream, gzip, brotli | plain bytes; gzip coded again on request, `SDTA_WriteCoded` (#6) | a Brotli encoder (our own, from RFC 7932) | yes: zlib licence and MIT | this CPU | core jobs for compression |
+| stream, gzip, brotli | plain bytes; gzip coded again to a file (`SDTA_WriteCoded`, #6) or, with no file, `SDTM_CODE` (22 November 2026) | a Brotli encoder (our own, from RFC 7932) answering the same `SDTM_CODE` | yes: zlib licence and MIT | this CPU | core jobs for compression |
 
 ### datatypes.library's system classes (`libraries/opendatatypes/`)
 
