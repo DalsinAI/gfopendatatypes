@@ -15,8 +15,18 @@
 #ifndef DTSOURCE_H
 #define DTSOURCE_H
 
-#define DTSRC_DTST_FILE   1     /* datatypes/datatypes.h */
-#define DTSRC_DTST_MEMORY 5
+#define DTSRC_DTST_FILE   2     /* datatypes/datatypes.h: RAM 1, FILE 2, */
+#define DTSRC_DTST_MEMORY 5     /* CLIPBOARD 3, HOTLINK 4, MEMORY 5 */
+
+/* Where the Amiga headers are in (common/dtlib.c), the numbers above are
+ * held to theirs: a wrong one stops the build instead of refusing every
+ * file. */
+#ifdef DTST_FILE
+typedef char dtsrc_file_is_dtst_file[(DTSRC_DTST_FILE == DTST_FILE) ? 1 : -1];
+#endif
+#ifdef DTST_MEMORY
+typedef char dtsrc_memory_is_dtst_memory[(DTSRC_DTST_MEMORY == DTST_MEMORY) ? 1 : -1];
+#endif
 
 enum dtsrc_kind {
     DTSRC_WRONG = 0,            /* neither: ERROR_OBJECT_WRONG_TYPE */
