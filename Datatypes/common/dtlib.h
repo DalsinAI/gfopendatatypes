@@ -33,8 +33,9 @@ extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;
 extern struct Library *UtilityBase, *DataTypesBase;
 
-/* Reads a whole DTST_FILE source into memory (AllocVec); NULL on failure,
- * with the reason in IoErr(). */
+/* Reads a whole DTST_FILE source, or copies a DTST_MEMORY one
+ * (DTA_SourceAddress, DTA_SourceSize), into memory (AllocVec); NULL on
+ * failure, with the reason in IoErr(). See common/dtsource.h. */
 UBYTE *dt_read_source(Object *o, ULONG *size);
 
 /* Runs fn(arg) on a stack of at least bytes (common/dtstack.c). */

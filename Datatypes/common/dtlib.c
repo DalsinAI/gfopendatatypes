@@ -230,15 +230,45 @@ const struct Resident dt_romtag __attribute__((used)) = {
 
 /* --- reading the source ----------------------------------------------------- */
 
+/* V44's memory source (datatypes/datatypesclass.h of the 3.2 NDK has no
+ * numbers for them; these are the OpenNDK's). */
+#ifndef DTST_MEMORY
+#define DTST_MEMORY 5
+#endif
+#ifndef DTA_SourceAddress
+#define DTA_SourceAddress (DTA_Dummy + 39)
+#endif
+#ifndef DTA_SourceSize
+#define DTA_SourceSize (DTA_Dummy + 40)
+#endif
+
+#include "dtsource.h"
+
 UBYTE *dt_read_source(Object *o, ULONG *size)
 {
-    ULONG sourceType = DTST_FILE;
+    ULONG sourceType = DTST_FILE, memSize = 0;
+    APTR memAddress = NULL;
     BPTR fh = 0;
     LONG length;
     UBYTE *data;
 
     GetDTAttrs(o, DTA_SourceType, (ULONG)&sourceType, DTA_Handle, (ULONG)&fh, TAG_DONE);
-    if (sourceType != DTST_FILE || !fh) {
+    if (sourceType == DTST_MEMORY)
+        GetDTAttrs(o, DTA_SourceAddress, (ULONG)&memAddress, DTA_SourceSize, (ULONG)&memSize, TAG_DONE);
+    switch (dtsrc_kind(sourceType, (unsigned long)fh, memAddress, memSize)) {
+    case DTSRC_MEMORY:
+        /* A copy: the program may free its buffer once NewDTObject()
+         * returns, and an animation keeps its bytes while it lives. */
+        if (!(data = AllocVec(memSize, MEMF_ANY))) {
+            SetIoErr(ERROR_NO_FREE_STORE);
+            return NULL;
+        }
+        CopyMem(memAddress, data, memSize);
+        *size = memSize;
+        return data;
+    case DTSRC_FILE:
+        break;
+    default:
         SetIoErr(ERROR_OBJECT_WRONG_TYPE);
         return NULL;
     }
