@@ -333,6 +333,18 @@ struct odt_entry *odt_db_find_name(struct odt_db *db, const char *name)
     return NULLP;
 }
 
+struct odt_entry *odt_db_find_kind(struct odt_db *db, const char *type, odt_u32 group)
+{
+    static const char *const vague[] = { "data", "text", "empty", "iff", "drawer", "binary", "ascii" };
+    struct odt_entry *e;
+    unsigned i;
+    if (!type || !type[0] || !group) return NULLP;
+    for (i = 0; i < sizeof vague / sizeof vague[0]; i++)
+        if (!odt_stricmp(type, vague[i])) return NULLP;
+    e = odt_db_find_name(db, type);
+    return e && e->dth.dth_GroupID == group ? e : NULLP;
+}
+
 /* ---- recognition ---------------------------------------------------------------- */
 
 /* Text is every byte but the C1 controls (0x80-0x9f) and the C0 controls

@@ -605,6 +605,32 @@ static struct odt_entry *recognize_memory(struct ODBase *base, const UBYTE *at, 
     return e;
 }
 
+/* What an ACFS volume says the file is (AC-270), from the file's own bytes on the host, worked out once per change:
+ * ACTION_ACFS_KIND (amicradle-guest filesystems/acfs/include/acfs.h, whose packet and struct acfs_kind these are).
+ * A known type with a descriptor of that name and group is the answer with no read here (odt_db_find_kind).
+ * Another filesystem answers ERROR_ACTION_NOT_KNOWN at once: the file is read and matched as before. */
+#define ODT_ACTION_ACFS_KIND 0x41434B01L    /* 'ACK' 1 */
+#define ODT_ACFS_KIND_KNOWN  0x1u
+struct odt_acfs_kind {                  /* acfs.h's struct acfs_kind: 128 bytes */
+    ULONG flags, group;
+    char type[24], family[16], mime[64];
+    ULONG reserved[4];
+};
+static struct odt_entry *acfs_kind_entry(struct ODBase *base, BPTR lock)
+{
+    struct odt_acfs_kind k;
+    struct MsgPort *port = ((struct FileLock *)BADDR(lock))->fl_Task;
+    LONG err = IoErr();
+    memset_(&k, sizeof k);
+    if (!port || !DoPkt(port, ODT_ACTION_ACFS_KIND, (LONG)lock, 0, (LONG)&k, (LONG)sizeof k, 0)) {
+        SetIoErr(err);                  /* not ACFS, or it can't tell: as before, IoErr untouched */
+        return NULL;
+    }
+    if (!(k.flags & ODT_ACFS_KIND_KNOWN)) return NULL;
+    k.type[sizeof k.type - 1] = 0;
+    return odt_db_find_kind(&base->db, k.type, k.group);
+}
+
 /* Recognition for a file: its first bytes, its name, and the context its
  * recognition code gets (the file open, and parsed as IFF when it is). */
 static struct odt_entry *recognize_file(struct ODBase *base, BPTR lock)
@@ -621,6 +647,7 @@ static struct odt_entry *recognize_file(struct ODBase *base, BPTR lock)
         e = odt_db_find_name(&base->db, "directory");
         goto out;
     }
+    if ((e = acfs_kind_entry(base, lock))) goto out;   /* AC-270: ACFS knows it, no read */
     if (!(dup = DupLock(lock))) goto out;
     if (!(fh = OpenFromLock(dup))) { UnLock(dup); goto out; }
     n = Read(fh, buf, PEEK);

@@ -275,6 +275,11 @@ void odt_free_entry(const struct odt_env *env, struct odt_entry *e);
 
 /* An entry by its base name, then by its name, no case (DTST_RAM). */
 struct odt_entry *odt_db_find_name(struct odt_db *db, const char *name);
+/* The entry for what an ACFS volume says a file is (AC-270; ACTION_ACFS_KIND, amicradle-guest filesystems/acfs/
+ * include/acfs.h): type is the kind's ("png", "ilbm", "amigaguide"), group its datatypes group (0 none). An entry by
+ * that base name or name whose group is the kind's; NULL for a kind that says nothing ("data", "text", "empty",
+ * "iff", "drawer"), or one no descriptor is named for, or whose group differs: the file is read and matched then. */
+struct odt_entry *odt_db_find_kind(struct odt_db *db, const char *type, odt_u32 group);
 
 /* ---- recognition ------------------------------------------------------------ */
 
