@@ -57,7 +57,13 @@ the Amiga itself (no card or Cradle) and keeps the sound as 8-bit PCM
 
 `gfopenpicture.datatype`, `gfopensound.datatype`, `gfopendoc.datatype` and
 `gfopenvideo.datatype` decode nothing themselves. It sends the file to
-`media.decode/1` through `gfopenservice.device` (DalsinAI/gfopenservice).
+`media.decode/1` through `akikoplus.library` 3 first (24 November 2026,
+`AP_OpenService`: the AkikoPlus board when fitted, else Mitchy or a paired
+Cradle, with the read-ahead through `AP_SendService`; every datatype that
+calls a service, `common/dtservice.c` with `DT_AKIKOPLUS`, on unless
+`DT_NO_AKIKOPLUS`), and when that library is not installed or has no
+`mitchy.library` under it, through `mitchy.library` (gfopensound) or
+`gfopenservice.device` (DalsinAI/gfopenservice) as before.
 Mitchy is the services card (product 13, MAGIC `ACSV`). When it is ready,
 `gfopenservice.device` becomes a shim that opens `mitchy.device`. The
 x86 or ARM64 cores do the work on AmiCradle and the Pi appliance, and a
