@@ -1,4 +1,4 @@
-/* (A copy of DalsinAI/gfosautoconfigboards cards/akikoplus/guest/include/libraries/akikoplus.h at 3fcced6, for the datatypes' services: common/dtservice.c.) */
+/* (A copy of DalsinAI/gfosautoconfigboards cards/akikoplus/guest/include/libraries/akikoplus.h at fb91f9c (main, PR 2 merged), for the datatypes' services: common/dtservice.c.) */
 /* Copyright (c) 2026 AmiCradle Team. MIT licence.
  *
  * akikoplus.library: helpers done natively on AmiCradle's AkikoPlus board,

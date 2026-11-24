@@ -1,4 +1,4 @@
-/* (A copy of DalsinAI/gfosautoconfigboards cards/akikoplus/guest/include/inline/akikoplus.h at 3fcced6, for the datatypes' services: common/dtservice.c.) */
+/* (A copy of DalsinAI/gfosautoconfigboards cards/akikoplus/guest/include/inline/akikoplus.h at fb91f9c (main, PR 2 merged), for the datatypes' services: common/dtservice.c.) */
 /* Automatically generated header (sfdc 1.12)! Do not edit! */
 
 #ifndef _INLINE_AKIKOPLUS_H
