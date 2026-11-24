@@ -283,6 +283,15 @@ static void test_descriptors(void)
     CHECK(odt_db_find_name(&db, "ILBM") && !strcmp(odt_db_find_name(&db, "ilbm")->dth.dth_Name, "ILBM"));
     CHECK(odt_db_find_name(&db, "AmigaGuide") && !strcmp(odt_db_find_name(&db, "amigaguide")->dth.dth_Name, "Guide"));
     CHECK(!odt_db_find_name(&db, "nothing"));
+    /* AC-270: what ACFS says a file is picks its descriptor, by name and group, with no read */
+    CHECK(odt_db_find_kind(&db, "ilbm", ODT_GID_PICTURE) == odt_db_find_name(&db, "ILBM"));
+    CHECK(odt_db_find_kind(&db, "amigaguide", ODT_GID_DOCUMENT) == odt_db_find_name(&db, "Guide"));
+    CHECK(odt_db_find_kind(&db, "gif", ODT_GID_PICTURE) == odt_db_find_name(&db, "GIF"));
+    CHECK(!odt_db_find_kind(&db, "ilbm", ODT_GID_SOUND));            /* another group: read and match */
+    CHECK(!odt_db_find_kind(&db, "ilbm", 0));
+    CHECK(!odt_db_find_kind(&db, "png", ODT_GID_PICTURE));           /* no descriptor named png here */
+    CHECK(!odt_db_find_kind(&db, "data", ODT_GID_SYSTEM) && !odt_db_find_kind(&db, "text", ODT_GID_TEXT));
+    CHECK(!odt_db_find_kind(&db, "ascii", ODT_GID_TEXT) && !odt_db_find_kind(&db, "", ODT_GID_PICTURE) && !odt_db_find_kind(&db, NULL, 1));
 
     /* the same name again replaces it */
     begin(); head("GIF", "gif2", "#?", "GIF8", ODT_GID_PICTURE, ID("GIF "), ODT_DTF_BINARY | ODT_DTF_CASE, 0);
