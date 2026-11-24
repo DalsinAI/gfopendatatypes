@@ -10,7 +10,10 @@
  * and SDTA_RightSample.
  *
  * For programs (datatypes/gfopenimage.h): opened with OIA_Reader the file
- * is not read whole: OIM_READSOUND streams it from the file. A DTST_RAM
+ * is not read whole: OIM_READSOUND streams it from the file, and its
+ * SDTA_SamplesPerSec and SDTA_Frequency are the file's own rate, answered
+ * here (47.2): sound.datatype keeps a rate as a Paula period, at least 124,
+ * so a 44.1 kHz WAV came back as 28603 Hz. A DTST_RAM
  * object made with OIA_PCM holds a program's sound. DTM_WRITE with
  * DTWM_RAW writes the sound as AIFF (gfopenaiff) or WAV (gfopenwave), 16
  * or 8 bits (OIA_SampleBits), or only its samples (OIA_Headerless);
@@ -40,16 +43,16 @@
 #ifdef PCM_CLASS_WAVE
 #define CONTAINER PCM_WAVE
 const char LibName[] = "gfopenwave.datatype";
-const char LibIdString[] = "gfopenwave.datatype 47.1 (8.11.2026) AmiCradle Team";
-static const char version[] __attribute__((used)) = "$VER: gfopenwave.datatype 47.1 (8.11.2026)";
+const char LibIdString[] = "gfopenwave.datatype 47.2 (24.11.2026) AmiCradle Team";
+static const char version[] __attribute__((used)) = "$VER: gfopenwave.datatype 47.2 (24.11.2026)";
 #else
 #define CONTAINER PCM_AIFF
 const char LibName[] = "gfopenaiff.datatype";
-const char LibIdString[] = "gfopenaiff.datatype 47.1 (8.11.2026) AmiCradle Team";
-static const char version[] __attribute__((used)) = "$VER: gfopenaiff.datatype 47.1 (8.11.2026)";
+const char LibIdString[] = "gfopenaiff.datatype 47.2 (24.11.2026) AmiCradle Team";
+static const char version[] __attribute__((used)) = "$VER: gfopenaiff.datatype 47.2 (24.11.2026)";
 #endif
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 1;
+const UWORD LibRevision = 2;
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -361,6 +364,12 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         struct PcmInst *pi = INST_DATA(cl, o);
         if (g->opg_AttrID == OIA_Channels) {
             *g->opg_Storage = pi->channels;
+            return TRUE;
+        }
+        /* OIA_Reader: the rate OIM_READSOUND's frames are at, not
+         * sound.datatype's (a period it clamps to Paula's fastest) */
+        if ((g->opg_AttrID == SDTA_SamplesPerSec || g->opg_AttrID == SDTA_Frequency) && pi->reader && pi->rate) {
+            *g->opg_Storage = pi->rate;
             return TRUE;
         }
         return DoSuperMethodA(cl, o, msg);

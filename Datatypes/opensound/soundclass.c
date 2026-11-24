@@ -28,7 +28,9 @@
  * nothing is played or decoded whole; OIM_READSOUND hands out the sound a
  * piece at a time at its own rate: from media.decode/1 (47.3: DECODE from
  * the frame reached, the file kept on the host), else FLAC, Ogg Vorbis and
- * MP3 from the decoders on this CPU.
+ * MP3 from the decoders on this CPU. Its SDTA_SamplesPerSec and
+ * SDTA_Frequency are that rate, answered here (47.4): sound.datatype keeps a
+ * rate as a Paula period, at least 124, so 44.1 kHz came back as 28603 Hz.
  *
  * DTM_WRITE in raw mode writes AAC (as M4A, or ADTS for a .aac) or WMA
  * through media.encode/1 (common/dtencode.c): the object's samples go to
@@ -67,13 +69,13 @@
 
 const char LibName[] = "gfopensound.datatype";
 #ifdef SND_BUILTIN
-const char LibIdString[] = "gfopensound.datatype 47.3 (9.11.2026) AmiCradle Team, decoded by media.decode/1 through Mitchy or this CPU, AAC and WMA written by media.encode/1";
+const char LibIdString[] = "gfopensound.datatype 47.4 (24.11.2026) AmiCradle Team, decoded by media.decode/1 through Mitchy or this CPU, AAC and WMA written by media.encode/1";
 #else
-const char LibIdString[] = "gfopensound.datatype 47.3 (9.11.2026) AmiCradle Team, decoded by media.decode/1 through Mitchy or gfopensound-decoders.library, AAC and WMA written by media.encode/1";
+const char LibIdString[] = "gfopensound.datatype 47.4 (24.11.2026) AmiCradle Team, decoded by media.decode/1 through Mitchy or gfopensound-decoders.library, AAC and WMA written by media.encode/1";
 #endif
 const UWORD LibVersion = 47;
-const UWORD LibRevision = 3;
-static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.3 (9.11.2026)";
+const UWORD LibRevision = 4;
+static const char version[] __attribute__((used)) = "$VER: gfopensound.datatype 47.4 (24.11.2026)";
 
 const char dt_superclass[] = "sound.datatype";
 const UWORD dt_superversion = 39;
@@ -98,6 +100,7 @@ struct SndInst {
     struct dt_file file;
     BOOL svcOpen;
     ULONG pos, frames;         /* the next frame DECODE gives, of frames */
+    ULONG rate;                /* OIA_Reader: the sound's own rate, as OIM_READSOUND gives it */
 };
 ULONG dt_instsize = sizeof(struct SndInst);
 
@@ -523,6 +526,7 @@ static BOOL openReader(Class *cl, Object *o)
         frames = c.frames;
         si->decodedBy = byHere;
     }
+    si->rate = rate;
     SetDTAttrs(o, NULL, NULL,
         DTA_ObjName, (ULONG)(name ? FilePart(name) : (STRPTR)"Sound"),
         SDTA_SampleLength, frames,
@@ -673,6 +677,13 @@ ULONG dt_dispatch(Class *cl, Object *o, Msg msg)
         struct SndInst *si = INST_DATA(cl, o);
         if (g->opg_AttrID == OIA_Channels && (si->local.dec || si->svcOpen)) {
             *g->opg_Storage = si->channels;
+            return TRUE;
+        }
+        /* OIA_Reader: the rate OIM_READSOUND's frames are at, not
+         * sound.datatype's (a period it clamps to Paula's fastest) */
+        if ((g->opg_AttrID == SDTA_SamplesPerSec || g->opg_AttrID == SDTA_Frequency)
+            && (si->local.dec || si->svcOpen) && si->rate) {
+            *g->opg_Storage = si->rate;
             return TRUE;
         }
         if (g->opg_AttrID == OIA_DecodedBy && si->decodedBy) {
