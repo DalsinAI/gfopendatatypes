@@ -19,7 +19,8 @@
 # test-webpcore.sh, both also as 68040 code in the m68k job) and
 # gzip's (test-gzenc.sh), each read back by our decoders and by Pillow or
 # Python's zlib; and the datatypes' RomTag versions
-# (Datatypes/tests/test-romtag.py); and webm.datatype's reader through its
+# (Datatypes/tests/test-romtag.py), and that a sound read with OIA_Reader
+# answers its own rate (Datatypes/tests/test-reader-rate.py); and webm.datatype's reader through its
 # read cache (Datatypes/tests/test-webm-read.sh).
 # GFOpenDatatypes' cores (datatypes.library and its eight class datatypes) under
 # qemu-m68k with an m68k cross GCC; the datatypesclass test
@@ -98,6 +99,8 @@ jobs:
         run: sh Datatypes/tests/test-gzenc.sh
       - name: the datatypes' RomTags carry their version
         run: python3 Datatypes/tests/test-romtag.py
+      - name: a sound read with OIA_Reader says its own rate (AC-250)
+        run: python3 Datatypes/tests/test-reader-rate.py
       - name: bitplanes to pixels (common/include/odt_planar.h)
         run: sh Datatypes/tests/test-planar.sh
       - name: which source the datatypes read, a file or memory (Datatypes/common/dtsource.h)
