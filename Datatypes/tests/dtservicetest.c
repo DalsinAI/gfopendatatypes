@@ -22,6 +22,15 @@
  * library base, every call through MitchyCall (files sent once too), no
  * read-ahead, MitchyWhere as the card or the LAN, and the library closed;
  * mitchy.library there but no service: FALSE, the device never tried.
+ * DT_AKIKOPLUS (every datatype's build; DT_NO_AKIKOPLUS leaves it out):
+ * akikoplus.library 3 is the first way in: AP_OpenService on the
+ * connection's own base, every call through AP_CallService (files sent once
+ * too), the read-ahead through AP_SendService on the connection's port,
+ * taken by AP_WaitService in the sender or in another task once the sender
+ * has gone (the port pointed at the taker first), cancelled by
+ * AP_AbortService at close, AP_ServiceWhere as the card or the LAN;
+ * akikoplus.library with no way to the boards (APSERR_NOMITCHY): the next
+ * way in; with no service: FALSE, nothing else tried.
  * MIT, Copyright (c) 2026 AmiCradle Team.
  */
 #include "dtservice.c"
@@ -324,20 +333,6 @@ static int mitchyInstalled, libOpens, libCloses, mOpens, mCloses, mCalls;
 static struct Library mitchyLib;
 static struct MitchyService mService;
 
-struct Library *OpenLibrary(CONST_STRPTR name, ULONG version)
-{
-    if (!mitchyInstalled || strcmp(name, MITCHYNAME) || version > 1)
-        return NULL;
-    libOpens++;
-    return &mitchyLib;
-}
-
-void CloseLibrary(struct Library *lib)
-{
-    check(lib == &mitchyLib, "CloseLibrary of the library opened");
-    libCloses++;
-}
-
 struct MitchyService *fakeMitchyOpen(struct Library *base, CONST_STRPTR name, ULONG flags, LONG *err)
 {
     check(base == &mitchyLib, "MitchyOpen on the connection's base");
@@ -391,10 +386,192 @@ LONG fakeMitchyCall(struct Library *base, struct MitchyService *ms, ULONG op, UL
     }
     return io.os_Status;
 }
-#else
-struct Library *OpenLibrary(CONST_STRPTR name, ULONG version) { (void)name; (void)version; return NULL; }
-void CloseLibrary(struct Library *lib) { (void)lib; }
 #endif
+
+#ifdef DT_AKIKOPLUS
+/* ---- akikoplus.library 3 (tests/test-dtservice.sh points inline/akikoplus.h here) */
+
+static int akikoInstalled, akikoNoMitchy, akikoSendFails, aLibOpens, aLibCloses, aOpens, aCloses, aCalls;
+static struct Library akikoLib;
+static int aService;                   /* the service's handle: its address */
+static struct {
+    int out, replied, cancelled;
+    struct MsgPort *port;
+    struct OSRequest io;
+    struct Message msg;
+} areq;
+
+APTR fakeAPOpen(struct Library *base, CONST_STRPTR name, ULONG flags, LONG *err)
+{
+    check(base == &akikoLib, "AP_OpenService on the connection's base");
+    check(flags == 0, "AP_OpenService: the board, or Mitchy, or a Cradle");
+    check(!strcmp(name, "media.decode/1"), "AP_OpenService of the name asked for");
+    if (akikoNoMitchy) {
+        if (err) *err = APSERR_NOMITCHY;
+        return NULL;
+    }
+    if (cfg.noService) {
+        if (err) *err = APSERR_NOTFITTED;
+        return NULL;
+    }
+    aOpens++;
+    if (err) *err = APS_OK;
+    return &aService;
+}
+
+void fakeAPClose(struct Library *base, APTR svc)
+{
+    check(base == &akikoLib && svc == &aService, "AP_CloseService of the service opened");
+    check(!areq.out, "AP_CloseService with a request out");
+    aCloses++;
+}
+
+LONG fakeAPWhere(struct Library *base, APTR svc)
+{
+    check(base == &akikoLib && svc == &aService, "AP_ServiceWhere of the service opened");
+    return cfg.where == OSWHERE_LAN ? AP_WHERE_LAN : AP_WHERE_BOARD;
+}
+
+static void callToIO(const struct APServiceCall *c, struct OSRequest *io)
+{
+    int i;
+    memset(io, 0, sizeof *io);
+    io->os_Service = 7;
+    io->os_Op = c->asc_Op;
+    io->os_Flags = c->asc_Flags;
+    io->os_Arg = c->asc_Arg;
+    for (i = 0; i < 4; i++) {
+        io->os_Buf[i].ob_Data = c->asc_Buf[i].ab_Data;
+        io->os_Buf[i].ob_Length = c->asc_Buf[i].ab_Length;
+        io->os_Extra[i] = c->asc_Extra[i];
+    }
+}
+
+LONG fakeAPCall(struct Library *base, APTR svc, const struct APServiceCall *c, ULONG *ra)
+{
+    struct OSRequest io;
+    check(base == &akikoLib && svc == &aService, "AP_CallService on the service opened");
+    callToIO(c, &io);
+    aCalls++;
+    serve(&io);
+    if (ra) {
+        ra[0] = io.os_Result;
+        ra[1] = io.os_Aux;
+    }
+    return io.os_Status;
+}
+
+APTR fakeAPSend(struct Library *base, APTR svc, const struct APServiceCall *c, struct MsgPort *port)
+{
+    check(base == &akikoLib && svc == &aService, "AP_SendService on the service opened");
+    check(!areq.out, "two read-aheads out at once (akikoplus.library)");
+    check(port != NULL, "AP_SendService on the connection's port");
+    if (akikoSendFails)
+        return NULL;
+    memset(&areq, 0, sizeof areq);
+    areq.out = 1;
+    areq.port = port;
+    callToIO(c, &areq.io);
+    return &areq;
+}
+
+/* The board answers the request out: its message on the port, and the
+ * port's task signalled when the port asks for it. */
+static void akikoRuns(void)
+{
+    struct MsgPort *p = areq.port;
+    if (!areq.out || areq.replied)
+        return;
+    if (areq.cancelled) {
+        areq.io.os_Status = OSERR_CANCELLED;
+        host.cancelled++;
+    } else
+        serve(&areq.io);
+    areq.replied = 1;
+    p->mp_MsgList.lh_Head = &areq.msg.mn_Node;
+    p->mp_MsgList.lh_TailPred = &areq.msg.mn_Node;
+    if (p->mp_Flags == PA_SIGNAL) {
+        int t = taskIndex(p->mp_SigTask);
+        check(t >= 0, "an AkikoPlus reply signals no task");
+        if (t >= 0) {
+            check(!gone[t], "an AkikoPlus reply signals a task that has ended");
+            check((sigsOf[t] & 1UL << p->mp_SigBit) != 0, "an AkikoPlus reply signals a signal the task has not allocated");
+            signalled[t]++;
+        }
+    }
+}
+
+static LONG akikoTaken(APTR r, ULONG *ra)
+{
+    struct MsgPort *p = areq.port;
+    check(r == &areq && areq.out, "a request that is not out taken");
+    if (!areq.replied) {
+        check(p->mp_Flags == PA_SIGNAL && p->mp_SigTask == &tasks[cur] && (sigsOf[cur] & 1UL << p->mp_SigBit),
+              "AP_WaitService on a port that would not signal the waiter");
+        akikoRuns();
+    }
+    p->mp_MsgList.lh_Head = (struct Node *)&p->mp_MsgList.lh_Tail;
+    p->mp_MsgList.lh_TailPred = (struct Node *)&p->mp_MsgList.lh_Head;
+    areq.out = 0;
+    if (ra) {
+        ra[0] = areq.io.os_Result;
+        ra[1] = areq.io.os_Aux;
+    }
+    return areq.io.os_Status;
+}
+
+LONG fakeAPWait(struct Library *base, APTR r, ULONG *ra)
+{
+    check(base == &akikoLib, "AP_WaitService on the connection's base");
+    return akikoTaken(r, ra);
+}
+
+LONG fakeAPAbort(struct Library *base, APTR r, ULONG *ra)
+{
+    check(base == &akikoLib, "AP_AbortService on the connection's base");
+    if (!areq.replied)
+        areq.cancelled = 1;
+    return akikoTaken(r, ra);
+}
+#endif
+
+struct Library *OpenLibrary(CONST_STRPTR name, ULONG version)
+{
+#ifdef DT_AKIKOPLUS
+    if (!strcmp(name, AKIKOPLUS_NAME)) {
+        check(version == 3, "akikoplus.library 3 asked for");
+        if (!akikoInstalled)
+            return NULL;
+        aLibOpens++;
+        return &akikoLib;
+    }
+#endif
+#ifdef DT_MITCHY
+    if (mitchyInstalled && !strcmp(name, MITCHYNAME) && version <= 1) {
+        libOpens++;
+        return &mitchyLib;
+    }
+#endif
+    (void)name; (void)version;
+    return NULL;
+}
+
+void CloseLibrary(struct Library *lib)
+{
+#ifdef DT_AKIKOPLUS
+    if (lib == &akikoLib) {
+        aLibCloses++;
+        return;
+    }
+#endif
+#ifdef DT_MITCHY
+    check(lib == &mitchyLib, "CloseLibrary of the library opened");
+    libCloses++;
+#else
+    (void)lib;
+    check(0, "CloseLibrary of a library never opened");
+#endif
+}
 
 /* ---- the cases ------------------------------------------------------------- */
 
@@ -590,6 +767,140 @@ int main(void)
     check(!dt_service_open(&s, "media.decode/1"), "Mitchy without the service (card pulled): no service");
     check(libOpens == 1 && libCloses == 1 && host.opens == 0, "Mitchy without the service: library closed, device not tried");
     balanced("Mitchy without the service");
+#endif
+
+#ifdef DT_AKIKOPLUS
+    /* akikoplus.library 3 installed: the first way in, the others never tried. */
+    akikoInstalled = 1;
+#ifdef DT_MITCHY
+    mitchyInstalled = 1;
+    libOpens = libCloses = 0;
+#endif
+    reset();
+    check(dt_service_open(&s, "media.decode/1"), "AkikoPlus: the service opens");
+    check(aLibOpens == 1 && aOpens == 1 && !s.io && host.opens == 0, "AkikoPlus: AP_OpenService, not the device");
+#ifdef DT_MITCHY
+    check(libOpens == 0 && !s.ms, "AkikoPlus: mitchy.library not opened by the datatype");
+#endif
+    check(dt_service_where(&s) == OSWHERE_CARD, "AkikoPlus: AP_ServiceWhere, the board, is the card");
+    f.kept = 0;
+    fileCalls(&s, &f, 4, &st);
+    check(st == 0 && aCalls == 5, "AkikoPlus: PROBE and four DECODEs through AP_CallService");
+    check(host.sentWhole == 1 && host.sentEmpty == 4 && !host.kept, "AkikoPlus: the file sent once, named, let go");
+    memset(buf, 0, sizeof buf);
+    st = dt_service_call(&s, 9, 0, 0, buf, extra, &result, NULL);
+    check(st == OSERR_BADREQUEST, "AkikoPlus: the service's status comes back");
+    dt_service_close(&s);
+    check(aCloses == 1 && aLibCloses == 1, "AkikoPlus: the service closed, then the library");
+    balanced("AkikoPlus");
+
+    reset();
+    cfg.where = OSWHERE_LAN;
+    dt_service_open(&s, "media.decode/1");
+    check(dt_service_where(&s) == OSWHERE_LAN, "AkikoPlus: a paired Cradle is the LAN");
+    dt_service_close(&s);
+    balanced("AkikoPlus on the LAN");
+
+    /* Its read-ahead, taken by the task that sent it. */
+    reset();
+    dt_service_open(&s, "media.decode/1");
+    memset(buf, 0, sizeof buf);
+    buf[0].ob_Data = (APTR)fileBytes;
+    buf[0].ob_Length = sizeof fileBytes;
+    buf[1].ob_Data = out;
+    buf[1].ob_Length = sizeof out;
+    memset(out, 0, sizeof out);
+    cur = 1;
+    check(dt_service_send(&s, 2, 5, 2, buf, extra), "AkikoPlus: a read-ahead goes out");
+    check(!dt_service_send(&s, 2, 6, 2, buf, extra), "AkikoPlus: a second read-ahead is refused while one is out");
+    check(s.sent && s.areq && sigsOf[1], "AkikoPlus: it holds a signal of the sender while out");
+    st = dt_service_wait(&s, &result, NULL);
+    check(st == 0 && result == 1234 && out[0] == 0x5A, "AkikoPlus: the read-ahead's answer");
+    check(signalled[1] == 1 && !sigsOf[1] && !s.areq, "AkikoPlus: it signalled its sender, whose signal is free again");
+    check(dt_service_wait(&s, NULL, NULL) == OSERR_BADREQUEST, "AkikoPlus: a wait with none out");
+    cur = 0;
+    dt_service_close(&s);
+    balanced("AkikoPlus read-ahead");
+
+    /* Sent by a task that then ends; taken by another. */
+    reset();
+    dt_service_open(&s, "media.decode/1");
+    cur = 1;
+    dt_service_send(&s, 2, 5, 2, buf, extra);
+    gone[1] = 1;
+    sigsOf[1] = 0;
+    cur = 2;
+    st = dt_service_wait(&s, &result, NULL);
+    check(st == 0 && result == 1234, "AkikoPlus: the read-ahead taken by another task");
+    check(signalled[2] == 1 && signalled[1] == 0, "AkikoPlus: the reply signalled the task waiting, not the one gone");
+    cur = 0;
+    dt_service_close(&s);
+    balanced("AkikoPlus read-ahead taken by another task");
+
+    /* Its answer already there when another task takes it. */
+    reset();
+    dt_service_open(&s, "media.decode/1");
+    cur = 1;
+    dt_service_send(&s, 2, 5, 2, buf, extra);
+    akikoRuns();                       /* its answer comes while the sender is there */
+    gone[1] = 1;
+    sigsOf[1] = 0;                     /* then it ends; its signals go with it */
+    cur = 2;
+    st = dt_service_wait(&s, &result, NULL);
+    check(st == 0 && result == 1234 && signalled[1] == 1 && !sigsOf[2], "AkikoPlus: an answer already come is taken by another task");
+    cur = 0;
+    dt_service_close(&s);
+    balanced("AkikoPlus answer already come");
+
+    /* Closed with a read-ahead out: cancelled, then closed. */
+    reset();
+    dt_service_open(&s, "media.decode/1");
+    dt_service_send(&s, 2, 5, 2, buf, extra);
+    aCloses = 0;
+    dt_service_close(&s);
+    check(host.cancelled == 1 && aCloses == 1 && !areq.out, "AkikoPlus: close cancels the read-ahead out, then closes");
+    balanced("AkikoPlus closed with a read-ahead out");
+
+    /* A send the library refuses: FALSE, nothing held. */
+    reset();
+    dt_service_open(&s, "media.decode/1");
+    akikoSendFails = 1;
+    check(!dt_service_send(&s, 2, 5, 2, buf, extra) && !s.sent && !sigsOf[0], "AkikoPlus: a refused send holds nothing");
+    akikoSendFails = 0;
+    dt_service_close(&s);
+    balanced("AkikoPlus refused send");
+
+    /* akikoplus.library with no way to the boards: the next way in. */
+    reset();
+    akikoNoMitchy = 1;
+    aLibOpens = aLibCloses = aOpens = 0;
+#ifdef DT_MITCHY
+    libOpens = libCloses = mOpens = 0;
+#endif
+    check(dt_service_open(&s, "media.decode/1"), "AkikoPlus without mitchy.library: the next way in opens it");
+    check(aLibOpens == 1 && aLibCloses == 1 && !s.akiko && !s.as, "AkikoPlus without mitchy.library: the library let go");
+#ifdef DT_MITCHY
+    check(mOpens == 1 && s.ms && host.opens == 0, "AkikoPlus without mitchy.library: then mitchy.library");
+#else
+    check(host.opens == 1 && s.io, "AkikoPlus without mitchy.library: then the device");
+#endif
+    dt_service_close(&s);
+    balanced("AkikoPlus without mitchy.library");
+    akikoNoMitchy = 0;
+
+    /* akikoplus.library there but no service: FALSE, nothing else tried. */
+    reset();
+    cfg.noService = 1;
+    aLibOpens = aLibCloses = 0;
+#ifdef DT_MITCHY
+    libOpens = 0;
+#endif
+    check(!dt_service_open(&s, "media.decode/1"), "AkikoPlus without the service: no service");
+    check(aLibOpens == 1 && aLibCloses == 1 && host.opens == 0, "AkikoPlus without the service: library closed, device not tried");
+#ifdef DT_MITCHY
+    check(libOpens == 0, "AkikoPlus without the service: mitchy.library not tried");
+#endif
+    balanced("AkikoPlus without the service");
 #endif
 
     printf("dtservicetest: %d checks, %d failed\n", checks, failures);

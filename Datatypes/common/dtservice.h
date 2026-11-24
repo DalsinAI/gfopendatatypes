@@ -24,6 +24,12 @@
 #include <exec/tasks.h>
 #include "devices/gfopenservice.h"
 
+/* akikoplus.library 3 is every datatype's first way in to a service
+ * (dt_service_open); DT_NO_AKIKOPLUS builds without it. */
+#ifndef DT_NO_AKIKOPLUS
+#define DT_AKIKOPLUS 1
+#endif
+
 struct dt_service {
     struct MsgPort *port;      /* no signal of its own: the caller's, for each call */
     struct OSRequest *io;
@@ -37,10 +43,18 @@ struct dt_service {
     ULONG where;               /* OSWHERE_*, from OSCMD_WHERE; 0 not asked yet or unknown */
     struct Library *mitchy;    /* DT_MITCHY: mitchy.library, when the service came through it */
     APTR ms;                   /* DT_MITCHY: its struct MitchyService */
+    struct Library *akiko;     /* DT_AKIKOPLUS: akikoplus.library 3, when the service came through it */
+    APTR as;                   /* DT_AKIKOPLUS: its service (AP_OpenService) */
+    APTR areq;                 /* DT_AKIKOPLUS: the read-ahead out (AP_SendService) */
 };
 
 /* Opens the device and the service; FALSE when neither a card nor a paired
  * Cradle offers it (or the device is not installed).
+ *
+ * First through akikoplus.library 3 (AP_OpenService: the AkikoPlus board
+ * when fitted, else Mitchy or a paired Cradle), with its read-ahead
+ * (AP_SendService, AP_WaitService); when that library is not installed, or
+ * has no way to the boards (mitchy.library missing), the ways below.
  *
  * Built with DT_MITCHY (gfopensound.datatype), the service is opened through
  * mitchy.library (gfopenservice's include/libraries/mitchy.h, MitchyOpen)

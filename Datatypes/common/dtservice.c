@@ -13,6 +13,80 @@
 #include "dtlib.h"
 #include "dtservice.h"
 
+#ifdef DT_AKIKOPLUS
+/* akikoplus.library 3 (gfosautoconfigboards cards/akikoplus/guest,
+ * include/libraries/akikoplus.h): the first way in. Its base is the
+ * connection's own, so each call names it. */
+#include <libraries/akikoplus.h>
+#include <inline/akikoplus.h>
+#undef AKIKOPLUS_BASE_NAME
+#define AKIKOPLUS_BASE_NAME (s->akiko)
+
+/* TRUE when akikoplus.library 3 has the say (then *opened says whether the
+ * service opened); FALSE when it is not installed, or has no way to the
+ * boards (mitchy.library missing): the next way in is tried. */
+static BOOL akikoOpen(struct dt_service *s, const char *name, BOOL *opened)
+{
+    LONG err = 0;
+
+    *opened = FALSE;
+    if (!(s->akiko = OpenLibrary((CONST_STRPTR)AKIKOPLUS_NAME, AKIKOPLUS_SERVICES_VERSION)))
+        return FALSE;
+    if ((s->as = AP_OpenService((CONST_STRPTR)name, 0, &err))) {
+        s->open = TRUE;
+        *opened = TRUE;
+        return TRUE;
+    }
+    if (err == APSERR_NOMITCHY) {
+        CloseLibrary(s->akiko);
+        s->akiko = NULL;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void akikoFill(struct APServiceCall *c, UWORD op, ULONG arg, ULONG flags,
+                      const struct OSBuffer buf[4], const ULONG extra[4])
+{
+    int i;
+
+    c->asc_Op = op;
+    c->asc_Pad = 0;
+    c->asc_Flags = flags;
+    c->asc_Arg = arg;
+    for (i = 0; i < 4; i++) {
+        c->asc_Buf[i].ab_Data = buf[i].ob_Data;
+        c->asc_Buf[i].ab_Length = buf[i].ob_Length;
+        c->asc_Extra[i] = extra[i];
+    }
+}
+
+static LONG akikoCall(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
+                      const struct OSBuffer buf[4], const ULONG extra[4], ULONG *result, ULONG *aux)
+{
+    struct APServiceCall c;
+    ULONG ra[2] = { 0, 0 };
+    LONG st;
+
+    akikoFill(&c, op, arg, flags, buf, extra);
+    st = AP_CallService(s->as, &c, ra);
+    if (result)
+        *result = ra[0];
+    if (aux)
+        *aux = ra[1];
+    return st;
+}
+
+static ULONG akikoWhere(struct dt_service *s)
+{
+    switch (AP_ServiceWhere(s->as)) {
+    case AP_WHERE_BOARD: return OSWHERE_CARD;
+    case AP_WHERE_LAN: return OSWHERE_LAN;
+    }
+    return 0;
+}
+#endif
+
 #ifdef DT_MITCHY
 /* mitchy.library (gfopenservice's include/libraries/mitchy.h): its base is
  * the connection's own, so each call names it. */
@@ -129,6 +203,16 @@ BOOL dt_service_open(struct dt_service *s, const char *name)
 {
     memset(s, 0, sizeof *s);
     s->aheadSig = -1;
+#ifdef DT_AKIKOPLUS
+    {
+        BOOL opened;
+        if (akikoOpen(s, name, &opened)) {
+            if (!opened)
+                dt_service_close(s);
+            return opened;
+        }
+    }
+#endif
 #ifdef DT_MITCHY
     {
         BOOL opened;
@@ -181,6 +265,10 @@ LONG dt_service_call(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
 
     if (!s->open)
         return OSERR_LOST;
+#ifdef DT_AKIKOPLUS
+    if (s->as)
+        return akikoCall(s, op, arg, flags, buf, extra, result, aux);
+#endif
 #ifdef DT_MITCHY
     if (s->ms)
         return mitchyCall(s, op, arg, flags, buf, extra, result, aux);
@@ -201,6 +289,26 @@ BOOL dt_service_send(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
 
     if (!s->open || s->sent || s->ms)  /* through Mitchy: no read-ahead */
         return FALSE;
+#ifdef DT_AKIKOPLUS
+    if (s->as) {                       /* akikoplus.library: AP_SendService on a port of the connection's */
+        struct APServiceCall c;
+        if (!s->aheadPort && !(s->aheadPort = newPort()))
+            return FALSE;
+        if ((sig = AllocSignal(-1)) < 0)
+            return FALSE;
+        akikoFill(&c, op, arg, flags, buf, extra);
+        toMe(s->aheadPort, sig);
+        if (!(s->areq = AP_SendService(s->as, &c, s->aheadPort))) {
+            noSignal(s->aheadPort);
+            FreeSignal(sig);
+            return FALSE;
+        }
+        s->aheadTask = FindTask(NULL);
+        s->aheadSig = sig;
+        s->sent = TRUE;
+        return TRUE;
+    }
+#endif
     if (!s->ahead) {
         /* A copy of the opened request, on a port of its own. */
         if (!s->aheadPort && !(s->aheadPort = newPort()))
@@ -222,6 +330,54 @@ BOOL dt_service_send(struct dt_service *s, UWORD op, ULONG arg, ULONG flags,
     return TRUE;
 }
 
+#ifdef DT_AKIKOPLUS
+static BOOL portEmpty(struct MsgPort *p)
+{
+    return p->mp_MsgList.lh_TailPred == (struct Node *)&p->mp_MsgList.lh_Head;
+}
+
+/* The read-ahead sent through akikoplus.library, taken (or cancelled) from
+ * any task, as the device's is below: AP_WaitService waits on the port's
+ * signal, so the port is pointed at the taker before its answer comes. */
+static LONG akikoTake(struct dt_service *s, BOOL cancel, ULONG *result, ULONG *aux)
+{
+    struct Task *me = FindTask(NULL);
+    ULONG ra[2] = { 0, 0 };
+    LONG st;
+    BYTE sig = -1;
+
+    if (me != s->aheadTask) {
+        sig = AllocSignal(-1);
+        Disable();
+        if (portEmpty(s->aheadPort)) {
+            if (sig >= 0)
+                toMe(s->aheadPort, sig);
+            else
+                s->aheadPort->mp_Flags = PA_IGNORE;
+        }
+        Enable();
+        if (sig < 0)                   /* no signal free: look until it has come (a cancel too: */
+            while (portEmpty(s->aheadPort))
+                ;                      /* the abort's wait must find it there) */
+    }
+    st = cancel ? AP_AbortService(s->areq, ra) : AP_WaitService(s->areq, ra);
+    if (me == s->aheadTask)
+        FreeSignal(s->aheadSig);
+    else if (sig >= 0)
+        FreeSignal(sig);
+    noSignal(s->aheadPort);
+    s->areq = NULL;
+    s->sent = FALSE;
+    s->aheadTask = NULL;
+    s->aheadSig = -1;
+    if (result)
+        *result = ra[0];
+    if (aux)
+        *aux = ra[1];
+    return st;
+}
+#endif
+
 LONG dt_service_wait(struct dt_service *s, ULONG *result, ULONG *aux)
 {
     struct Task *me = FindTask(NULL);
@@ -229,6 +385,10 @@ LONG dt_service_wait(struct dt_service *s, ULONG *result, ULONG *aux)
 
     if (!s->sent)
         return OSERR_BADREQUEST;
+#ifdef DT_AKIKOPLUS
+    if (s->areq)
+        return akikoTake(s, FALSE, result, aux);
+#endif
     if (me == s->aheadTask) {
         WaitIO((struct IORequest *)s->ahead);
         FreeSignal(s->aheadSig);
@@ -269,6 +429,10 @@ LONG dt_service_wait(struct dt_service *s, ULONG *result, ULONG *aux)
 
 ULONG dt_service_where(struct dt_service *s)
 {
+#ifdef DT_AKIKOPLUS
+    if (s->as)
+        return akikoWhere(s);
+#endif
 #ifdef DT_MITCHY
     if (s->ms)
         return mitchyWhere(s);
@@ -283,6 +447,14 @@ ULONG dt_service_where(struct dt_service *s)
 
 void dt_service_close(struct dt_service *s)
 {
+#ifdef DT_AKIKOPLUS
+    if (s->areq)
+        akikoTake(s, TRUE, NULL, NULL);    /* a read-ahead still out: cancelled first */
+    if (s->as)
+        AP_CloseService(s->as);
+    if (s->akiko)
+        CloseLibrary(s->akiko);
+#endif
 #ifdef DT_MITCHY
     if (s->mitchy)
         mitchyClose(s);
